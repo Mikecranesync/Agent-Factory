@@ -13,6 +13,13 @@ Usage:
 """
 
 import os
+import sys
+from pathlib import Path
+
+# Add project root to Python path for imports
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -41,7 +48,7 @@ def demo_research_agent():
         include_time=True
     )
 
-    print(f"\n✓ Loaded {len(research_tools)} research tools")
+    print(f"\n[OK] Loaded {len(research_tools)} research tools")
     for tool in research_tools:
         print(f"  - {tool.name}: {tool.description[:60]}...")
 
@@ -51,7 +58,7 @@ def demo_research_agent():
         system_prompt="You are a helpful research assistant. Always cite your sources."
     )
 
-    print("\n✓ Created Research Agent")
+    print("\n[OK] Created Research Agent")
     print(f"  Agent Type: {research_agent.metadata['agent_type']}")
     print(f"  LLM: {research_agent.metadata['llm_provider']} / {research_agent.metadata['model']}")
     print(f"  Memory: {'Enabled' if research_agent.metadata['memory_enabled'] else 'Disabled'}")
@@ -71,7 +78,7 @@ def demo_research_agent():
             response = research_agent.invoke({"input": query})
             print(f"\nAgent: {response['output']}")
         except Exception as e:
-            print(f"\n❌ Error: {str(e)}")
+            print(f"\n[ERROR] Error: {str(e)}")
 
     print("\n" + "=" * 80)
 
@@ -96,7 +103,7 @@ def demo_coding_agent():
         base_dir="."  # Current directory
     )
 
-    print(f"\n✓ Loaded {len(coding_tools)} coding tools")
+    print(f"\n[OK] Loaded {len(coding_tools)} coding tools")
     for tool in coding_tools:
         print(f"  - {tool.name}: {tool.description[:60]}...")
 
@@ -106,7 +113,7 @@ def demo_coding_agent():
         system_prompt="You are a helpful coding assistant. Write clean, well-documented code."
     )
 
-    print("\n✓ Created Coding Agent")
+    print("\n[OK] Created Coding Agent")
     print(f"  Agent Type: {coding_agent.metadata['agent_type']}")
     print(f"  LLM: {coding_agent.metadata['llm_provider']} / {coding_agent.metadata['model']}")
     print(f"  Memory: {'Enabled' if coding_agent.metadata['memory_enabled'] else 'Disabled'}")
@@ -126,7 +133,7 @@ def demo_coding_agent():
             response = coding_agent.invoke({"input": query})
             print(f"\nAgent: {response['output']}")
         except Exception as e:
-            print(f"\n❌ Error: {str(e)}")
+            print(f"\n[ERROR] Error: {str(e)}")
 
     print("\n" + "=" * 80)
 
@@ -152,7 +159,7 @@ def demo_custom_agent():
         ListDirectoryTool(),
     ]
 
-    print(f"\n✓ Loaded {len(mixed_tools)} mixed tools")
+    print(f"\n[OK] Loaded {len(mixed_tools)} mixed tools")
 
     # Create custom agent
     custom_agent = factory.create_agent(
@@ -162,7 +169,7 @@ def demo_custom_agent():
         agent_type=AgentFactory.AGENT_TYPE_STRUCTURED_CHAT
     )
 
-    print("\n✓ Created Custom Hybrid Agent")
+    print("\n[OK] Created Custom Hybrid Agent")
 
     query = "What is the current time and what files are in the current directory?"
     print("\n" + "-" * 80)
@@ -213,7 +220,7 @@ def interactive_mode():
             else:
                 current_agent = research_agent
                 agent_name = "Research Agent"
-            print(f"✓ Switched to {agent_name}")
+            print(f"[OK] Switched to {agent_name}")
             continue
 
         if not user_input:
@@ -225,19 +232,19 @@ def interactive_mode():
         except KeyboardInterrupt:
             print("\n\nInterrupted. Type 'exit' to quit.")
         except Exception as e:
-            print(f"\n❌ Error: {str(e)}")
+            print(f"\n[ERROR] Error: {str(e)}")
 
 
 def main():
     """Run all demos."""
     print("\n")
-    print("╔" + "=" * 78 + "╗")
-    print("║" + " " * 20 + "AGENT FACTORY DEMONSTRATION" + " " * 31 + "║")
-    print("╚" + "=" * 78 + "╝")
+    print("+" + "=" * 78 + "+")
+    print("|" + " " * 20 + "AGENT FACTORY DEMONSTRATION" + " " * 31 + "|")
+    print("+" + "=" * 78 + "+")
 
     # Check for OpenAI API key
     if not os.getenv("OPENAI_API_KEY"):
-        print("\n⚠️  Warning: OPENAI_API_KEY not found in environment variables")
+        print("\n[WARNING] OPENAI_API_KEY not found in environment variables")
         print("   Please set it in your .env file or environment")
         print("   Example: export OPENAI_API_KEY='your-api-key-here'\n")
         return
@@ -257,7 +264,7 @@ def main():
     except KeyboardInterrupt:
         print("\n\nDemo interrupted by user.")
     except Exception as e:
-        print(f"\n❌ Unexpected error: {str(e)}")
+        print(f"\n[ERROR] Unexpected error: {str(e)}")
         import traceback
         traceback.print_exc()
 
