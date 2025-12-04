@@ -19,9 +19,6 @@ langchain-anthropic = "^0.1.15"
 langchain-google-genai = "^1.0.5"
 langchainhub = "^0.1.18"
 
-# Agent orchestration
-langgraph = "^0.0.26"
-
 # LLM & Embeddings
 tiktoken = "^0.7.0"
 
