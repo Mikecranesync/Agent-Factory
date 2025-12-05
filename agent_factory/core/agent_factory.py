@@ -17,6 +17,9 @@ from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
 
+from .orchestrator import AgentOrchestrator
+from .callbacks import EventBus, create_default_event_bus
+
 
 class AgentFactory:
     """
@@ -266,4 +269,27 @@ class AgentFactory:
             system_prompt=system_prompt or default_prompt,
             agent_type=self.AGENT_TYPE_REACT,
             **kwargs
+        )
+
+    def create_orchestrator(
+        self,
+        event_bus: Optional[EventBus] = None,
+        verbose: Optional[bool] = None
+    ) -> AgentOrchestrator:
+        """
+        Create an orchestrator for multi-agent routing.
+
+        Args:
+            event_bus: Optional shared event bus
+            verbose: Override factory verbose setting
+
+        Returns:
+            AgentOrchestrator configured with factory's LLM
+        """
+        llm = self._create_llm()
+
+        return AgentOrchestrator(
+            llm=llm,
+            event_bus=event_bus,
+            verbose=verbose if verbose is not None else self.verbose
         )
