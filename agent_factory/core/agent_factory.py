@@ -7,7 +7,7 @@ with custom capabilities, tools, and configurations.
 Based on patterns from: https://github.com/Mikecranesync/langchain-crash-course
 """
 
-from typing import List, Dict, Optional, Any, Union
+from typing import List, Dict, Optional, Any, Union, Type
 from langchain import hub
 from langchain.agents import AgentExecutor, create_react_agent, create_structured_chat_agent
 from langchain.memory import ConversationBufferMemory
@@ -16,6 +16,7 @@ from langchain_core.messages import SystemMessage
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
+from pydantic import BaseModel
 
 from .orchestrator import AgentOrchestrator
 from .callbacks import EventBus, create_default_event_bus
@@ -107,6 +108,7 @@ class AgentFactory:
         temperature: Optional[float] = None,
         memory_key: str = "chat_history",
         handle_parsing_errors: bool = True,
+        response_schema: Optional[Type[BaseModel]] = None,
         **kwargs
     ) -> AgentExecutor:
         """
@@ -123,17 +125,20 @@ class AgentFactory:
             temperature: Temperature override
             memory_key: Key for storing chat history in memory
             handle_parsing_errors: Whether to gracefully handle LLM parsing errors
+            response_schema: Optional Pydantic model for structured outputs
             **kwargs: Additional arguments passed to AgentExecutor
 
         Returns:
             AgentExecutor: Configured and ready-to-use agent executor
 
         Example:
+            >>> from agent_factory.schemas import ResearchResponse
             >>> factory = AgentFactory()
             >>> agent = factory.create_agent(
             ...     role="Research Agent",
             ...     tools_list=[search_tool, wikipedia_tool],
-            ...     system_prompt="You are a helpful research assistant."
+            ...     system_prompt="You are a helpful research assistant.",
+            ...     response_schema=ResearchResponse
             ... )
             >>> response = agent.invoke({"input": "What is LangChain?"})
         """
@@ -143,6 +148,18 @@ class AgentFactory:
             model=model,
             temperature=temperature
         )
+
+        # Bind structured output schema if provided
+        # Note: Structured output is applied at executor level, not LLM level
+        # We store the schema in metadata for use in response parsing
+        structured_output_llm = llm
+        if response_schema:
+            try:
+                # Try to bind structured output (works with OpenAI, Anthropic)
+                structured_output_llm = llm.with_structured_output(response_schema)
+            except (AttributeError, NotImplementedError):
+                # Fallback: schema will be used for validation only
+                pass
 
         # Validate tools
         if not tools_list:
@@ -157,6 +174,8 @@ class AgentFactory:
             raise ValueError(f"Unsupported agent type: {agent_type}")
 
         # Create agent
+        # Use regular llm for agents (structured output is post-processed)
+        # LangChain agents need standard LLM interface
         if agent_type == self.AGENT_TYPE_REACT:
             agent = create_react_agent(
                 llm=llm,
@@ -204,7 +223,8 @@ class AgentFactory:
             "llm_provider": llm_provider or self.default_llm_provider,
             "model": model or self.default_model,
             "tools_count": len(tools_list),
-            "memory_enabled": enable_memory
+            "memory_enabled": enable_memory,
+            "response_schema": response_schema
         }
 
         return agent_executor

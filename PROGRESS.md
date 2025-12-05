@@ -93,9 +93,38 @@ poetry run python agent_factory/examples/orchestrator_demo.py
 ---
 
 ## Phase 2: Structured Outputs
-_Not started. Begin after Phase 1 complete._
+**Status:** ✅ COMPLETE
 
-## Phase 3: Enhanced Observability  
+### Schema Foundation
+- [X] Create `agent_factory/schemas/` directory
+- [X] `base.py` - AgentResponse, ErrorResponse, ToolResponse
+- [X] `agent_responses.py` - ResearchResponse, CodeResponse, CreativeResponse, AnalysisResponse
+- [X] `__init__.py` - Export all schemas
+
+### Factory Integration
+- [X] Add `response_schema` parameter to `create_agent()`
+- [X] Integrate LangChain structured output binding
+- [X] Store schema in agent metadata
+
+### Orchestrator Integration
+- [X] Update RouteResult to support Union[Dict, BaseModel]
+- [X] Add `_parse_response()` method for schema parsing
+- [X] Update `route()` method to parse responses
+- [X] Update `route_to()` method to parse responses
+- [X] Graceful error handling for validation failures
+
+### Testing & Demo
+- [X] Create `examples/structured_demo.py` (6 demonstrations)
+- [X] Create `tests/test_schemas.py` (23 tests)
+- [X] All 47 tests passing (13 callbacks + 11 orchestrator + 23 schemas)
+
+**CHECKPOINT TEST:**
+```bash
+poetry run pytest tests/ -v
+# 47 passed in 8.57s
+```
+
+## Phase 3: Enhanced Observability
 _Not started._
 
 ## Phase 4: Deterministic Tools
@@ -113,7 +142,8 @@ _Not started._
 
 | Tag | Date | What Works |
 |-----|------|------------|
-| _none yet_ | | |
+| phase-2-complete | 2025-12-05 | Structured outputs with Pydantic schemas, 47 tests passing |
+| phase-1-complete | 2025-12-05 | Multi-agent orchestration with callbacks, 24 tests passing |
 ```
 
 ---

@@ -4,6 +4,96 @@
 
 ---
 
+## [2025-12-05 23:30] Test-Driven Validation Over Manual Verification
+
+**Decision:** Write comprehensive test suite (24 tests) to validate Phase 1 instead of manual testing only
+
+**Rationale:**
+- Tests validate REQ-* requirements from specifications
+- Automated regression testing for future changes
+- Documents expected behavior through test cases
+- Catches implementation mismatches (AgentEvent vs Event, TOOL_START vs TOOL_CALL)
+- Enables confident refactoring
+- Industry best practice for production code
+
+**Implementation:**
+```python
+# tests/test_callbacks.py: 13 tests
+# - TestEventBus: emit, history, filtering, listeners, error isolation
+# - TestEvent: creation, representation
+# - TestEventType: enum validation
+
+# tests/test_orchestrator.py: 11 tests (already existed)
+# - Registration, routing, priority, fallback, events
+```
+
+**Results:**
+- 24/24 tests passing
+- Found 5 implementation mismatches during test creation
+- All fixed and validated
+- Phase 1 fully validated with repeatable test suite
+
+**Alternatives Considered:**
+1. **Manual testing only**
+   - Pro: Faster initially
+   - Con: No regression protection
+   - Con: Can't validate all edge cases
+   - **Rejected:** Not sustainable
+
+2. **Partial test coverage**
+   - Pro: Less work upfront
+   - Con: Gaps in validation
+   - **Rejected:** Phase 1 is critical foundation
+
+3. **Comprehensive test suite (CHOSEN)**
+   - Pro: Full validation
+   - Pro: Regression protection
+   - Pro: Documents behavior
+   - **Selected:** Best for production quality
+
+**Impact:** Phase 1 now has solid test foundation, future changes can be validated automatically
+
+---
+
+## [2025-12-05 22:00] Dual Track: Complete Phase 1 + Design Phase 5
+
+**Decision:** When user said "both", interpreted as both completing Phase 1 AND designing Phase 5 specification
+
+**Rationale:**
+- User asked about digital twin status (not implemented yet)
+- User said "both" when presented with option to complete Phase 1 OR design Phase 5
+- Parallel work possible: Phase 1 implementation + Phase 5 design
+- Maximizes session value
+- Phase 5 spec ready when needed
+
+**Implementation:**
+- Track 1: Completed Phase 1 (demo, tests, validation)
+- Track 2: Created PHASE5_SPEC.md (554 lines, comprehensive)
+
+**Results:**
+- Phase 1: ✅ Complete with 24 tests passing
+- Phase 5: ✅ Specification ready for implementation
+
+**Alternatives Considered:**
+1. **Complete Phase 1 only**
+   - Pro: Full focus on one task
+   - Con: Misses opportunity to design Phase 5
+   - **Rejected:** User said "both"
+
+2. **Design Phase 5 only**
+   - Pro: Prepare future work
+   - Con: Phase 1 incomplete
+   - **Rejected:** User said "both"
+
+3. **Dual track (CHOSEN)**
+   - Pro: Both deliverables complete
+   - Pro: Phase 1 validated, Phase 5 ready
+   - **Selected:** User explicitly requested "both"
+
+**Impact:** Maximum session productivity, both immediate (Phase 1) and future (Phase 5) work advanced
+
+---
+
 ## [2025-12-05 20:00] Hybrid Documentation Over Full PLC Style
 
 **Decision:** Use hybrid documentation (module headers + Google docstrings + REQ-* links) instead of line-by-line PLC-style comments

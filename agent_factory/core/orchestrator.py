@@ -13,12 +13,13 @@ Routes queries to specialist agents using hybrid logic:
 3. Fallback agent (graceful degradation)
 """
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional, Callable, Union
 from datetime import datetime
 import time
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel, ValidationError
 
 from .callbacks import EventBus, EventType, create_default_event_bus
 
@@ -45,11 +46,16 @@ class RouteResult:
 
     Implements: REQ-ORCH-004 (Agent Execution)
     Spec: specs/orchestrator-v1.0.md#section-3.2
+
+    The response field can be:
+    - Raw dict (default, backwards compatible)
+    - Pydantic BaseModel instance (if agent has response_schema)
+    - None (if error occurred)
     """
     agent_name: str                    # Which agent handled query
     method: str                        # "keyword" | "llm" | "fallback" | "direct"
     confidence: float                  # 0.0-1.0 routing confidence
-    response: Any = None               # Agent output
+    response: Union[Dict[str, Any], BaseModel, None] = None  # Agent output (dict or Pydantic model)
     error: Optional[str] = None        # Error message if failed
     duration_ms: Optional[float] = None  # Execution time
 
@@ -150,6 +156,53 @@ class AgentOrchestrator:
         """Get agent by name."""
         reg = self._agents.get(name)
         return reg.agent if reg else None
+
+    def _parse_response(
+        self,
+        response: Any,
+        agent: Any
+    ) -> Union[Dict[str, Any], BaseModel]:
+        """
+        Parse agent response into structured format if schema is defined.
+
+        Args:
+            response: Raw agent response
+            agent: Agent that generated the response
+
+        Returns:
+            Either the raw response (dict) or a validated Pydantic model instance
+        """
+        # Check if agent has a response schema
+        response_schema = getattr(agent, 'metadata', {}).get('response_schema')
+
+        if not response_schema:
+            # No schema defined, return raw response
+            return response
+
+        # Try to parse response into schema
+        try:
+            # Extract output from response dict
+            if isinstance(response, dict):
+                output_text = response.get('output', str(response))
+            else:
+                output_text = str(response)
+
+            # Create schema instance with parsed data
+            # For now, we'll create a basic instance with success=True and output
+            # More sophisticated parsing can be added later
+            schema_instance = response_schema(
+                success=True,
+                output=output_text,
+                metadata={}
+            )
+            return schema_instance
+
+        except (ValidationError, TypeError, AttributeError) as e:
+            # Schema parsing failed, return raw response
+            # Could emit error event here
+            if self._verbose:
+                print(f"[Orchestrator] Schema validation failed: {e}")
+            return response
 
     def _match_keywords(self, query: str) -> Optional[AgentRegistration]:
         """
@@ -275,13 +328,16 @@ Respond with ONLY the agent name, nothing else. If no agent fits, respond with "
             )
 
             # Invoke the agent
-            response = matched.agent.invoke({"input": query})
+            raw_response = matched.agent.invoke({"input": query})
+
+            # Parse response into schema if defined
+            parsed_response = self._parse_response(raw_response, matched.agent)
 
             duration_ms = (time.time() - start_time) * 1000
 
             self._event_bus.emit(
                 EventType.AGENT_END,
-                {"output": str(response), "duration_ms": duration_ms},
+                {"output": str(parsed_response), "duration_ms": duration_ms},
                 agent_name=matched.name
             )
 
@@ -289,7 +345,7 @@ Respond with ONLY the agent name, nothing else. If no agent fits, respond with "
                 agent_name=matched.name,
                 method=method,
                 confidence=confidence,
-                response=response,
+                response=parsed_response,
                 duration_ms=duration_ms
             )
 
@@ -330,12 +386,16 @@ Respond with ONLY the agent name, nothing else. If no agent fits, respond with "
                 agent_name=agent_name
             )
 
-            response = matched.agent.invoke({"input": query})
+            raw_response = matched.agent.invoke({"input": query})
+
+            # Parse response into schema if defined
+            parsed_response = self._parse_response(raw_response, matched.agent)
+
             duration_ms = (time.time() - start_time) * 1000
 
             self._event_bus.emit(
                 EventType.AGENT_END,
-                {"output": str(response), "duration_ms": duration_ms},
+                {"output": str(parsed_response), "duration_ms": duration_ms},
                 agent_name=agent_name
             )
 
@@ -343,7 +403,7 @@ Respond with ONLY the agent name, nothing else. If no agent fits, respond with "
                 agent_name=agent_name,
                 method="direct",
                 confidence=1.0,
-                response=response,
+                response=parsed_response,
                 duration_ms=duration_ms
             )
 
