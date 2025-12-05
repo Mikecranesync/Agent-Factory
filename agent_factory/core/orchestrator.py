@@ -1,6 +1,16 @@
 """
-Multi-agent orchestrator with hybrid routing.
-Routes queries to specialist agents via keywords or LLM classification.
+Orchestrator - Multi-Agent Routing System
+
+Generated from: specs/orchestrator-v1.0.md
+Generated on: 2025-12-05
+Spec SHA256: orchestrator-hash
+
+REGENERATION: python factory.py specs/orchestrator-v1.0.md
+
+Routes queries to specialist agents using hybrid logic:
+1. Keyword matching (fast, deterministic)
+2. LLM classification (flexible, intelligent)
+3. Fallback agent (graceful degradation)
 """
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Callable
@@ -15,40 +25,60 @@ from .callbacks import EventBus, EventType, create_default_event_bus
 
 @dataclass
 class AgentRegistration:
-    """Metadata for a registered agent."""
-    name: str
-    agent: Any  # LangChain agent
-    keywords: List[str] = field(default_factory=list)
-    description: str = ""
-    priority: int = 0  # Higher = higher priority
+    """
+    Metadata for a registered agent.
+
+    Implements: REQ-ORCH-001 (Agent Registration)
+    Spec: specs/orchestrator-v1.0.md#section-3.1
+    """
+    name: str                          # Unique identifier
+    agent: Any                         # LangChain AgentExecutor
+    keywords: List[str] = field(default_factory=list)  # Trigger words (lowercase)
+    description: str = ""              # Human-readable purpose
+    priority: int = 0                  # Tie-breaker (higher wins)
 
 
 @dataclass
 class RouteResult:
-    """Result of routing decision."""
-    agent_name: str
-    method: str  # "keyword" or "llm"
-    confidence: float
-    response: Any = None
-    error: Optional[str] = None
-    duration_ms: Optional[float] = None
+    """
+    Result of routing operation.
+
+    Implements: REQ-ORCH-004 (Agent Execution)
+    Spec: specs/orchestrator-v1.0.md#section-3.2
+    """
+    agent_name: str                    # Which agent handled query
+    method: str                        # "keyword" | "llm" | "fallback" | "direct"
+    confidence: float                  # 0.0-1.0 routing confidence
+    response: Any = None               # Agent output
+    error: Optional[str] = None        # Error message if failed
+    duration_ms: Optional[float] = None  # Execution time
 
 
 class AgentOrchestrator:
     """
-    Routes queries to specialist agents.
+    Multi-agent routing system with hybrid matching.
 
-    Pattern: Orchestrator routes, doesn't work.
-    - Keyword matching first (fast, deterministic)
-    - LLM classification fallback (flexible, slower)
+    Implements: REQ-ORCH-003 through REQ-ORCH-009
+    Spec: specs/orchestrator-v1.0.md
 
-    Usage:
-        orchestrator = AgentOrchestrator(llm=my_llm)
-        orchestrator.register("calendar", calendar_agent, keywords=["schedule", "meeting"])
-        orchestrator.register("email", email_agent, keywords=["mail", "inbox"])
+    Routes queries using priority order:
+    1. Keyword matching (fast, deterministic)
+    2. LLM classification (flexible, intelligent)
+    3. Fallback agent (graceful degradation)
+    4. Error response (no agent available)
 
-        result = orchestrator.route("What's on my schedule today?")
-        # Routes to calendar agent
+    Attributes:
+        _agents: Registry of registered agents
+        _llm: Optional LLM for classification fallback
+        _event_bus: Event system for observability
+        _fallback_agent: Agent name to use when no match
+
+    Examples:
+        >>> orch = AgentOrchestrator(llm=my_llm)
+        >>> orch.register("calendar", agent, keywords=["schedule", "meeting"])
+        >>> result = orch.route("What's on my schedule?")
+        >>> result.agent_name
+        'calendar'
     """
 
     def __init__(

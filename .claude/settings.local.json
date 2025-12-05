@@ -16,7 +16,21 @@
       "Bash(gh:*)",
       "Bash(git init:*)",
       "Bash(git branch:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git rm:*)",
+      "Bash(git commit:*)",
+      "Bash(poetry sync:*)",
+      "Bash(poetry run:*)",
+      "Bash(set PYTHONPATH=%CD%)",
+      "Bash(git log:*)",
+      "Bash(git push:*)",
+      "Bash(dir:*)",
+      "Bash(poetry install:*)",
+      "Bash(poetry lock:*)",
+      "Bash(poetry show:*)",
+      "Bash(git tag:*)",
+      "Bash(python:*)",
+      "Bash(poetry add:*)"
     ],
     "deny": [],
     "ask": []
