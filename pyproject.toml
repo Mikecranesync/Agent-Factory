@@ -48,6 +48,11 @@ PyPDF2 = "^3.0.1"
 
 # Data structures
 pydantic = "^2.5.0"
+networkx = ">=3.2,<3.6"
+
+# GitHub integration
+pygithub = "^2.1.1"
+pyyaml = "^6.0"
 
 [tool.poetry.group.dev.dependencies]
 # Development tools

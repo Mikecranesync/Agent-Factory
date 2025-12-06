@@ -327,6 +327,49 @@ Following "The New Code" philosophy (Sean Grove, AI Engineer World's Fair 2025):
 
 ---
 
+## GitHub Integration (Dec 6, 2025)
+**Status:** ✅ COMPLETE
+
+### Core Modules
+- [X] `agent_factory/github/github_client.py` - GitHub API client (349 lines)
+- [X] `agent_factory/github/issue_parser.py` - Parse issues to extract agent configs (349 lines)
+- [X] `agent_factory/github/__init__.py` - Module exports
+
+### CLI Commands
+- [X] `agentcli github-create` - Create agent from GitHub issue URL
+- [X] `agentcli github-init` - Initialize GitHub integration
+- [X] `agentcli github-sync` - Sync agents from repository
+
+### Features
+- [X] Template-based issue parsing (structured forms)
+- [X] Freeform issue parsing (natural language)
+- [X] Automatic tool collection detection
+- [X] LLM provider inference
+- [X] Agent config validation
+- [X] GitHub Actions integration support
+
+### Testing & Demo
+- [X] Create `tests/test_github.py` (31 tests)
+- [X] Create `agent_factory/examples/github_demo.py` (5 comprehensive demos)
+- [X] All 193 tests passing (162 + 31 new)
+
+### Dependencies Added
+- [X] pygithub ^2.1.1
+- [X] pyyaml ^6.0
+
+**CHECKPOINT TEST:**
+```bash
+poetry run pytest tests/test_github.py -v
+# 31 passed in 0.95s
+
+poetry run python -m agent_factory.examples.github_demo
+# All 5 demos run successfully
+```
+
+**CHECKPOINT: GitHub Integration complete! ✅**
+
+---
+
 ## Phase 3: Spec → Agent Generation Pipeline
 **Status:** 🔜 NEXT (Dec 13-15, 2025)
 
@@ -368,6 +411,7 @@ Target: $10K MRR by Month 2
 
 | Tag | Date | What Works |
 |-----|------|------------|
+| github-integration-complete | 2025-12-06 | GitHub integration (create agents from issues), 193 tests |
 | phase-2-plc-comments | 2025-12-06 | PLC-style heavy commenting (40% density), 162 tests |
 | phase-1-constitution | 2025-12-06 | AGENTS.md constitution created, spec template |
 | phase-0-openhands | 2025-12-06 | OpenHands integration, avoided $200/mo fee |

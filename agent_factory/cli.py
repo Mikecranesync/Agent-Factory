@@ -620,6 +620,184 @@ def list_custom_agents():
     console.print(f"\n[dim]Use with: agentcli chat --agent <name>[/dim]\n")
 
 
+@app.command("github-create")
+def github_create(
+    issue_url: str = typer.Argument(..., help="GitHub issue URL"),
+    save_local: bool = typer.Option(
+        True,
+        "--save-local/--no-save-local",
+        help="Save agent config locally"
+    ),
+):
+    """
+    Create agent from GitHub issue.
+
+    Parses a GitHub issue and creates an agent configuration.
+    Supports both template-based and freeform issues.
+
+    Example:
+        agentcli github-create https://github.com/user/repo/issues/42
+    """
+    try:
+        from agent_factory.github import GitHubIssueParser, GitHubAgentClient
+
+        console.print(f"\n[cyan]Fetching issue:[/cyan] {issue_url}")
+
+        # Initialize client (optional - requires token)
+        token = os.getenv("GITHUB_TOKEN")
+        if token:
+            client = GitHubAgentClient(token=token)
+            issue = client.get_issue_from_url(issue_url)
+            issue_body = issue.body
+            console.print(f"[green]✓[/green] Issue #{issue.number}: {issue.title}")
+        else:
+            console.print("[yellow]Note: Set GITHUB_TOKEN to fetch issue automatically[/yellow]")
+            console.print("Please paste the issue body below (Ctrl+D when done):\n")
+            import sys
+            issue_body = sys.stdin.read()
+
+        # Parse issue
+        console.print("\n[cyan]Parsing issue...[/cyan]")
+        parser = GitHubIssueParser()
+        config = parser.parse_issue_body(issue_body)
+
+        # Validate
+        if not parser.validate_config(config):
+            console.print("[red]Error: Invalid agent configuration extracted[/red]")
+            raise typer.Exit(1)
+
+        console.print("[green]✓[/green] Agent configuration extracted")
+
+        # Show summary
+        from agent_factory.cli_builder import AgentBuilder
+        builder = AgentBuilder()
+        builder.show_config_summary(config)
+
+        # Save locally if requested
+        if save_local:
+            from rich.prompt import Confirm
+            if Confirm.ask("\n[cyan]Save agent locally?[/cyan]", default=True):
+                config_file = builder.save_config(config)
+                console.print(f"\n[green]✓[/green] Saved to {config_file}")
+                console.print(f"[dim]Use with: agentcli chat --agent {config['name']}[/dim]\n")
+
+    except Exception as e:
+        console.print(f"\n[red]Error: {str(e)}[/red]\n")
+        raise typer.Exit(1)
+
+
+@app.command("github-init")
+def github_init():
+    """
+    Initialize GitHub integration.
+
+    Sets up:
+    - Issue templates (.github/ISSUE_TEMPLATE/)
+    - GitHub Actions workflow (.github/workflows/)
+    - Agent Factory configuration
+    """
+    try:
+        console.print("\n[bold cyan]GitHub Integration Setup[/bold cyan]\n")
+
+        # Check for GitHub token
+        token = os.getenv("GITHUB_TOKEN")
+        if not token:
+            console.print("[yellow]⚠[/yellow] GITHUB_TOKEN not set in environment")
+            console.print("[dim]Set it to enable full GitHub integration[/dim]\n")
+        else:
+            from agent_factory.github import GitHubAgentClient
+            client = GitHubAgentClient(token=token)
+            if client.test_connection():
+                console.print(f"[green]✓[/green] Connected to GitHub as {client.user.login}\n")
+            else:
+                console.print("[red]✗[/red] GitHub connection failed\n")
+                raise typer.Exit(1)
+
+        # Create .github directory structure
+        github_dir = Path.cwd() / ".github"
+        templates_dir = github_dir / "ISSUE_TEMPLATE"
+        workflows_dir = github_dir / "workflows"
+
+        console.print("[cyan]Creating GitHub directories...[/cyan]")
+        templates_dir.mkdir(parents=True, exist_ok=True)
+        workflows_dir.mkdir(parents=True, exist_ok=True)
+        console.print("[green]✓[/green] Directories created\n")
+
+        console.print("[green]✓[/green] GitHub integration initialized!")
+        console.print("\n[dim]Next steps:[/dim]")
+        console.print("  1. Create issue templates (will be added in next commit)")
+        console.print("  2. Create GitHub Actions workflow")
+        console.print("  3. Test with: agentcli github-create <issue-url>\n")
+
+    except Exception as e:
+        console.print(f"\n[red]Error: {str(e)}[/red]\n")
+        raise typer.Exit(1)
+
+
+@app.command("github-sync")
+def github_sync(
+    repo_url: str = typer.Option(
+        None,
+        "--repo",
+        "-r",
+        help="GitHub repo URL (e.g., https://github.com/user/repo)"
+    ),
+):
+    """
+    Sync agents from GitHub repository.
+
+    Downloads agent configs from .agent_factory/agents/ in the repo
+    and saves them to local ~/.agent_factory/agents/
+    """
+    try:
+        if not repo_url:
+            console.print("[red]Error: --repo required[/red]")
+            console.print("Usage: agentcli github-sync --repo https://github.com/user/repo")
+            raise typer.Exit(1)
+
+        from agent_factory.github import GitHubAgentClient
+
+        token = os.getenv("GITHUB_TOKEN")
+        if not token:
+            console.print("[red]Error: GITHUB_TOKEN not set[/red]")
+            raise typer.Exit(1)
+
+        console.print(f"\n[cyan]Syncing agents from:[/cyan] {repo_url}")
+
+        client = GitHubAgentClient(token=token)
+
+        # Parse repo URL
+        parts = repo_url.rstrip("/").split("/")
+        owner = parts[-2]
+        repo = parts[-1]
+
+        repository = client.github.get_repo(f"{owner}/{repo}")
+
+        # List agent configs
+        configs = client.list_agent_configs(repository)
+
+        if not configs:
+            console.print("\n[yellow]No agent configs found in repository[/yellow]\n")
+            return
+
+        console.print(f"[green]Found {len(configs)} agent(s)[/green]\n")
+
+        # Save locally
+        from agent_factory.cli_builder import AgentBuilder
+        builder = AgentBuilder()
+
+        for config in configs:
+            builder.save_config(config)
+            console.print(f"  [green]✓[/green] {config['name']}: {config['role']}")
+
+        console.print(f"\n[green]✓[/green] Synced {len(configs)} agents to local storage")
+        console.print(f"[dim]Use with: agentcli chat --agent <name>[/dim]\n")
+
+    except Exception as e:
+        console.print(f"\n[red]Error: {str(e)}[/red]\n")
+        raise typer.Exit(1)
+
+
 def main():
     """Entry point for the CLI."""
     app()
