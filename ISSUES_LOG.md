@@ -4,6 +4,106 @@
 
 ---
 
+## [2025-12-05 19:45] FIXED: LangChain BaseTool Pydantic Field Restrictions
+
+**Problem:** File tools couldn't set attributes in __init__ due to Pydantic validation
+**Root Cause:** LangChain BaseTool uses Pydantic v1 which doesn't allow arbitrary attributes
+**Error:** `ValueError: "ReadFileTool" object has no field "path_validator"`
+
+**Impact:**
+- Initial file tool implementation had `__init__` methods setting validators
+- All 27 file tool tests failed on instantiation
+- Couldn't configure tools with custom allowed_dirs or size limits
+
+**Solution:**
+- Removed __init__ methods from all tool classes
+- Create validators inside _run() method instead
+- Use Path.cwd() as default allowed directory
+- Simplified tool API (no config parameters needed)
+
+**Code Change:**
+```python
+# BEFORE (failed):
+class ReadFileTool(BaseTool):
+    allowed_dirs: List[Path] = None
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.path_validator = PathValidator(...)  # FAILS
+
+# AFTER (works):
+class ReadFileTool(BaseTool):
+    def _run(self, file_path: str) -> str:
+        path_validator = PathValidator(allowed_dirs=[Path.cwd()])  # Works
+```
+
+**Testing:**
+- 27 file tool tests: 0 → 27 passing
+- All tools now work correctly
+- Simplified API (no config needed)
+
+**Status:** [FIXED]
+
+---
+
+## [2025-12-05 18:30] FIXED: Cache Cleanup Test Timing Issue
+
+**Problem:** test_periodic_cleanup failed - expired entries not cleaned up
+**Root Cause:** Cleanup interval (1s) longer than wait time (0.6s)
+**Error:** `AssertionError: assert 2 == 0` (2 entries still in cache)
+
+**Impact:** 1/19 cache tests failing
+
+**Solution:**
+- Reduced cleanup interval: 1s → 0.5s
+- Reduced TTL: 0.5s → 0.3s
+- Kept wait time: 0.6s (longer than both)
+
+**Code Change:**
+```python
+# BEFORE:
+cache = CacheManager(cleanup_interval=1)
+cache.set("key1", "value1", ttl=0.5)
+time.sleep(0.6)  # Not long enough for cleanup
+
+# AFTER:
+cache = CacheManager(cleanup_interval=0.5)
+cache.set("key1", "value1", ttl=0.3)
+time.sleep(0.6)  # Now triggers cleanup
+```
+
+**Status:** [FIXED]
+
+---
+
+## [2025-12-05 16:00] FIXED: PathValidator Test Working Directory Issue
+
+**Problem:** test_validate_safe_path failed with PathTraversalError
+**Root Cause:** Relative path resolved from current directory, not tmp_path
+**Error:** Path 'C:\...\Agent Factory\test.txt' not in allowed dirs: [tmp_path]
+
+**Impact:** 1/27 file tool tests failing
+
+**Solution:** Use pytest monkeypatch to change working directory to tmp_path
+
+**Code Change:**
+```python
+# BEFORE:
+def test_validate_safe_path(self, tmp_path):
+    validator = PathValidator(allowed_dirs=[tmp_path])
+    safe_path = validator.validate("test.txt")  # Resolves from CWD
+
+# AFTER:
+def test_validate_safe_path(self, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # Change CWD to tmp_path
+    validator = PathValidator(allowed_dirs=[tmp_path])
+    safe_path = validator.validate("test.txt")  # Now resolves correctly
+```
+
+**Status:** [FIXED]
+
+---
+
 ## [2025-12-05 23:45] INFORMATIONAL: All Phase 1 Issues Resolved
 
 **Session:** Phase 1 Testing and Validation

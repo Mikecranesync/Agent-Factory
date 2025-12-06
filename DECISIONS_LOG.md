@@ -4,6 +4,326 @@
 
 ---
 
+## [2025-12-05 19:45] Phase 4: Validators Created in _run() Instead of __init__()
+
+**Decision:** Create PathValidator and FileSizeValidator instances inside `_run()` method instead of `__init__()`
+
+**Rationale:**
+- LangChain BaseTool uses Pydantic v1 with strict field validation
+- Cannot set arbitrary attributes in `__init__()` without defining them in class
+- Pydantic raises `ValueError: object has no field "path_validator"`
+- Creating validators in `_run()` bypasses Pydantic restrictions
+- Simplifies tool API (no configuration parameters at instantiation)
+- Uses Path.cwd() as sensible default for allowed directories
+
+**Impact:**
+- All 27 file tool tests initially failed on instantiation
+- After fix: 27/27 tests passing
+- Cleaner API: `ReadFileTool()` instead of `ReadFileTool(allowed_dirs=[...])`
+
+**Code Pattern:**
+```python
+# BEFORE (failed):
+class ReadFileTool(BaseTool):
+    allowed_dirs: Optional[List[Path]] = None
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.path_validator = PathValidator(...)  # FAILS with Pydantic error
+
+# AFTER (works):
+class ReadFileTool(BaseTool):
+    def _run(self, file_path: str) -> str:
+        # Create validators fresh each time
+        path_validator = PathValidator(allowed_dirs=[Path.cwd()])
+        safe_path = path_validator.validate(file_path)
+```
+
+**Alternatives Considered:**
+1. **Define fields in class with Field()**
+   - Pro: More Pydantic-like
+   - Con: Would need to expose configuration at instantiation
+   - Con: Complicates simple use case
+   - **Rejected:** Unnecessarily complex
+
+2. **Use Pydantic v2**
+   - Pro: More flexible field handling
+   - Con: LangChain BaseTool locked to Pydantic v1
+   - Con: Breaking change across ecosystem
+   - **Rejected:** Not compatible
+
+3. **Create in _run() (CHOSEN)**
+   - Pro: Works with Pydantic v1 restrictions
+   - Pro: Simplified API
+   - Pro: Path.cwd() is sensible default
+   - **Selected:** Most practical solution
+
+**Status:** All file tools implemented with this pattern, 27 tests passing
+
+---
+
+## [2025-12-05 19:00] Phase 4: 10MB Default File Size Limit
+
+**Decision:** Set 10MB as default maximum file size for file operations
+
+**Rationale:**
+- Prevents memory exhaustion from reading huge files
+- Large enough for most code/config files
+- Small enough to protect against accidental large file operations
+- Can be overridden if needed (FileSizeValidator is configurable)
+- Matches common web upload limits
+
+**Implementation:**
+```python
+class FileSizeValidator:
+    def __init__(self, max_size_mb: float = 10.0):
+        self.max_size_bytes = int(max_size_mb * 1024 * 1024)
+```
+
+**Use Cases:**
+- ✅ Code files (typically < 1MB)
+- ✅ Config files (typically < 100KB)
+- ✅ Documentation (typically < 5MB)
+- ✅ Small data files
+- ❌ Videos, large datasets, binaries (blocked)
+
+**Alternatives Considered:**
+1. **No limit**
+   - Pro: Maximum flexibility
+   - Con: Risk of memory issues
+   - Con: No protection against accidents
+   - **Rejected:** Unsafe for production
+
+2. **1MB limit**
+   - Pro: Very safe
+   - Con: Too restrictive for some code files
+   - **Rejected:** Too conservative
+
+3. **100MB limit**
+   - Pro: Handles larger files
+   - Con: Still risky for memory
+   - **Rejected:** Too permissive
+
+4. **10MB limit (CHOSEN)**
+   - Pro: Good balance
+   - Pro: Handles 99% of code/config use cases
+   - Pro: Protects against accidental large files
+   - **Selected:** Best compromise
+
+---
+
+## [2025-12-05 18:30] Phase 4: Atomic Writes with Temp Files
+
+**Decision:** Use temp file → rename pattern for all file writes
+
+**Rationale:**
+- Prevents corruption if write fails midway
+- Atomic operation at OS level (rename is atomic)
+- No partial writes visible to other processes
+- Industry best practice for safe file operations
+- Minimal performance overhead
+
+**Implementation:**
+```python
+# Create temp file in same directory
+temp_fd, temp_path = tempfile.mkstemp(dir=safe_path.parent, suffix=safe_path.suffix)
+with os.fdopen(temp_fd, 'w', encoding='utf-8') as f:
+    f.write(content)
+
+# Atomic rename
+shutil.move(temp_path, safe_path)
+```
+
+**Benefits:**
+- Write succeeds completely or not at all
+- No half-written files
+- Safe for concurrent access
+- Automatic cleanup on failure
+
+**Alternatives Considered:**
+1. **Direct write**
+   - Pro: Simpler code
+   - Con: Risk of partial writes
+   - Con: File corruption on failure
+   - **Rejected:** Not production-safe
+
+2. **Write with locks**
+   - Pro: Prevents concurrent writes
+   - Con: Platform-specific locking
+   - Con: Deadlock risks
+   - **Rejected:** Unnecessary complexity
+
+3. **Temp + rename (CHOSEN)**
+   - Pro: Atomic operation
+   - Pro: No corruption
+   - Pro: Cross-platform
+   - **Selected:** Industry standard
+
+---
+
+## [2025-12-05 18:00] Phase 4: TTL-based Caching with LRU Eviction
+
+**Decision:** Implement time-to-live (TTL) expiration combined with LRU (Least Recently Used) eviction
+
+**Rationale:**
+- TTL: Prevents stale data (configurable per entry)
+- LRU: Prevents unbounded memory growth (max_size limit)
+- Combination handles both time-based and space-based constraints
+- Periodic cleanup removes expired entries automatically
+- Hit/miss statistics for monitoring
+
+**Implementation:**
+```python
+@dataclass
+class CacheEntry:
+    value: Any
+    expires_at: float  # Unix timestamp (TTL)
+    last_accessed: float  # For LRU
+    hits: int = 0
+
+class CacheManager:
+    def __init__(self, default_ttl=3600, max_size=1000, cleanup_interval=300):
+        # TTL: 1 hour default
+        # Max size: 1000 entries
+        # Cleanup: Every 5 minutes
+```
+
+**Eviction Strategy:**
+1. **Expiration Check:** Always check TTL on get()
+2. **Size Limit:** When full, evict oldest accessed entry (LRU)
+3. **Periodic Cleanup:** Background cleanup of expired entries
+
+**Alternatives Considered:**
+1. **TTL only**
+   - Pro: Simple time-based expiration
+   - Con: Unbounded memory growth
+   - **Rejected:** Not safe for long-running processes
+
+2. **LRU only**
+   - Pro: Bounded memory
+   - Con: May serve stale data indefinitely
+   - **Rejected:** No freshness guarantee
+
+3. **TTL + LRU (CHOSEN)**
+   - Pro: Bounded memory AND fresh data
+   - Pro: Handles both time and space constraints
+   - **Selected:** Best of both approaches
+
+**Timing Fix Applied:**
+- Initial test had cleanup_interval (1s) > wait_time (0.6s)
+- Fixed: cleanup_interval=0.5s, ttl=0.3s, wait=0.6s
+- Ensures cleanup actually runs during test
+
+---
+
+## [2025-12-05 17:30] Phase 4: Path Whitelist Security Model
+
+**Decision:** Use whitelist approach for path validation (allowed directories only)
+
+**Rationale:**
+- Whitelist is more secure than blacklist
+- Explicitly define what's allowed (default: Path.cwd())
+- Block all path traversal attempts (`../`, `..\`)
+- Block access to system directories (/etc, /bin, C:\Windows)
+- Prevent symlink attacks by resolving paths first
+- Fail closed: reject anything suspicious
+
+**Security Features:**
+```python
+BLOCKED_DIRS = {
+    "/etc", "/bin", "/sbin", "/usr/bin", "/usr/sbin",  # Unix
+    "/System", "/Library",  # macOS
+    "C:\\Windows", "C:\\Program Files", "C:\\Program Files (x86)",  # Windows
+}
+
+def validate(self, path: str) -> Path:
+    resolved = Path(path).resolve()  # Resolve symlinks, normalize
+
+    # Must be within allowed directories
+    is_allowed = any(
+        try_relative(resolved, allowed_dir)
+        for allowed_dir in self.allowed_dirs
+    )
+
+    if not is_allowed:
+        raise PathTraversalError(...)
+```
+
+**Blocked Patterns:**
+- `../` (relative parent access)
+- Absolute paths outside allowed dirs
+- Symlinks pointing outside allowed dirs
+- System directories (even if accidentally allowed)
+
+**Alternatives Considered:**
+1. **Blacklist approach**
+   - Pro: More permissive
+   - Con: Easy to miss attack vectors
+   - Con: Requires exhaustive list of bad patterns
+   - **Rejected:** Less secure
+
+2. **No validation**
+   - Pro: Maximum flexibility
+   - Con: Security vulnerability
+   - **Rejected:** Unacceptable risk
+
+3. **Whitelist (CHOSEN)**
+   - Pro: Fail-safe
+   - Pro: Explicit allowed paths
+   - Pro: Blocks unknown threats
+   - **Selected:** Most secure
+
+---
+
+## [2025-12-05 17:00] Phase 4: Idempotent Write Operations
+
+**Decision:** Make WriteFileTool idempotent by checking if content already matches
+
+**Rationale:**
+- Avoids unnecessary file modifications
+- Prevents timestamp changes when content identical
+- Reduces filesystem churn
+- Better for version control (no spurious diffs)
+- Clear feedback to user ("unchanged" vs "written")
+
+**Implementation:**
+```python
+# Check if file exists and content matches
+if safe_path.exists():
+    with open(safe_path, 'r', encoding='utf-8') as f:
+        current_content = f.read()
+    if current_content == content:
+        return f"File '{file_path}' already has the correct content (unchanged)"
+
+# Only write if different
+# ... perform atomic write ...
+```
+
+**Benefits:**
+- REQ-DET-003: Idempotent operations
+- No unnecessary writes
+- Preserves file metadata when possible
+- Clear user feedback
+
+**Alternatives Considered:**
+1. **Always write**
+   - Pro: Simpler code
+   - Con: Unnecessary filesystem operations
+   - Con: Misleading user feedback
+   - **Rejected:** Inefficient
+
+2. **Hash comparison**
+   - Pro: More efficient for large files
+   - Con: Overkill for typical code files
+   - **Rejected:** Unnecessary complexity
+
+3. **Content comparison (CHOSEN)**
+   - Pro: Simple and correct
+   - Pro: Clear feedback
+   - **Selected:** Best for this use case
+
+---
+
 ## [2025-12-05 23:30] Test-Driven Validation Over Manual Verification
 
 **Decision:** Write comprehensive test suite (24 tests) to validate Phase 1 instead of manual testing only
