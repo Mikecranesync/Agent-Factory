@@ -1,8 +1,28 @@
 """
 Specialized response schemas for different agent types.
 
-Each schema extends AgentResponse with domain-specific fields
-to provide type-safe, validated responses for different agent roles.
+PURPOSE:
+    Provides domain-specific response schemas that extend AgentResponse base class.
+    Like specialized PLC UDTs for different machine types - each adds relevant fields.
+
+WHAT THIS PROVIDES:
+    - ResearchResponse: For search/research agents (sources, confidence, queries)
+    - CodeResponse: For coding agents (code, language, dependencies, tests)
+    - CreativeResponse: For writing agents (genre, style, word_count)
+    - AnalysisResponse: For analysis agents (scores, insights, recommendations)
+
+WHY WE NEED THIS:
+    - Type safety: Each agent type has validated structure
+    - Domain-specific: Fields relevant to agent's task
+    - Inheritance: Reuses AgentResponse (success, output, metadata)
+    - Extensibility: Easy to add new specialized responses
+
+PLC ANALOGY:
+    Like specialized PLC UDTs for different equipment:
+    - ResearchResponse = Search system UDT (results, sources, confidence)
+    - CodeResponse = Compiler output UDT (code, language, errors, warnings)
+    - CreativeResponse = Text generator UDT (content, style, length)
+    - AnalysisResponse = Quality check UDT (scores, faults, recommendations)
 """
 
 from typing import List, Optional
@@ -15,23 +35,36 @@ class ResearchResponse(AgentResponse):
     """
     Response from research/search agents.
 
-    Extends AgentResponse with research-specific fields like
-    sources and confidence scores.
+    PURPOSE:
+        Research agent responses with sources, confidence, and search queries.
+        Like PLC search system UDT - tracks what was found, where, and how confident.
 
-    Attributes:
-        sources: List of sources consulted (URLs, documents, etc.)
-        confidence: Confidence score (0.0-1.0) in the answer
-        search_queries: Queries used to find the information
+    WHAT THIS ADDS:
+        - sources: List of sources consulted (URLs, documents, databases)
+        - confidence: Confidence score (0.0-1.0) in the answer accuracy
+        - search_queries: Queries used to find the information
+
+    WHY WE NEED THIS:
+        - Transparency: User knows where answer came from
+        - Trust: Confidence score helps assess reliability
+        - Debugging: See what queries were used
+        - Audit: Trail of sources for verification
+
+    PLC ANALOGY:
+        Like PLC search/retrieval system UDT:
+        - sources = Data source IDs (database tables, sensors polled)
+        - confidence = Data quality score (0-100%)
+        - search_queries = Search parameters used
+        - output = Search result data
 
     Example:
         >>> response = ResearchResponse(
         ...     success=True,
         ...     output="Paris is the capital of France",
         ...     sources=["Wikipedia: France", "Britannica: Paris"],
-        ...     confidence=0.98
+        ...     confidence=0.98,
+        ...     search_queries=["capital of France"]
         ... )
-        >>> for source in response.sources:
-        ...     print(f"Source: {source}")
     """
 
     sources: List[str] = Field(
@@ -71,25 +104,24 @@ class CodeResponse(AgentResponse):
     """
     Response from coding/programming agents.
 
-    Extends AgentResponse with code-specific fields like
-    code snippets, language, and explanations.
+    PURPOSE:
+        Coding agent responses with code, language, dependencies, and tests.
+        Like PLC compiler output UDT - code generated, language, errors, warnings.
 
-    Attributes:
-        code: The generated or analyzed code
-        language: Programming language (python, javascript, etc.)
-        explanation: Human-readable explanation of the code
-        dependencies: Required libraries or packages
-        test_code: Optional test cases for the code
+    WHAT THIS ADDS:
+        - code: The generated or analyzed code
+        - language: Programming language (python, javascript, etc.)
+        - explanation: Human-readable explanation
+        - dependencies: Required libraries/packages
+        - test_code: Optional test cases
 
-    Example:
-        >>> response = CodeResponse(
-        ...     success=True,
-        ...     output="Function to calculate factorial",
-        ...     code="def factorial(n):\\n    return 1 if n <= 1 else n * factorial(n-1)",
-        ...     language="python",
-        ...     explanation="Recursive implementation of factorial"
-        ... )
-        >>> print(response.code)
+    PLC ANALOGY:
+        Like PLC compiler output UDT:
+        - code = Generated ladder logic/ST code
+        - language = PLC language (ladder, ST, FBD)
+        - explanation = Code comments/documentation
+        - dependencies = Required function blocks/libraries
+        - test_code = Test scenarios for validation
     """
 
     code: str = Field(
@@ -134,23 +166,22 @@ class CreativeResponse(AgentResponse):
     """
     Response from creative writing agents.
 
-    Extends AgentResponse with creative content fields like
-    genre, style, and word count.
+    PURPOSE:
+        Creative writing responses with genre, style, and word count metadata.
+        Like PLC text generation system UDT - tracks content type, style, length.
 
-    Attributes:
-        genre: Type of creative content (poem, story, essay, etc.)
-        style: Writing style or tone (formal, casual, humorous, etc.)
-        word_count: Number of words in the output
-        prompt_used: The creative prompt that generated this content
+    WHAT THIS ADDS:
+        - genre: Content type (poem, story, essay, etc.)
+        - style: Writing tone (formal, casual, humorous, etc.)
+        - word_count: Number of words generated
+        - prompt_used: Original prompt
 
-    Example:
-        >>> response = CreativeResponse(
-        ...     success=True,
-        ...     output="Roses are red, violets are blue...",
-        ...     genre="poem",
-        ...     style="humorous",
-        ...     word_count=12
-        ... )
+    PLC ANALOGY:
+        Like PLC text/label generation UDT:
+        - genre = Output format (alarm text, report, log entry)
+        - style = Message severity (info, warning, critical)
+        - word_count = Message length (characters)
+        - prompt_used = Template used
     """
 
     genre: str = Field(
@@ -191,23 +222,22 @@ class AnalysisResponse(AgentResponse):
     """
     Response from analysis/evaluation agents.
 
-    Extends AgentResponse with analytical fields like
-    scores, insights, and recommendations.
+    PURPOSE:
+        Analysis agent responses with scores, insights, and recommendations.
+        Like PLC quality check system UDT - scores, faults found, corrective actions.
 
-    Attributes:
-        scores: Numerical scores or metrics (e.g., {"quality": 8.5, "clarity": 9.0})
-        insights: Key findings or observations
-        recommendations: Suggested actions or improvements
-        analysis_type: Type of analysis performed (sentiment, code_review, etc.)
+    WHAT THIS ADDS:
+        - scores: Numerical metrics (e.g., {"quality": 8.5, "clarity": 9.0})
+        - insights: Key findings or observations
+        - recommendations: Suggested actions/improvements
+        - analysis_type: Type of analysis (sentiment, code_review, etc.)
 
-    Example:
-        >>> response = AnalysisResponse(
-        ...     success=True,
-        ...     output="Code quality is good overall",
-        ...     scores={"quality": 8.5, "maintainability": 7.0},
-        ...     insights=["Good error handling", "Missing type hints"],
-        ...     recommendations=["Add type hints", "Increase test coverage"]
-        ... )
+    PLC ANALOGY:
+        Like PLC quality control system UDT:
+        - scores = Measurement values (dimensions, tolerances)
+        - insights = Defects detected (out of spec, warnings)
+        - recommendations = Corrective actions (adjust machine, replace tool)
+        - analysis_type = Inspection type (visual, dimensional, functional)
     """
 
     scores: dict[str, float] = Field(
