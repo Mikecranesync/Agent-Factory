@@ -1,10 +1,17 @@
-# context-clear
+# content-clear
 
 Updates all memory system files to preserve context before session ends.
 
 ## Prompt
 
-You are preparing for a context clear. Update all 5 memory files with current session information:
+You are preparing for a context clear. Update all 5 memory files with current session information.
+
+**IMPORTANT: Use these exact file paths:**
+1. `C:\Users\hharp\OneDrive\Desktop\Agent Factory\PROJECT_CONTEXT.md`
+2. `C:\Users\hharp\OneDrive\Desktop\Agent Factory\NEXT_ACTIONS.md`
+3. `C:\Users\hharp\OneDrive\Desktop\Agent Factory\DEVELOPMENT_LOG.md`
+4. `C:\Users\hharp\OneDrive\Desktop\Agent Factory\ISSUES_LOG.md`
+5. `C:\Users\hharp\OneDrive\Desktop\Agent Factory\DECISIONS_LOG.md`
 
 ### 1. PROJECT_CONTEXT.md
 - Add new timestamped entry at TOP with current project status
@@ -37,7 +44,7 @@ You are preparing for a context clear. Update all 5 memory files with current se
 
 ## Instructions
 
-1. Read current state of all 5 files
+1. Read current state of all 5 files using the exact paths above
 2. Analyze the current session:
    - What work was done?
    - What tasks are pending from PROGRESS.md?

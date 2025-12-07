@@ -72,3 +72,6 @@ chroma_db/
 
 # Temp directories (from research)
 langchain-crash-course-temp/
+
+# Wizard drafts
+drafts/

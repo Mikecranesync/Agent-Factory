@@ -34,7 +34,14 @@
       "WebFetch(domain:code.claude.com)",
       "Bash(docker:*)",
       "Bash(del debug_parser.py debug_tools.py)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(powershell:*)",
+      "Bash(agentcli list-agents:*)",
+      "Bash(Select-String -Pattern \"script\")",
+      "Bash(Get-ChildItem -Recurse -Directory -Filter '__pycache__')",
+      "Bash(Remove-Item -Recurse -Force)",
+      "Read(//c/Users/hharp/OneDrive/Desktop/**)",
+      "Bash(test:*)"
     ],
     "deny": [],
     "ask": []

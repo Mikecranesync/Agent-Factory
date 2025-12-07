@@ -1,10 +1,17 @@
-# context-load
+# content-load
 
 Loads all memory system files to resume work after context clear.
 
 ## Prompt
 
-You are resuming work after a context clear. Read and summarize all 5 memory files to restore session context:
+You are resuming work after a context clear. Read and summarize all 5 memory files to restore session context.
+
+**IMPORTANT: Use these exact file paths:**
+1. `C:\Users\hharp\OneDrive\Desktop\Agent Factory\PROJECT_CONTEXT.md`
+2. `C:\Users\hharp\OneDrive\Desktop\Agent Factory\NEXT_ACTIONS.md`
+3. `C:\Users\hharp\OneDrive\Desktop\Agent Factory\DEVELOPMENT_LOG.md`
+4. `C:\Users\hharp\OneDrive\Desktop\Agent Factory\ISSUES_LOG.md`
+5. `C:\Users\hharp\OneDrive\Desktop\Agent Factory\DECISIONS_LOG.md`
 
 ### Files to Read (in order)
 
@@ -58,7 +65,7 @@ Provide a concise resume in this exact format:
 
 ## Instructions
 
-1. Read the 5 memory files in order (PROJECT_CONTEXT, NEXT_ACTIONS, DEVELOPMENT_LOG, ISSUES_LOG, DECISIONS_LOG)
+1. Read the 5 memory files in order using the exact paths above
 2. Extract ONLY the most recent/relevant information from each
 3. Use the exact output format specified above
 4. Be concise - focus on actionable information
@@ -76,42 +83,42 @@ After running this command:
 
 ## Usage Notes
 
-- Run this command at the start of a new session after `/context-clear`
+- Run this command at the start of a new session after `/content-clear`
 - Expected completion time: 30-60 seconds
 - Provides complete context to resume work
-- Pairs with `/context-clear` for complete session management
+- Pairs with `/content-clear` for complete session management
 
 ## Example Output
 
 ```
-# Session Resume 2025-12-05
+# Session Resume 2025-12-06
 
 ## Current Status
 **Project:** Agent Factory
-**Phase:** Constitutional Code Generation Framework
-**Status:** Phase 1 Foundation Complete - Ready for Demo
+**Phase:** Interactive Agent Creation Wizard (Phase 3 Extension)
+**Status:** ✅ Wizard Complete - Ready for Manual Testing
 
 **What's Working:**
-- factory.py: Spec parser extracting 53 requirements
-- callbacks.py & orchestrator.py: Hybrid docs applied
-- All core modules tested and importing
-- Git checkpoint: 26276ca
+- Interactive CLI wizard for agent creation
+- 4 pre-built templates (researcher, coder, analyst, file_manager)
+- 7-step guided flow with input validation
+- Auto-generates spec + agent code + tests
 
 ## Immediate Tasks
-1. [CRITICAL] Create orchestrator_demo.py - Validate implementation (30 min)
-2. [HIGH] Write basic tests for callbacks/orchestrator (1 hour)
-3. [MEDIUM] Run full integration demo
+1. [HIGH] Test /content-clear and /content-load commands manually
+2. [MEDIUM] Consider Phase 5 (Project Twin) or Phase 6 (Agent-as-Service)
+3. [LOW] Clean up duplicate memory files in docs/memory/
 
 ## Last Session Summary
-Built constitutional code generation system with factory.py, applied hybrid documentation to core modules, created Jinja2 templates. All modules tested successfully.
+Fixed slash command names (context→content), added explicit file paths to both commands, updated interactive wizard with robust input validation.
 
 ## Open Issues
-- Dependency conflict (LangChain vs LangGraph) - deferred
+None
 
 ## Recent Decisions
-- Hybrid documentation over full PLC-style (readable + traceable)
-- Constitutional code generation approach (specs as source of truth)
+- Use explicit file paths in slash commands (prevents ambiguity)
+- Rename commands to match invocation format (content-clear/content-load)
 
 ## Ready to Continue
-Yes - No blockers, ready to create demo
+Yes - Slash commands fixed, ready for manual testing
 ```
