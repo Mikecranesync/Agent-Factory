@@ -3,64 +3,99 @@ Agent Factory Observability Package
 
 Production monitoring and observability for agent systems.
 
-Provides:
+Phase 3 Features:
 - Request tracing (end-to-end visibility)
 - Performance metrics (latency, success rates)
 - Cost tracking (API usage costs)
 
+Phase 5 Enhancements:
+- Structured JSON logging
+- Error categorization and tracking
+- Metrics export (StatsD, Prometheus)
+
 Usage:
-    from agent_factory.observability import Tracer, Metrics, CostTracker
+    from agent_factory.observability import (
+        Tracer, Metrics, CostTracker,
+        StructuredLogger, ErrorTracker, StatsDExporter
+    )
 
     # Create observability components
     tracer = Tracer()
     metrics = Metrics()
     cost_tracker = CostTracker()
 
-    # Start tracing a request
-    trace_id = tracer.start_trace("What is AI?")
-    span = tracer.start_span("agent_start")
+    # Phase 5: Structured logging
+    logger = StructuredLogger("agent_factory")
+    logger.info("Request started", trace_id="abc123", user_id="user1")
 
-    # Record metrics
-    metrics.record_request(
-        agent_name="research",
-        duration_ms=150.5,
-        success=True,
-        tokens={"prompt": 100, "completion": 50, "total": 150}
-    )
+    # Phase 5: Error tracking
+    error_tracker = ErrorTracker(alert_threshold=10)
+    try:
+        result = api_call()
+    except Exception as e:
+        error_tracker.record_error(e, trace_id="abc123")
 
-    # Track costs
-    cost_tracker.record_cost(
-        agent_name="research",
-        provider="openai",
-        model="gpt-4o",
-        prompt_tokens=100,
-        completion_tokens=50
-    )
-
-    # Get summaries
-    trace = tracer.get_trace(trace_id)
-    metrics_summary = metrics.summary()
-    cost_summary = cost_tracker.summary()
+    # Phase 5: Metrics export
+    exporter = StatsDExporter(host="localhost", port=8125)
+    exporter.export(metrics_list)
 
 Available Classes:
+    # Phase 3
     Tracer: Request tracing with spans
     Trace: Complete request trace
     Span: Single operation in a trace
     Metrics: Performance metrics aggregator
     CostTracker: API cost calculator and tracker
+
+    # Phase 5
+    StructuredLogger: JSON-formatted logging
+    LogLevel: Log severity levels
+    ErrorTracker: Error categorization and tracking
+    ErrorCategory: Error classification enum
+    ErrorEvent: Individual error occurrence
+    StatsDExporter: Export to StatsD/Datadog
+    PrometheusExporter: Export to Prometheus
+    ConsoleExporter: Debug export to console
+    Metric: Individual metric data point
 """
 
+# Phase 3 - Base observability
 from .tracer import Tracer, Trace, Span
 from .metrics import Metrics
 from .cost_tracker import CostTracker
 
+# Phase 5 - Enhanced observability
+from .logger import StructuredLogger, LogLevel, LoggerContext
+from .errors import ErrorTracker, ErrorCategory, ErrorEvent
+from .exporters import (
+    StatsDExporter,
+    PrometheusExporter,
+    ConsoleExporter,
+    MetricsExporter,
+    Metric
+)
+
 __all__ = [
-    # Tracing
+    # Phase 3: Tracing
     "Tracer",
     "Trace",
     "Span",
-    # Metrics
+    # Phase 3: Metrics
     "Metrics",
-    # Cost tracking
+    # Phase 3: Cost tracking
     "CostTracker",
+    # Phase 5: Structured logging
+    "StructuredLogger",
+    "LogLevel",
+    "LoggerContext",
+    # Phase 5: Error tracking
+    "ErrorTracker",
+    "ErrorCategory",
+    "ErrorEvent",
+    # Phase 5: Metrics export
+    "StatsDExporter",
+    "PrometheusExporter",
+    "ConsoleExporter",
+    "MetricsExporter",
+    "Metric",
 ]
