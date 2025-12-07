@@ -4,6 +4,82 @@
 
 ---
 
+## [2025-12-08 00:00] LiteLLM Version Selection: 1.30.0 vs 1.80.8
+
+**Decision:** Use LiteLLM 1.30.0 instead of latest 1.80.8 for Phase 1 implementation
+
+**Context:**
+- Phase 1 requires LiteLLM for multi-provider LLM routing
+- Latest LiteLLM (1.80.8) uses OpenAI SDK v2.8+
+- Agent Factory uses langchain-openai requiring OpenAI SDK v1.26-2.0
+- Dependency conflict prevents installing latest version
+
+**Rationale:**
+1. **Compatibility First:** 1.30.0 works with existing dependencies
+2. **Feature Complete:** Has all features needed for Phase 1 (routing, cost tracking, completion API)
+3. **Stable Release:** Older version, well-tested, fewer edge cases
+4. **Low Risk:** No breaking changes to existing agents
+5. **Defer Complexity:** Can upgrade to newer LiteLLM in Phase 2 when ready
+
+**Technical Details:**
+```
+Dependency Conflict:
+- langchain-openai: requires openai>=1.26.0,<2.0.0
+- litellm 1.80.8: requires openai>=2.8.0
+- litellm 1.30.0: works with openai>=1.26.0,<2.0.0 ✅
+```
+
+**Features Available in 1.30.0:**
+- ✅ Multi-provider routing (OpenAI, Anthropic, Google, Ollama)
+- ✅ Cost tracking and token counting
+- ✅ Completion API
+- ✅ Retry logic and error handling
+- ✅ Model fallback
+
+**Features Missing (vs 1.80.8):**
+- ❌ Latest OpenAI models (GPT-4o, etc.) - can add later
+- ❌ New provider integrations - not needed for Phase 1
+- ❌ Performance improvements - acceptable for MVP
+
+**Alternatives Considered:**
+
+**Option 1: Upgrade langchain-openai to OpenAI SDK v2**
+- Pro: Use latest LiteLLM with newest features
+- Con: Breaking change, requires testing all existing agents
+- Con: Risk of breaking working functionality
+- **Rejected:** Too risky for Phase 1
+
+**Option 2: Fork LiteLLM and backport to OpenAI SDK v1**
+- Pro: Full control, latest features
+- Con: Maintenance burden, technical debt
+- Con: Time-consuming, delays Phase 1
+- **Rejected:** Over-engineering
+
+**Option 3: Use LiteLLM 1.30.0 (CHOSEN)**
+- Pro: Works immediately, no breaking changes
+- Pro: Stable, well-tested version
+- Pro: Can upgrade later when ready
+- **Selected:** Pragmatic, low-risk approach
+
+**Migration Path:**
+When upgrading to LiteLLM 1.80.8+ in future:
+1. Upgrade langchain-openai to version compatible with OpenAI SDK v2
+2. Test all existing agents with new dependencies
+3. Update LiteLLM to latest version
+4. Run full test suite
+5. Deploy gradually (Phase 2 or 3)
+
+**Impact:**
+- ✅ Phase 1 proceeds without delays
+- ✅ All core features available
+- ✅ No risk to existing agents
+- ⚠️ Will need dependency upgrade in Phase 2/3
+- ⚠️ May miss some newer model integrations (acceptable for MVP)
+
+**Status:** Implemented - litellm==1.30.0 installed and verified
+
+---
+
 ## [2025-12-07 23:55] Phase 0 Completion: 9 Files vs 10 Files - Ship It Now
 
 **Decision:** Mark Phase 0 as complete with 9 documentation files, defer CLI improvements to later

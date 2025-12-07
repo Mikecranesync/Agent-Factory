@@ -4,6 +4,56 @@
 
 ---
 
+## [2025-12-08 00:00] RESOLVED: LiteLLM Dependency Conflict with langchain-openai
+
+**Status:** [RESOLVED] - Installed compatible LiteLLM version
+
+**Problem:**
+- Attempted to install latest LiteLLM (1.80.8) via `poetry add litellm`
+- Poetry dependency solver failed with version conflict
+- langchain-openai requires openai>=1.26.0,<2.0.0
+- litellm 1.80.8 requires openai>=2.8.0
+- Incompatible dependency ranges
+
+**Root Cause:**
+- LiteLLM updated to use OpenAI SDK v2 (breaking change)
+- Agent Factory still using LangChain packages requiring OpenAI SDK v1
+- No compatible version range between dependencies
+
+**Solution Applied:**
+```bash
+poetry add "litellm==1.30.0"
+```
+
+**Why This Version:**
+- LiteLLM 1.30.0 works with openai>=1.26.0,<2.0.0
+- Compatible with all existing dependencies
+- Still provides core features needed for Phase 1:
+  - Multi-provider routing
+  - Cost tracking
+  - Completion API
+- Stable release (not cutting-edge)
+
+**Verification:**
+```bash
+poetry run python -c "import litellm; from litellm import completion; print('OK')"
+# Output: OK
+```
+
+**Impact:**
+- Phase 1 can proceed with LiteLLM 1.30.0
+- May need to upgrade to newer LiteLLM in future (Phase 2+)
+- All core features available for Phase 1 implementation
+
+**Alternative Considered:**
+- Upgrade langchain-openai to version compatible with OpenAI SDK v2
+- **Rejected:** Would require testing all existing agents, too risky
+- **Chosen:** Use older stable LiteLLM, defer upgrade to Phase 2
+
+**Status:** [RESOLVED] - Proceeding with litellm==1.30.0
+
+---
+
 ## [2025-12-07 23:55] INFORMATIONAL: Phase 0 Documentation 90% Complete - Ready for Phase 1
 
 **Status:** [COMPLETE] - 9 of 10 files complete, ready to begin implementation
