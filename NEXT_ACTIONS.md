@@ -4,15 +4,126 @@
 
 ---
 
-## [2025-12-05 19:45] Current Priorities - Phase 4 Complete
+## [2025-12-07 16:00] Current Priorities - GitHub Wiki Complete
 
 ### 🔴 CRITICAL - Immediate Action Required
 
-None - Phases 1-4 complete and validated (138 tests passing)
+None - All documentation complete, wiki published
 
 ---
 
 ### 🟡 HIGH - Important Next Steps
+
+#### 1. Share GitHub Wiki with Community
+**Priority:** HIGH - Make documentation accessible
+**Task:** Share wiki URL and promote documentation
+**Estimated Time:** Ongoing
+
+**Actions:**
+- Update README.md with prominent wiki link
+- Share on social media/communities
+- Add wiki link to GitHub repository description
+- Create wiki announcement in discussions
+
+**Wiki URL:** https://github.com/Mikecranesync/Agent-Factory/wiki
+
+**Status:** Ready to share
+
+---
+
+#### 2. Test Bob with Real Market Research Queries
+**Priority:** HIGH - Validate functionality
+**Task:** Run comprehensive Bob testing
+**Estimated Time:** 30 minutes
+
+**Status:** Ready (rate limit will have reset)
+
+---
+
+### 🟢 COMPLETED IN THIS SESSION
+
+✅ GitHub wiki enabled in repository settings
+✅ Wiki repository cloned locally
+✅ 17 wiki pages created and populated
+✅ Home page with current status
+✅ Getting Started guide (installation, setup)
+✅ Creating Agents guide (8-step wizard)
+✅ Editing Agents guide (tools, invariants)
+✅ CLI Usage guide (complete commands)
+✅ Testing Agents guide (Bob testing)
+✅ Agent Examples (Bob showcase)
+✅ Architecture documentation
+✅ Core Concepts (agents, tools, orchestration)
+✅ Tools Reference (complete catalog)
+✅ API Reference (code documentation)
+✅ Development Guide (contributing)
+✅ Phase 1-5 documentation pages
+✅ _Sidebar.md navigation menu
+✅ Git commit and push to GitHub
+✅ Wiki verified accessible
+
+---
+
+## [2025-12-07 14:30] Previous Priorities - Agent CLI System Complete
+
+### 🔴 CRITICAL - Immediate Action Required
+
+None - Bob agent ready for testing, rate limit will reset shortly
+
+---
+
+### 🟡 HIGH - Important Next Steps
+
+#### 1. Test Bob Market Research Agent
+**Priority:** HIGH - Validate agent functionality
+**Task:** Run test queries with Bob to verify market research capabilities
+**Estimated Time:** 5-10 minutes
+
+**Commands:**
+```bash
+# Quick test (wait 2 seconds for rate limit reset)
+poetry run python test_bob.py
+
+# Interactive chat
+poetry run agentcli chat --agent research
+
+# Custom query
+poetry run python -c "
+from agents.unnamedagent_v1_0 import create_agent
+bob = create_agent(llm_provider='openai', model_name='gpt-4o-mini')
+result = bob.invoke({'input': 'Find one underserved niche in AI agents'})
+print(result['output'])
+"
+```
+
+**Expected Results:**
+- Structured market analysis with MRR estimates
+- Competition analysis
+- Customer pain points
+- Validation steps
+- Source citations
+
+**Status:** Ready to test
+
+---
+
+#### 2. Complete Agent Editor Features
+**Priority:** MEDIUM-HIGH - Enhance usability
+**Task:** Implement remaining agent editor sections
+**Estimated Time:** 2-3 hours
+
+**Missing Features:**
+- Behavior examples editing
+- Purpose & scope editing
+- System prompt editing
+- LLM settings editing (model, temperature)
+- Success criteria editing
+
+**Current Status:** Tools and invariants editing fully functional
+
+---
+
+### 🟡 MEDIUM - Complete When Time Allows
 
 #### 1. Choose Next Phase (Phase 5 or Phase 6)
 **Priority:** HIGH - Strategic decision

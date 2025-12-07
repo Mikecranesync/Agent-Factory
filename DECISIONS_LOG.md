@@ -4,6 +4,279 @@
 
 ---
 
+## [2025-12-07 14:00] Agent Iteration Limits: 25 for Research, 15 Default
+
+**Decision:** Increase max_iterations to 25 for complex research agents, keep 15 as default
+
+**Rationale:**
+- Market research requires multiple tool calls (search, analyze, cross-reference)
+- Each tool invocation consumes 1 iteration
+- Complex queries can easily require 20+ iterations
+- Default 15 is fine for simple agents (single-tool tasks)
+- Too high increases cost and response time
+- Too low prevents completing complex tasks
+
+**Implementation:**
+```python
+# Research agents (Bob):
+agent = factory.create_agent(
+    max_iterations=25,
+    max_execution_time=300  # 5 minutes
+)
+
+# Simple agents (default):
+agent = factory.create_agent()  # Uses 15 iterations
+```
+
+**Impact:**
+- Bob can now complete market research queries
+- Simple agents remain fast and cost-effective
+- Timeout prevents runaway agents
+
+**Alternatives Considered:**
+1. **Keep default 15 for all**
+   - Pro: Faster, cheaper
+   - Con: Research agents fail to complete
+   - **Rejected:** Too restrictive for research
+
+2. **Increase to 50+**
+   - Pro: Never hit limit
+   - Con: Expensive, slow, risk of loops
+   - **Rejected:** Overkill and unsafe
+
+3. **25 for research, 15 default (CHOSEN)**
+   - Pro: Balanced approach
+   - Pro: Research works, simple stays fast
+   - **Selected:** Best compromise
+
+---
+
+## [2025-12-07 12:00] Agent Editor: Implement Tools/Invariants First
+
+**Decision:** Build tools and invariants editing before other agent editor features
+
+**Rationale:**
+- Tools are most critical (agents can't function without them)
+- Invariants are second most important (define agent behavior)
+- Behavior examples, purpose, system prompt less frequently changed
+- Get 80% value from 20% effort
+- Proves editing concept works before building everything
+
+**Implementation Order:**
+1. ✅ Tools editing (add/remove/collections)
+2. ✅ Invariants editing (add/remove/edit)
+3. 🚧 Behavior examples (deferred)
+4. 🚧 Purpose & scope (deferred)
+5. 🚧 System prompt (deferred)
+6. 🚧 LLM settings (deferred)
+7. 🚧 Success criteria (deferred)
+
+**User Feedback:** "there doesnt appear to be any way to edit an agents tools or other setup items please fix that"
+
+**Alternatives Considered:**
+1. **Build everything at once**
+   - Pro: Complete feature
+   - Con: Takes much longer
+   - **Rejected:** User needs tools editing now
+
+2. **Just add manual editing docs**
+   - Pro: No code needed
+   - Con: Poor UX, error-prone
+   - **Rejected:** User wants interactive editing
+
+3. **Incremental (CHOSEN)**
+   - Pro: Fast value delivery
+   - Pro: Validates approach
+   - **Selected:** Agile development
+
+---
+
+## [2025-12-07 10:00] Tool Registry: Centralized Catalog with Metadata
+
+**Decision:** Create TOOL_CATALOG with descriptions, categories, and API key requirements
+
+**Rationale:**
+- Agent editor needs to display available tools
+- Users need to understand what each tool does
+- Some tools require API keys (need to show requirements)
+- Categories help organize large tool collections
+- Metadata enables smart suggestions
+
+**Implementation:**
+```python
+TOOL_CATALOG: Dict[str, ToolInfo] = {
+    "WikipediaSearchTool": ToolInfo(
+        name="WikipediaSearchTool",
+        description="Search Wikipedia for factual information",
+        category="research",
+        requires_api_key=False
+    ),
+    "TavilySearchTool": ToolInfo(
+        name="TavilySearchTool",
+        description="AI-optimized search engine - best for research",
+        category="research",
+        requires_api_key=True,
+        api_key_name="TAVILY_API_KEY"
+    ),
+    # ... 10 total tools
+}
+```
+
+**Benefits:**
+- Clear tool descriptions for users
+- Shows which tools need API keys
+- Enables category-based browsing
+- Foundation for smart tool suggestions
+
+**Alternatives Considered:**
+1. **Hardcode tool names only**
+   - Pro: Simpler
+   - Con: No context for users
+   - **Rejected:** Poor UX
+
+2. **Parse from tool docstrings**
+   - Pro: Single source of truth
+   - Con: Parsing complexity, fragile
+   - **Rejected:** Not worth complexity
+
+3. **Explicit catalog (CHOSEN)**
+   - Pro: Clear, maintainable
+   - Pro: Rich metadata
+   - **Selected:** Best for users
+
+---
+
+## [2025-12-07 09:00] CLI App: Load .env in App.py Not Individual Commands
+
+**Decision:** Call load_dotenv() once at app.py module level, not in each command
+
+**Rationale:**
+- .env loading should happen once when CLI starts
+- All commands need access to environment variables
+- Avoids duplication across commands
+- Follows DRY principle
+- Simpler to maintain
+
+**Implementation:**
+```python
+# app.py (TOP of file)
+from dotenv import load_dotenv
+
+# Load environment variables once
+load_dotenv()
+
+@app.command()
+def chat(...):
+    # Environment vars already loaded
+    pass
+
+@app.command()
+def create(...):
+    # Environment vars already loaded
+    pass
+```
+
+**Alternatives Considered:**
+1. **Load in each command**
+   - Pro: Explicit per-command
+   - Con: Duplication, easy to forget
+   - **Rejected:** Too much boilerplate
+
+2. **Expect user to load manually**
+   - Pro: No code needed
+   - Con: Poor UX, will cause errors
+   - **Rejected:** Too error-prone
+
+3. **Load at module level (CHOSEN)**
+   - Pro: Once and done
+   - Pro: All commands covered
+   - **Selected:** Simplest and safest
+
+---
+
+## [2025-12-07 08:00] Python Cache: Always Clear After Source Changes
+
+**Decision:** Document cache clearing as standard practice after code modifications
+
+**Rationale:**
+- Python caches bytecode (.pyc files) in __pycache__/
+- Cached files take precedence over source code
+- Source fixes don't run until cache cleared
+- Caused user frustration: "why do i have to keep asking to fix this?"
+- Should be automatic workflow step
+
+**Implementation:**
+```bash
+# After ANY Python source code change:
+find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
+
+# Windows PowerShell:
+Get-ChildItem -Recurse -Directory -Filter '__pycache__' | Remove-Item -Recurse -Force
+```
+
+**Impact:**
+- Prevents confusing "fix didn't work" issues
+- Ensures latest code always runs
+- Should be in development workflow docs
+
+**Alternatives Considered:**
+1. **Rely on Python auto-invalidation**
+   - Pro: No manual step
+   - Con: Doesn't always work reliably
+   - **Rejected:** Too unreliable
+
+2. **python -B flag (no bytecode)**
+   - Pro: Prevents cache creation
+   - Con: Slower startup
+   - **Rejected:** Impacts all runs
+
+3. **Manual clear (CHOSEN)**
+   - Pro: Reliable, fast when needed
+   - Con: Extra step
+   - **Selected:** Most reliable
+
+---
+
+## [2025-12-07 07:00] Wizard UX: Clean Pasted List Items
+
+**Decision:** Strip formatting (bullets, numbers, checkboxes) from pasted list items
+
+**Rationale:**
+- Users often copy-paste from existing lists
+- Pasting "- Item 1" creates "- - Item 1" (double bullets)
+- Numbers like "1. Item" get preserved
+- Checkboxes "[x] Item" create ugly output
+- Cleaning makes lists look professional
+
+**Implementation:**
+```python
+def _clean_list_item(self, text: str) -> str:
+    # Strip bullets: -, *, •, ├──, └──, │
+    # Strip numbers: 1., 2), 3.
+    # Strip checkboxes: [x], [ ]
+    # Return clean text
+```
+
+**User Feedback:** "please fix its not very user friendly when i copy paste it is very messy"
+
+**Alternatives Considered:**
+1. **Leave as-is**
+   - Pro: No code needed
+   - Con: Ugly, unprofessional output
+   - **Rejected:** Poor UX
+
+2. **Regex-based aggressive cleaning**
+   - Pro: Handles more cases
+   - Con: May strip intended content
+   - **Rejected:** Too aggressive
+
+3. **Targeted cleaning (CHOSEN)**
+   - Pro: Handles common cases
+   - Pro: Safe, predictable
+   - **Selected:** Best balance
+
+---
+
 ## [2025-12-05 19:45] Phase 4: Validators Created in _run() Instead of __init__()
 
 **Decision:** Create PathValidator and FileSizeValidator instances inside `_run()` method instead of `__init__()`

@@ -4,6 +4,219 @@
 
 ---
 
+## [2025-12-07 14:30] INFORMATIONAL: OpenAI Rate Limit Hit During Testing
+
+**Problem:** test_bob.py failed with Error code: 429 - Rate limit exceeded
+**Context:** Testing Bob market research agent
+
+**Error Message:**
+```
+Rate limit reached for gpt-4o-mini in organization
+Limit 200000 TPM, Used 187107, Requested 17807
+Please try again in 1.474s
+```
+
+**Impact:**
+- Test did not complete
+- Cannot validate Bob's market research functionality yet
+- Temporary only (resets in 1-2 seconds)
+
+**Root Cause:**
+- OpenAI API has token-per-minute (TPM) limits
+- Previous testing consumed 187,107 tokens
+- Bob's test query required 17,807 more tokens
+- Total would exceed 200,000 TPM limit
+
+**Solution:**
+- Wait 1-2 seconds for rate limit window to reset
+- Rerun test: `poetry run python test_bob.py`
+- OR use simpler query to consume fewer tokens
+- OR test via interactive chat (more controlled)
+
+**Evidence Bob is Working:**
+```
+[OK] Agent created
+[OK] Tools: 10 (research + file ops)
+```
+
+Agent creation succeeded, error occurred only during query execution (expected behavior with rate limits).
+
+**Status:** [INFORMATIONAL] - Not a bug, expected API behavior
+
+---
+
+## [2025-12-07 12:00] FIXED: Agent Iteration Limit Too Low for Research
+
+**Problem:** Bob agent stopped with "Agent stopped due to iteration limit or time limit"
+**Root Cause:** Default max_iterations (15) too low for complex market research queries
+**Error:** Agent couldn't complete multi-step research before hitting limit
+
+**Impact:**
+- Bob couldn't complete research queries
+- User sees incomplete results
+- Tools available but couldn't be fully utilized
+
+**Solution:** Increased max_iterations to 25 and added 5-minute timeout
+
+**Code Change:**
+```python
+agent = factory.create_agent(
+    role="Market Research Specialist",
+    tools_list=tools,
+    system_prompt=system_prompt,
+    response_schema=AgentResponse,
+    max_iterations=25,  # Was: default 15
+    max_execution_time=300,  # Was: no limit
+    metadata={...}
+)
+```
+
+**Rationale:**
+- Market research requires multiple tool calls (search, read, analyze)
+- Each tool call consumes 1 iteration
+- Complex queries may need 20+ iterations
+- 25 is reasonable limit with 5-minute safety timeout
+
+**Status:** [FIXED]
+
+---
+
+## [2025-12-07 10:00] FIXED: CLI Wizard Generated Agent Without Tools
+
+**Problem:** Bob agent created with empty tools list
+**Root Cause:** Wizard doesn't prompt for tool selection during creation
+**Error:** Agent fails to run because AgentFactory requires non-empty tools_list
+
+**Impact:**
+- Generated agent code has `tools = []`
+- Agent cannot perform any actions
+- User must manually edit code to add tools
+
+**Solution (Manual Fix):**
+Added full toolset to Bob's code:
+```python
+tools = get_research_tools(
+    include_wikipedia=True,
+    include_duckduckgo=True,
+    include_tavily=True,
+    include_time=True
+)
+tools.extend(get_coding_tools(
+    include_read=True,
+    include_write=True,
+    include_list=True,
+    include_git=True,
+    include_search=True
+))
+```
+
+**Long-Term Solution:**
+- Add tool selection step to wizard (Step 9?)
+- OR default to basic tool collection
+- OR use agent editor to add tools after creation
+
+**Status:** [FIXED] - Manually for Bob, wizard improvement needed
+
+---
+
+## [2025-12-07 09:00] FIXED: CLI App Not Loading .env File
+
+**Problem:** `agentcli chat` command failed with "OPENAI_API_KEY not found"
+**Root Cause:** app.py wasn't loading environment variables from .env file
+**Error:** `Did not find openai_api_key, please add an environment variable 'OPENAI_API_KEY'`
+
+**Impact:**
+- CLI chat command unusable
+- API keys not accessible
+- All LLM calls fail
+
+**Solution:** Added load_dotenv() to app.py
+
+**Code Change:**
+```python
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+@app.command()
+def chat(...):
+    # Now API keys are loaded
+```
+
+**Status:** [FIXED]
+
+---
+
+## [2025-12-07 08:00] FIXED: Step 8 Validation Crash (Iteration 2)
+
+**Problem:** Step 8 validation still failing after first fix
+**Root Cause:** Python bytecode cache (.pyc files) using old validation code
+**Error:** `ValueError: Step must be between 1 and 7, got 8`
+
+**Impact:**
+- Source code was correct but Python loaded cached bytecode
+- User had to repeatedly ask for same fix
+- Frustration: "why do i have to keep asking to fix this? think hard"
+
+**Solution:**
+1. Fixed source code (wizard_state.py: `<= 7` → `<= 8`)
+2. Cleared ALL Python bytecode cache
+3. Verified fix actually runs
+
+**Cache Clear Command:**
+```bash
+find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
+```
+
+**Lesson Learned:**
+- Always clear cache after Python source code changes
+- Windows: `Get-ChildItem -Recurse -Directory -Filter '__pycache__' | Remove-Item -Recurse -Force`
+- Linux/Mac: `find . -type d -name "__pycache__" -exec rm -rf {} +`
+
+**Status:** [FIXED]
+
+---
+
+## [2025-12-07 07:00] FIXED: Copy-Paste Creates Messy List Input
+
+**Problem:** Pasting lists with bullets/numbers creates ugly output
+**Root Cause:** Wizard didn't strip formatting from pasted text
+**User Feedback:** "please fix its not very user friendly when i copy paste it is very messy"
+
+**Impact:**
+- Pasted items like "- Item 1" stored verbatim
+- Double bullets: "- - Item 1"
+- Numbers preserved: "1. Item 1"
+- Checkboxes: "[x] Item 1"
+
+**Solution:** Added _clean_list_item() method
+
+**Code Change:**
+```python
+def _clean_list_item(self, text: str) -> str:
+    """Clean pasted list items (remove bullets, numbers, etc.)"""
+    text = text.strip()
+
+    # Remove bullets
+    bullets = ['- ', '* ', '• ', '├──', '└──', '│ ']
+    for bullet in bullets:
+        if text.startswith(bullet):
+            text = text[len(bullet):].strip()
+
+    # Remove numbers: "1. " or "1) "
+    text = re.sub(r'^\d+[\.\)]\s+', '', text)
+
+    # Remove checkboxes: "[x] " or "[ ] "
+    text = re.sub(r'^\[[ x]\]\s*', '', text)
+
+    return text.strip()
+```
+
+**Status:** [FIXED]
+
+---
+
 ## [2025-12-05 19:45] FIXED: LangChain BaseTool Pydantic Field Restrictions
 
 **Problem:** File tools couldn't set attributes in __init__ due to Pydantic validation

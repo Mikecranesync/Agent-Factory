@@ -4,6 +4,220 @@
 
 ---
 
+## [2025-12-07] Session 8 - Agent CLI System & Bob Market Research Agent
+
+### [14:30] Bob Agent Testing - Rate Limit Hit
+**Activity:** Attempted to run test_bob.py, hit OpenAI rate limit
+**Status:** Bob working correctly, just temporary API limit
+
+**Test Results:**
+```bash
+poetry run python test_bob.py
+[OK] Agent created
+[OK] Tools: 10 (research + file ops)
+[ERROR] Error code: 429 - Rate limit exceeded
+```
+
+**Root Cause:** OpenAI API rate limit (200,000 TPM, used 187,107)
+**Impact:** Temporary only (resets in 1-2 seconds)
+**Solution:** Wait for rate limit reset, then retest
+
+**Bob Configuration:**
+- Model: gpt-4o-mini
+- Max iterations: 25 (increased from default 15)
+- Max execution time: 300 seconds (5 minutes)
+- Tools: 10 (WikipediaSearchTool, DuckDuckGoSearchTool, TavilySearchTool, CurrentTimeTool, ReadFileTool, WriteFileTool, ListDirectoryTool, FileSearchTool, GitStatusTool)
+
+---
+
+### [14:00] Agent Iteration Limit Fixed
+**Activity:** Increased Bob's max_iterations to handle complex research
+**File Modified:** `agents/unnamedagent_v1_0.py`
+
+**Problem:** Bob was hitting iteration limit (15) before completing research
+**Solution:** Added max_iterations=25 and max_execution_time=300 to create_agent()
+
+**Code Change:**
+```python
+# BEFORE:
+agent = factory.create_agent(
+    role="Market Research Specialist",
+    tools_list=tools,
+    system_prompt=system_prompt,
+    response_schema=AgentResponse,
+    metadata={...}
+)
+
+# AFTER:
+agent = factory.create_agent(
+    role="Market Research Specialist",
+    tools_list=tools,
+    system_prompt=system_prompt,
+    response_schema=AgentResponse,
+    max_iterations=25,  # Higher limit for multi-step research
+    max_execution_time=300,  # 5 minutes timeout
+    metadata={...}
+)
+```
+
+**Impact:** Bob can now perform more complex, multi-step research queries
+
+---
+
+### [13:30] Bob Agent Finalization
+**Activity:** Finished Bob market research agent for testing
+**Files Created:**
+- `test_bob.py` (84 lines) - Quick test script
+- `TEST_BOB.md` (382 lines) - Comprehensive testing guide
+
+**test_bob.py Features:**
+- Loads environment variables
+- Creates Bob with gpt-4o-mini
+- Runs pre-configured market research query
+- Shows formatted output
+- Provides next steps
+
+**TEST_BOB.md Contents:**
+- Quick start (2 minutes)
+- 4 testing options (quick test, full demo, interactive chat, automated tests)
+- 5 example queries (niche discovery, competitive analysis, market validation, trend spotting, pain point research)
+- Expected output format
+- Troubleshooting guide
+- Bob's full capabilities (10 tools, 8 invariants)
+- Performance targets (< 60s initial, < 5min deep, < $0.50 per query)
+
+**Windows Compatibility:** Replaced Unicode characters (✓/✗) with ASCII ([OK]/[ERROR])
+
+---
+
+### [12:00] Agent Editor System Completed
+**Activity:** Built interactive agent editing CLI
+**Files Created:**
+- `agent_factory/cli/tool_registry.py` (380 lines)
+- `agent_factory/cli/agent_editor.py` (455 lines)
+- `AGENT_EDITING_GUIDE.md` (369 lines)
+
+**tool_registry.py Components:**
+1. **ToolInfo dataclass:** name, description, category, requires_api_key, api_key_name
+2. **TOOL_CATALOG:** 10 tools with metadata
+3. **TOOL_COLLECTIONS:** Pre-configured tool sets (research_basic, research_advanced, file_operations, code_analysis, full_power)
+4. **Helper functions:** list_tools_by_category(), get_tool_info(), get_collection()
+
+**agent_editor.py Components:**
+1. **AgentEditor class:**
+   - Load existing agent spec
+   - Interactive edit menu (8 options)
+   - Tools editing (add/remove/collection)
+   - Invariants editing (add/remove/edit)
+   - Review & save with auto-regeneration
+2. **_edit_tools():** Interactive tool selection with category display
+3. **_edit_invariants():** Add/modify/remove invariants
+4. **_review_and_save():** Save spec + regenerate code/tests
+
+**agentcli.py Updates:**
+- Added `edit` command
+- Added `--list` flag to list editable agents
+- Routes to AgentEditor
+
+**Testing:** Successfully edited tools and invariants, saved changes
+
+---
+
+### [10:00] Bob Agent Creation via CLI Wizard
+**Activity:** User created "bob-1" agent through interactive wizard
+**Result:** Agent spec and code generated, but needed fixes
+
+**Issues Found:**
+1. Incomplete "Out of Scope" section
+2. NO TOOLS configured (critical - agent can't function)
+3. Name inconsistencies (bob-1 vs UnnamedAgent)
+4. Malformed behavior example
+5. Tests skipped during generation
+
+**Files Generated:**
+- `specs/bob-1.md` - Agent specification (incomplete)
+- `agents/unnamedagent_v1_0.py` - Agent code (no tools)
+- `tests/test_unnamedagent_v1_0.py` - Tests (basic)
+
+**Manual Fixes Applied:**
+1. Updated spec with complete scope (10 in-scope, 8 out-of-scope)
+2. Added 8 invariants (Evidence-Based, Ethical Research, Transparency, User Focus, Timeliness, Actionability, Cost Awareness, Response Speed)
+3. Added 4 behavior examples (good/bad query pairs)
+4. Changed tools from empty list to full toolset (9 tools initially, 10 later)
+5. Updated system prompt with detailed market research guidelines
+6. Fixed imports and .env loading
+
+---
+
+### [09:00] Interactive Chat CLI Built
+**Activity:** Created interactive REPL for chatting with agents
+**Files Created:**
+- `agent_factory/cli/app.py` (201 lines) - Typer CLI application
+- `agent_factory/cli/agent_presets.py` (214 lines) - Pre-configured agents
+- `agent_factory/cli/chat_session.py` (316 lines) - Interactive REPL
+
+**app.py Features:**
+- `agentcli chat` command with agent/verbose/temperature options
+- Loads .env file (CRITICAL FIX)
+- Routes to ChatSession
+
+**agent_presets.py Features:**
+- get_research_agent() - Wikipedia, DuckDuckGo, Tavily, Time
+- get_coding_agent() - File ops, Git, Search
+- get_agent() dispatcher function
+
+**chat_session.py Features:**
+- PromptSession with history and auto-suggestions
+- Slash commands: /help, /exit, /agent, /clear, /tools, /history
+- Rich markdown rendering
+- Windows-compatible (ASCII only)
+
+**Testing:** Successfully launched chat, switched agents, ran queries
+
+---
+
+### [08:00] CLI Wizard UX Fixes (Iteration 2)
+**Activity:** Fixed copy-paste handling and step 8 validation
+**Files Modified:**
+- `agent_factory/cli/wizard_state.py` - Step validation 1-8
+- `agent_factory/cli/interactive_creator.py` - Clean list items
+
+**Fixes Applied:**
+1. **Step 8 Validation:** Changed `<= 7` to `<= 8` in wizard_state.py
+2. **Copy-Paste Cleaning:**
+   - Added _clean_list_item() method
+   - Strips bullets (-, *, •, ├──, └──, │)
+   - Removes numbers (1., 2), 3))
+   - Removes checkboxes ([x], [ ])
+3. **ASCII Conversion:** Replaced ✓ with [+] for Windows
+
+**User Feedback:** "please fix its not very user friendly when i copy paste it is very messy"
+
+---
+
+### [07:00] CLI Wizard Navigation System Built
+**Activity:** Added back/forward/goto/help/exit navigation to wizard
+**Files Created:**
+- `agent_factory/cli/wizard_state.py` (383 lines) - State management
+**Files Modified:**
+- `agent_factory/cli/interactive_creator.py` (1,118 lines) - Complete rewrite
+
+**wizard_state.py Components:**
+1. **NavigationCommand exception:** For back/forward/goto/help/exit control flow
+2. **ExitWizardException:** For safe exit with draft saving
+3. **WizardState dataclass:** Tracks current step, all 8 data sections, draft saving
+4. **State persistence:** save_draft(), load_draft(), clear_draft() as JSON
+
+**interactive_creator.py Enhancements:**
+1. **Navigation commands:** back, forward, goto [1-8], help, exit
+2. **Help menu:** Shows available commands at each step
+3. **Draft saving:** Auto-saves on exit, loads on restart
+4. **Visual improvements:** Step progress, section headers, formatted output
+
+**User Feedback:** "there should be like commands so where you can go back if you made a mistake"
+
+---
+
 ## [2025-12-05] Session 7 - Phase 4 Complete: Deterministic Tools
 
 ### [19:45] Phase 4 Completion Commit

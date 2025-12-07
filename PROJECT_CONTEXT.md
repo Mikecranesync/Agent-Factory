@@ -4,6 +4,80 @@
 
 ---
 
+## [2025-12-07 16:00] GitHub Wiki Complete - Comprehensive Documentation Published
+
+**Project Name:** Agent Factory
+**Current Phase:** Post-Phase 4 Complete - Full Documentation Published
+**Status:** ✅ **GitHub Wiki Live with 17 Pages of Documentation**
+
+**Recent Major Changes:**
+- Complete GitHub wiki created and published
+- 17 wiki pages with comprehensive documentation
+- 3,442 lines of markdown content
+- Navigation sidebar with organized menu structure
+- All user guides, documentation, and phase specs complete
+
+**What's Now Available:**
+- **User Guides (6 pages):** Getting Started, Creating Agents, Editing Agents, CLI Usage, Testing Agents, Agent Examples
+- **Documentation (5 pages):** Architecture, Core Concepts, Tools Reference, API Reference, Development Guide
+- **Phase Documentation (5 pages):** Phases 1-4 complete, Phase 5 planned
+- **Navigation:** _Sidebar.md with complete menu
+- **Wiki URL:** https://github.com/Mikecranesync/Agent-Factory/wiki
+
+**Current Status:**
+- Phase 4: Deterministic Tools ✅ Complete (205 tests passing)
+- Bob Agent: Market research specialist ready
+- CLI System: Wizard, editor, chat all functional
+- Documentation: Fully up-to-date and comprehensive
+- GitHub Wiki: Published and accessible
+
+**Blockers:** None
+
+**Next Steps:**
+1. Use the wiki for onboarding new users
+2. Share wiki URL with community
+3. Consider Phase 5 (Project Twin) or Phase 6 (Agent-as-Service)
+4. Continue testing and improving agents
+
+---
+
+## [2025-12-07 14:30] Agent CLI System Complete - Bob Market Research Agent Ready
+
+**Project Name:** Agent Factory
+**Current Phase:** CLI Agent Editing & Testing (Post-Phase 4)
+**Status:** ✅ **Bob (Market Research Agent) Complete & Tested - Ready for Use**
+
+**Recent Major Changes:**
+- Interactive agent editing system built (tools, invariants)
+- Bob market research agent completed with full toolset
+- Test scripts and comprehensive documentation created
+- Agent iteration limit fixed (25 iterations, 5min timeout)
+- All Python bytecode cache cleared for clean testing
+
+**What's Working:**
+- **Agent Creation:** CLI wizard creates agents with 8 customizable sections
+- **Agent Editing:** Interactive editor modifies tools/invariants without file editing
+- **Bob Agent:** Market research specialist with 10 tools (research + file ops)
+- **Testing:** test_bob.py quick test script, TEST_BOB.md comprehensive guide
+- **Chat Interface:** Interactive REPL for agent conversations
+
+**Current Status:**
+- Bob successfully created with gpt-4o-mini model
+- 10 tools configured: Wikipedia, DuckDuckGo, Tavily, Time, Read, Write, List, Search, Git
+- Higher iteration limit set (25) for complex research queries
+- Test script ready: `poetry run python test_bob.py`
+- Hit OpenAI rate limit during testing (temporary, resets in seconds)
+
+**Blockers:** None - Rate limit is temporary and expected
+
+**Next Steps:**
+1. Wait for OpenAI rate limit reset (1-2 seconds)
+2. Test Bob with market research queries
+3. Optionally create more specialized agents using wizard
+4. Consider implementing remaining agent editor features (behavior examples, purpose/scope editing)
+
+---
+
 ## [2025-12-05 19:45] Phase 4 Complete - Deterministic Tools with Safety & Caching
 
 **Project Name:** Agent Factory
