@@ -1,0 +1,227 @@
+name: 🔍 Rivet Discovery Agent
+
+on:
+  schedule:
+    # Every 8 hours: 2 AM, 10 AM, 6 PM (optimized for free tier - 720 min/month)
+    - cron: '0 2,10,18 * * *'
+
+  issue_comment:
+    types: [created]
+
+  workflow_dispatch:
+    inputs:
+      manufacturers:
+        description: 'Manufacturers (comma-separated or "all")'
+        required: false
+        default: 'ABB,Siemens'
+      mode:
+        description: 'Mode'
+        required: false
+        default: 'automated'
+        type: choice
+        options:
+          - automated
+          - test
+          - full_scan
+
+jobs:
+  # Job 1: Check for concurrent runs (prevents race conditions)
+  check_lock:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+      locked_by: ${{ steps.check.outputs.locked_by }}
+    steps:
+      - name: 🔒 Check for running workflows
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ACTIVE=$(gh run list \
+            --repo ${{ github.repository }} \
+            --workflow manual_discovery.yml \
+            --status in_progress \
+            --json databaseId,createdAt \
+            --jq 'length')
+
+          if [ "$ACTIVE" -gt "1" ]; then
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "locked_by=Run #$(gh run list --workflow manual_discovery.yml --status in_progress --json databaseId --jq '.[0].databaseId')" >> $GITHUB_OUTPUT
+            echo "⏳ Another discovery is running. Skipping."
+          else
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "locked_by=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 💬 Notify if locked (issue comments only)
+        if: steps.check.outputs.should_run == 'false' && github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `⏳ **Discovery Already Running**\n\nAnother discovery cycle is in progress: ${{ steps.check.outputs.locked_by }}\n\nPlease wait 8-15 minutes and try again.`
+            })
+
+  # Job 2: Main discovery
+  discover:
+    needs: check_lock
+    if: needs.check_lock.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 📱 Parse command (if from issue comment)
+        if: github.event_name == 'issue_comment'
+        id: parse
+        run: |
+          COMMENT="${{ github.event.comment.body }}"
+
+          # Parse /discover command
+          if [[ $COMMENT == /discover* ]]; then
+            MFRS=$(echo "$COMMENT" | sed 's/\/discover//' | sed 's/^[[:space:]]*//' | tr ' ' ',')
+            echo "manufacturers=$MFRS" >> $GITHUB_OUTPUT
+            echo "command=discover" >> $GITHUB_OUTPUT
+
+          # Parse /status command
+          elif [[ $COMMENT == /status* ]]; then
+            echo "command=status" >> $GITHUB_OUTPUT
+
+          # Parse /stats command
+          elif [[ $COMMENT == /stats* ]]; then
+            echo "command=stats" >> $GITHUB_OUTPUT
+
+          else
+            echo "command=unknown" >> $GITHUB_OUTPUT
+          fi
+
+      - name: ✅ Acknowledge command
+        if: github.event_name == 'issue_comment' && steps.parse.outputs.command == 'discover'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🤖 **Discovery Starting...**\n\nManufacturers: \`${{ steps.parse.outputs.manufacturers }}\`\n\n_Live logs: [Run #${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})_`
+            })
+
+      - name: 📦 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: 📚 Install dependencies
+        run: |
+          pip install poetry
+          poetry config virtualenvs.create false
+          poetry install --no-interaction --no-ansi
+
+      - name: 🔍 Run Discovery Agent
+        id: discover
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_CSE_API_KEY: ${{ secrets.GOOGLE_CSE_API_KEY }}
+          GOOGLE_CSE_ENGINE_ID: ${{ secrets.GOOGLE_CSE_ENGINE_ID }}
+        run: |
+          # Determine manufacturers to scrape
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            # Scheduled: Use rotation pattern (2 manufacturers per run)
+            HOUR=$(date +%H)
+            case $HOUR in
+              02) MFRS="ABB,Siemens" ;;
+              10) MFRS="Rockwell,Carrier" ;;
+              18) MFRS="Schneider,ABB" ;;
+              *) MFRS="ABB,Siemens" ;;
+            esac
+          else
+            # Manual trigger
+            MFRS="${{ steps.parse.outputs.manufacturers || inputs.manufacturers || 'ABB,Siemens' }}"
+          fi
+
+          echo "🔍 Scraping manufacturers: $MFRS"
+
+          # Run discovery agent
+          poetry run python -m agent_factory.agents.manual_discovery \
+            --manufacturers "$MFRS" \
+            --mode automated \
+            --output summary.json \
+            --mobile-optimized
+
+      - name: 📊 Generate mobile summary
+        if: always()
+        id: summary
+        run: |
+          if [ -f summary.json ]; then
+            python3 << 'EOF'
+          import json
+          import os
+
+          with open('summary.json') as f:
+              data = json.load(f)
+
+          # Generate mobile-friendly markdown
+          status_emoji = "✅" if data['status'] == 'SUCCESS' else "⚠️" if data['status'] == 'PARTIAL' else "❌"
+
+          summary = f"""{status_emoji} **Discovery Complete!** ({data['duration']})
+
+          📊 **Results:**
+          - Found: **{data['found']} manuals**
+          - High Quality: {data['high_quality']} ✓
+          - Needs Review: {data['needs_review']} ⚠️
+
+          📦 **Top Products:**
+          """
+
+          for product in data['top_products'][:3]:
+              summary += f"• {product}\n"
+
+          if data.get('errors'):
+              summary += f"\n⚠️ **Errors:**\n"
+              for error in data['errors'][:2]:
+                  summary += f"• {error}\n"
+
+          summary += f"\n⏰ **Next Run:** {data['next_run']}"
+
+          # Save to GitHub output (escape newlines)
+          summary_escaped = summary.replace('%', '%25').replace('\n', '%0A').replace('\r', '%0D')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"mobile_summary<<EOF\n{summary}\nEOF\n")
+          EOF
+          else
+            echo "mobile_summary=❌ Discovery failed - no results generated" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 💬 Post results to issue
+        if: github.event_name == 'issue_comment' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const summary = `${{ steps.summary.outputs.mobile_summary }}`;
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary + `\n\n<details>\n<summary>📋 View Full Logs</summary>\n\n[GitHub Actions Run #${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\n\n</details>`
+            })
+
+      - name: 📧 Send Telegram notification (optional)
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -d "chat_id=${TELEGRAM_CHAT_ID}" \
+              -d "text=❌ Rivet Discovery Failed - Check GitHub Actions" || true
+          fi
