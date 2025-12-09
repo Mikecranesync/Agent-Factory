@@ -1,0 +1,279 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://industrialmaintenance.schema.org/schema/knowledge-atom-v1.0.json",
+  "title": "Industrial Maintenance Knowledge Atom",
+  "description": "Standard schema for industrial maintenance knowledge units",
+  "type": "object",
+
+  "required": [
+    "@context",
+    "@id",
+    "@type",
+    "atom_type",
+    "schema:name",
+    "schema:description",
+    "schema:provider",
+    "industrialmaintenance:status"
+  ],
+
+  "properties": {
+    "@context": {
+      "type": "string",
+      "enum": ["https://industrialmaintenance.schema.org/context/v1.0"],
+      "description": "JSON-LD context for semantic meaning"
+    },
+
+    "@id": {
+      "type": "string",
+      "pattern": "^urn:industrial-maintenance:atom:[a-f0-9-]{36}$",
+      "description": "Unique identifier (UUID v4)"
+    },
+
+    "@type": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 2,
+      "description": "Always includes 'schema:Thing' and 'industrialmaintenance:KnowledgeAtom'"
+    },
+
+    "atom_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+$",
+      "description": "Schema version (e.g., '1.0')"
+    },
+
+    "atom_type": {
+      "type": "string",
+      "enum": [
+        "error_code",
+        "component_spec",
+        "procedure",
+        "troubleshooting_tip",
+        "safety_requirement",
+        "wiring_diagram",
+        "maintenance_schedule"
+      ],
+      "description": "Type of knowledge unit"
+    },
+
+    "schema:name": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 255,
+      "description": "Human-readable title"
+    },
+
+    "schema:description": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 5000,
+      "description": "Detailed explanation"
+    },
+
+    "industrialmaintenance:resolution": {
+      "type": "string",
+      "description": "For error codes: how to fix it"
+    },
+
+    "schema:keywords": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "maxItems": 10,
+      "description": "Search keywords"
+    },
+
+    "industrialmaintenance:severity": {
+      "type": "string",
+      "enum": ["critical", "high", "medium", "low", "informational"]
+    },
+
+    "industrialmaintenance:manufacturers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "@type": { "const": "industrialmaintenance:ManufacturerReference" },
+          "schema:name": { "type": "string" },
+          "schema:url": { "type": "string", "format": "uri" }
+        },
+        "required": ["schema:name"]
+      },
+      "minItems": 1,
+      "description": "Applicable manufacturers"
+    },
+
+    "industrialmaintenance:productFamilies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "@type": { "const": "industrialmaintenance:ProductFamily" },
+          "schema:name": { "type": "string" },
+          "schema:identifier": { "type": "string" }
+        }
+      }
+    },
+
+    "industrialmaintenance:protocols": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "ethernet_ip",
+          "modbus",
+          "modbus_rtu",
+          "modbus_tcp",
+          "opc_ua",
+          "opc_da",
+          "profibus",
+          "profinet",
+          "canopen",
+          "j1939",
+          "hart"
+        ]
+      }
+    },
+
+    "industrialmaintenance:componentTypes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "plc",
+          "vfd",
+          "drive",
+          "motor",
+          "sensor",
+          "valve",
+          "pump",
+          "compressor",
+          "motor_controller",
+          "power_supply",
+          "hmi",
+          "soft_starter"
+        ]
+      }
+    },
+
+    "industrialmaintenance:industriesApplicable": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "hvac",
+          "manufacturing",
+          "pumping",
+          "food_beverage",
+          "water_treatment",
+          "mining",
+          "power_generation",
+          "oil_gas",
+          "aerospace",
+          "automotive",
+          "marine"
+        ]
+      }
+    },
+
+    "schema:provider": {
+      "type": "object",
+      "required": [
+        "industrialmaintenance:sourceTier",
+        "industrialmaintenance:sourcePlatform",
+        "schema:url"
+      ],
+      "properties": {
+        "@type": { "const": "industrialmaintenance:KnowledgeSource" },
+        "industrialmaintenance:sourceTier": {
+          "type": "string",
+          "enum": [
+            "manufacturer_official",
+            "stack_overflow",
+            "official_forum",
+            "reddit",
+            "blog",
+            "anecdotal"
+          ],
+          "description": "Data provenance tier"
+        },
+        "industrialmaintenance:sourcePlatform": {
+          "type": "string",
+          "description": "Specific platform (e.g., 'magntech_manual', 'stack_overflow', 'r_industrial')"
+        },
+        "schema:url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Link to original source"
+        },
+        "schema:datePublished": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "schema:author": {
+          "type": "string"
+        },
+        "industrialmaintenance:authorReputation": {
+          "type": "string",
+          "enum": [
+            "verified_technician",
+            "manufacturer_official",
+            "expert",
+            "community",
+            "unknown"
+          ]
+        }
+      }
+    },
+
+    "industrialmaintenance:quality": {
+      "type": "object",
+      "properties": {
+        "industrialmaintenance:confidenceScore": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Overall confidence: 0.0 to 1.0"
+        },
+        "industrialmaintenance:confidenceComponents": {
+          "type": "object",
+          "properties": {
+            "sourceTierConfidence": { "type": "number", "minimum": 0, "maximum": 1 },
+            "corroborationConfidence": { "type": "number", "minimum": 0, "maximum": 1 },
+            "recencyConfidence": { "type": "number", "minimum": 0, "maximum": 1 },
+            "authorReputationConfidence": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "industrialmaintenance:corroborations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "@id": { "type": "string" },
+              "schema:description": { "type": "string" },
+              "industrialmaintenance:sourcePlatform": { "type": "string" }
+            }
+          }
+        },
+        "industrialmaintenance:contradictions": { "type": "array" },
+        "schema:dateModified": { "type": "string", "format": "date-time" },
+        "industrialmaintenance:citationCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "industrialmaintenance:status": {
+      "type": "string",
+      "enum": [
+        "validated",
+        "pending_validation",
+        "contradicted",
+        "deprecated"
+      ]
+    },
+
+    "schema:dateCreated": { "type": "string", "format": "date-time" },
+    "schema:dateModified": { "type": "string", "format": "date-time" }
+  },
+
+  "additionalProperties": false
+}

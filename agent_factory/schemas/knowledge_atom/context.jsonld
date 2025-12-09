@@ -1,0 +1,143 @@
+{
+  "@context": {
+    "schema": "https://schema.org/",
+    "industrialmaintenance": "https://industrialmaintenance.schema.org/vocab/",
+
+    "@vocab": "https://industrialmaintenance.schema.org/vocab/",
+
+    "KnowledgeAtom": {
+      "@id": "industrialmaintenance:KnowledgeAtom",
+      "@type": "@id"
+    },
+
+    "atom_type": {
+      "@id": "industrialmaintenance:atomType",
+      "@type": "schema:Text"
+    },
+
+    "atom_version": {
+      "@id": "industrialmaintenance:atomVersion",
+      "@type": "schema:Text"
+    },
+
+    "resolution": {
+      "@id": "industrialmaintenance:resolution",
+      "@type": "schema:Text"
+    },
+
+    "severity": {
+      "@id": "industrialmaintenance:severity",
+      "@type": "schema:Text"
+    },
+
+    "manufacturers": {
+      "@id": "industrialmaintenance:manufacturers",
+      "@container": "@list"
+    },
+
+    "productFamilies": {
+      "@id": "industrialmaintenance:productFamilies",
+      "@container": "@list"
+    },
+
+    "protocols": {
+      "@id": "industrialmaintenance:protocols",
+      "@container": "@list"
+    },
+
+    "componentTypes": {
+      "@id": "industrialmaintenance:componentTypes",
+      "@container": "@list"
+    },
+
+    "industriesApplicable": {
+      "@id": "industrialmaintenance:industriesApplicable",
+      "@container": "@list"
+    },
+
+    "ManufacturerReference": {
+      "@id": "industrialmaintenance:ManufacturerReference",
+      "@type": "@id"
+    },
+
+    "ProductFamily": {
+      "@id": "industrialmaintenance:ProductFamily",
+      "@type": "@id"
+    },
+
+    "KnowledgeSource": {
+      "@id": "industrialmaintenance:KnowledgeSource",
+      "@type": "@id"
+    },
+
+    "sourceTier": {
+      "@id": "industrialmaintenance:sourceTier",
+      "@type": "schema:Text"
+    },
+
+    "sourcePlatform": {
+      "@id": "industrialmaintenance:sourcePlatform",
+      "@type": "schema:Text"
+    },
+
+    "authorReputation": {
+      "@id": "industrialmaintenance:authorReputation",
+      "@type": "schema:Text"
+    },
+
+    "quality": {
+      "@id": "industrialmaintenance:quality",
+      "@type": "@id"
+    },
+
+    "confidenceScore": {
+      "@id": "industrialmaintenance:confidenceScore",
+      "@type": "schema:Number"
+    },
+
+    "confidenceComponents": {
+      "@id": "industrialmaintenance:confidenceComponents",
+      "@type": "@id"
+    },
+
+    "corroborations": {
+      "@id": "industrialmaintenance:corroborations",
+      "@container": "@list"
+    },
+
+    "contradictions": {
+      "@id": "industrialmaintenance:contradictions",
+      "@container": "@list"
+    },
+
+    "citationCount": {
+      "@id": "industrialmaintenance:citationCount",
+      "@type": "schema:Integer"
+    },
+
+    "status": {
+      "@id": "industrialmaintenance:status",
+      "@type": "schema:Text"
+    },
+
+    "validationNotes": {
+      "@id": "industrialmaintenance:validationNotes",
+      "@type": "schema:Text"
+    },
+
+    "deprecationReason": {
+      "@id": "industrialmaintenance:deprecationReason",
+      "@type": "schema:Text"
+    },
+
+    "textEmbedding": {
+      "@id": "industrialmaintenance:textEmbedding",
+      "@type": "@id"
+    },
+
+    "VectorEmbedding": {
+      "@id": "industrialmaintenance:VectorEmbedding",
+      "@type": "@id"
+    }
+  }
+}

@@ -50,6 +50,14 @@ PyPDF2 = "^3.0.1"
 pydantic = "^2.5.0"
 networkx = ">=3.2,<3.6"
 
+# Validation
+jsonschema = "^4.25.0"
+python-dateutil = "^2.9.0"
+
+# Vector database (Supabase + pgvector)
+supabase = "^2.0.0"
+openai = "^1.26.0"
+
 # GitHub integration
 pygithub = "^2.1.1"
 pyyaml = "^6.0"
