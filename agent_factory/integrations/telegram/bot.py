@@ -26,6 +26,7 @@ from .config import TelegramConfig
 from .session_manager import TelegramSessionManager
 from .formatters import ResponseFormatter
 from . import handlers
+from . import github_handlers
 
 
 class TelegramBot:
@@ -73,7 +74,7 @@ class TelegramBot:
         Register all command, message, and callback handlers.
 
         Handlers are processed in order:
-        1. Command handlers (/start, /help, /agent, /reset)
+        1. Command handlers (/start, /help, /agent, /reset, /solve-issue, /list-issues)
         2. Callback handlers (button presses)
         3. Message handler (text messages)
         4. Error handler (global error handling)
@@ -84,8 +85,12 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("agent", handlers.agent_handler))
         self.app.add_handler(CommandHandler("reset", handlers.reset_handler))
 
+        # GitHub automation commands
+        self.app.add_handler(CommandHandler("solve-issue", github_handlers.solve_issue_handler))
+        self.app.add_handler(CommandHandler("list-issues", github_handlers.list_issues_handler))
+
         # Callback handler (inline buttons)
-        self.app.add_handler(CallbackQueryHandler(handlers.callback_handler))
+        self.app.add_handler(CallbackQueryHandler(self._unified_callback_handler))
 
         # Message handler (text messages, NOT commands)
         self.app.add_handler(
@@ -97,6 +102,25 @@ class TelegramBot:
 
         # Error handler
         self.app.add_error_handler(handlers.error_handler)
+
+    async def _unified_callback_handler(self, update, context):
+        """
+        Unified callback handler that routes to appropriate handler.
+
+        Routes callbacks based on prefix:
+        - gh_* → GitHub handlers (approve/reject issue solutions)
+        - agent_* → Agent selection handlers
+        - approve_*/reject_* → General approval handlers
+        """
+        query = update.callback_query
+        callback_data = query.data
+
+        if callback_data.startswith("gh_"):
+            # GitHub callback
+            await github_handlers.github_approval_callback(update, context)
+        else:
+            # Regular callback (agent selection, etc.)
+            await handlers.callback_handler(update, context)
 
     def _is_user_allowed(self, chat_id: int) -> bool:
         """
