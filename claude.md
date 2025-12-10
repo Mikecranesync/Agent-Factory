@@ -119,6 +119,186 @@ See `docs/SECURITY_STANDARDS.md` for implementation patterns and checklists.
 
 ---
 
+## GitHub Strategy Implementation
+
+**Pattern:** GitHub webhooks → Supabase jobs → Orchestrator → Agents
+
+Agent Factory now operates as a **24/7 autonomous system** triggered by GitHub events. This enables:
+- Code changes automatically trigger work
+- Agents work continuously without manual intervention
+- Telegram provides primary user interface (approve, monitor, control)
+- Full audit trail in Supabase
+
+### Components
+
+**1. Webhook Handler** (`webhook_handler.py`)
+- FastAPI server receiving GitHub POST /webhook/github
+- Verifies HMAC signature (GITHUB_WEBHOOK_SECRET)
+- Creates jobs in Supabase `agent_jobs` table
+- Logs events to `webhook_events` table
+
+**Events Handled:**
+- `push` → Creates `sync_and_generate_content` or `full_video_pipeline` jobs
+- `release` → Creates `full_video_pipeline` job (high priority)
+- `issues` → Creates `manage_tasks` job (for issues labeled `agent-task`)
+
+**2. Orchestrator** (`orchestrator.py`)
+- Runs continuously (24/7 in tmux/systemd)
+- Git pulls every 60 seconds (GitHub is source of truth)
+- Fetches pending jobs from `agent_jobs` table
+- Routes jobs to agents via AGENT_REGISTRY
+- Sends heartbeat every 5 minutes to `agent_status` table
+
+**Agent Registry Maps job_type → agent class:**
+```python
+AGENT_REGISTRY = {
+    "research_web": "agents.research.research_agent.ResearchAgent",
+    "write_script": "agents.content.scriptwriter_agent.ScriptwriterAgent",
+    "upload_youtube": "agents.media.youtube_uploader_agent.YouTubeUploaderAgent",
+    "full_video_pipeline": "orchestrator_workflows.video_production_pipeline",
+    # ... 18 agents total
+}
+```
+
+**3. Telegram Bot** (`telegram_bot.py`) - **PRIMARY USER INTERFACE**
+- Commands: `/status`, `/agents`, `/metrics`, `/approve <id>`, `/reject <id>`, `/issue <title>`
+- Daily standup delivery (8 AM configurable)
+- Approval workflow (videos, scripts, atoms)
+- Real-time notifications (agent failures, approvals needed)
+
+**Why Telegram?**
+- Control from phone/desktop without CLI
+- Push notifications (alerts, standups)
+- Approval workflow (one-tap approve/reject)
+- No terminal access needed
+
+**4. Supabase Tables**
+- `agent_jobs` - Job queue (pending, assigned, running, completed, failed)
+- `agent_status` - Health monitoring (heartbeat, tasks completed/failed)
+- `agent_messages` - Inter-agent communication
+- `approval_requests` - Human-in-loop workflow
+- `webhook_events` - Audit log (all GitHub events)
+
+### Workflow Examples
+
+**Example 1: Push to main branch**
+```
+1. Developer pushes commit with "feat: Add video script for Ohm's Law"
+2. GitHub sends push event → webhook_handler.py
+3. Webhook creates job: type=full_video_pipeline, priority=3
+4. Orchestrator picks up job (next 60s cycle)
+5. Routes to agents: Scriptwriter → Voice → Video → Upload → Social
+6. Telegram sends approval requests at checkpoints
+7. User approves via /approve command
+8. Video published, metadata stored in Supabase
+```
+
+**Example 2: GitHub release published**
+```
+1. Developer creates release v1.0.0
+2. GitHub sends release event → webhook_handler.py
+3. Webhook creates job: type=full_video_pipeline, priority=1 (high)
+4. Orchestrator prioritizes (processes before other jobs)
+5. Full pipeline executes autonomously
+6. Telegram sends completion notification
+```
+
+**Example 3: Daily agent operations**
+```
+1. Orchestrator runs 24/7 (60s cycles)
+2. Git pull on every cycle (code always fresh)
+3. Agents check for work (research, quality check, analytics)
+4. Telegram sends daily standup (8 AM)
+5. User monitors via /status, /agents commands
+6. Approvals handled via Telegram (no CLI needed)
+```
+
+### Setup Instructions
+
+**1. Configure GitHub Webhook:**
+```bash
+# In GitHub repo → Settings → Webhooks → Add webhook
+Payload URL: https://your-domain.com/webhook/github
+Content type: application/json
+Secret: <generate strong secret, add to .env as GITHUB_WEBHOOK_SECRET>
+Events: push, release, issues
+```
+
+**2. Start Orchestrator (24/7):**
+```bash
+# Option 1: tmux (recommended for development)
+tmux new -s orchestrator "python orchestrator.py"
+
+# Option 2: systemd (recommended for production)
+# See docs/SYSTEMD_SETUP.md for service configuration
+
+# Option 3: Supervisor
+# See docs/SUPERVISOR_SETUP.md
+```
+
+**3. Start Telegram Bot (24/7):**
+```bash
+# Get bot token from @BotFather on Telegram
+# Add to .env: TELEGRAM_BOT_TOKEN=...
+# Add authorized users: AUTHORIZED_TELEGRAM_USERS=123456789,987654321
+
+# Run bot
+tmux new -s telegram "python telegram_bot.py"
+```
+
+**4. Start Webhook Handler:**
+```bash
+# Option 1: Local + ngrok (development)
+ngrok http 8000  # Get public URL
+python webhook_handler.py  # Runs on http://localhost:8000
+
+# Option 2: VPS + Cloudflare Tunnel (production)
+# See docs/CLOUDFLARE_TUNNEL_SETUP.md
+```
+
+### Validation Commands
+
+```bash
+# Test orchestrator
+python -c "from orchestrator import Orchestrator; print('Orchestrator OK')"
+
+# Test webhook handler
+python -c "from webhook_handler import app; print('Webhook Handler OK')"
+
+# Test Telegram bot
+python -c "from telegram_bot import TelegramBot; print('Telegram Bot OK')"
+
+# Test agent imports
+python -c "from agents.executive.ai_ceo_agent import AICEOAgent; print('Agents OK')"
+
+# Check git worktree
+git worktree list  # Should show github-strategy branch
+```
+
+### Files Created (GitHub Strategy)
+
+- `orchestrator.py` (427 lines) - 24/7 automation loop
+- `webhook_handler.py` (424 lines) - GitHub webhook receiver
+- `telegram_bot.py` (635 lines) - Primary user interface
+- `docs/supabase_agent_migrations.sql` (650+ lines) - Database schema
+- `core/models.py` (780 lines) - Pydantic data models
+- `agents/` (18 agent skeleton files, 4,248 lines)
+- `AUTONOMOUS_PLAN.md` (356 lines) - 8-hour development plan
+- `.claude/commands/autonomous-mode.md` (245 lines) - Autonomous mode command
+
+**Total: ~7,800 lines of implementation**
+
+### Next Steps
+
+1. Deploy orchestrator + webhook + Telegram bot (Week 1)
+2. Implement agents per AGENT_ORGANIZATION.md (Weeks 2-7)
+3. Test end-to-end pipeline (Week 8)
+4. Launch autonomous operations (Week 9+)
+
+See: `AUTONOMOUS_PLAN.md` for complete development roadmap.
+
+---
+
 ## Architecture Summary
 ```
 agent_factory/
