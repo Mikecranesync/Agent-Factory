@@ -36,7 +36,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Now import after path is set
-from core.models import AgentJob, AgentStatus, AgentMessage
+from core.models import AgentStatus, AgentMessage
 from agent_factory.memory.storage import SupabaseMemoryStorage
 
 # ============================================================================
@@ -207,12 +207,12 @@ class Orchestrator:
             List of job records sorted by priority
         """
         try:
-            response = self.storage.client.table("agent_jobs") \\
-                .select("*") \\
-                .eq("status", "pending") \\
-                .order("priority", desc=False) \\
-                .order("created_at", desc=False) \\
-                .limit(MAX_CONCURRENT_JOBS) \\
+            response = self.storage.client.table("agent_jobs") \
+                .select("*") \
+                .eq("status", "pending") \
+                .order("priority", desc=False) \
+                .order("created_at", desc=False) \
+                .limit(MAX_CONCURRENT_JOBS) \
                 .execute()
 
             jobs = response.data
@@ -279,9 +279,9 @@ class Orchestrator:
             elif status in ("completed", "failed"):
                 update_data["completed_at"] = datetime.now().isoformat()
 
-            self.storage.client.table("agent_jobs") \\
-                .update(update_data) \\
-                .eq("id", job_id) \\
+            self.storage.client.table("agent_jobs") \
+                .update(update_data) \
+                .eq("id", job_id) \
                 .execute()
 
             logger.debug(f"Updated job {job_id} status to {status}")
@@ -292,13 +292,13 @@ class Orchestrator:
     def _mark_job_failed(self, job_id: str, error_message: str):
         """Mark job as failed with error message"""
         try:
-            self.storage.client.table("agent_jobs") \\
+            self.storage.client.table("agent_jobs") \
                 .update({
                     "status": "failed",
                     "error_message": error_message,
                     "completed_at": datetime.now().isoformat()
-                }) \\
-                .eq("id", job_id) \\
+                }) \
+                .eq("id", job_id) \
                 .execute()
 
             logger.error(f"Job {job_id} failed: {error_message}")
@@ -309,12 +309,12 @@ class Orchestrator:
     def send_heartbeat(self):
         """Send heartbeat to agent_status table"""
         try:
-            self.storage.client.table("agent_status") \\
+            self.storage.client.table("agent_status") \
                 .update({
                     "last_heartbeat": datetime.now().isoformat(),
                     "status": "running" if self.running else "idle"
-                }) \\
-                .eq("agent_name", "orchestrator") \\
+                }) \
+                .eq("agent_name", "orchestrator") \
                 .execute()
 
             self.last_heartbeat = datetime.now()
@@ -389,12 +389,12 @@ class Orchestrator:
 
         try:
             # Update status to stopped
-            self.storage.client.table("agent_status") \\
+            self.storage.client.table("agent_status") \
                 .update({
                     "status": "stopped",
                     "last_heartbeat": datetime.now().isoformat()
-                }) \\
-                .eq("agent_name", "orchestrator") \\
+                }) \
+                .eq("agent_name", "orchestrator") \
                 .execute()
 
             logger.info("Orchestrator stopped")
