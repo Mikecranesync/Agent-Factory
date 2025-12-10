@@ -69,10 +69,16 @@ Agent Factory is not just a framework—it's the **orchestration engine** poweri
 **Cost Savings:** $200-500/month in LLM costs → $0/month
 **Performance:** Session loading 30-60s → <1 second
 
-### 🔴 Waiting on User (Critical Path)
-1. **Voice Training** - Record 10-15 min samples, upload to ElevenLabs
-2. **First 10 Atoms** - Create electrical + PLC basics knowledge atoms
-3. **Supabase Schema** - Deploy `docs/supabase_migrations.sql`
+### ✅ Voice System: Generic TTS Active (Blocker Removed!)
+- **Hybrid Voice System** - Edge-TTS (FREE), OpenAI TTS (PAID), ElevenLabs (custom)
+- **Current Mode:** Edge-TTS (Microsoft neural voices, $0/month)
+- **Upgrade Path:** Switch to custom voice Saturday (one env variable change)
+- **Status:** Can produce professional narration NOW
+
+### 🔴 Remaining User Tasks (Non-blocking for agents)
+1. **First 10 Atoms** - Create electrical + PLC basics knowledge atoms
+2. **Supabase Schema** - Deploy `docs/supabase_migrations.sql`
+3. **Voice Training (Saturday)** - Record samples, upload to ElevenLabs (optional upgrade)
 
 ### 📅 Next: Week 2 Agent Development
 

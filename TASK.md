@@ -116,33 +116,45 @@ poetry run python test_models.py  # 6/6 tests pass
 
 ---
 
-## 🔴 Blocked - Waiting on User
+## ✅ Blocker Removed: Generic TTS Integration
 
-### [WEEK 1] Infrastructure Setup & Voice Training (Issue #44)
-**Status:** Ready to Start (User Tasks)
-**Priority:** CRITICAL
-**Estimated Effort:** 3-4 hours
+### [WEEK 1] Voice Training - Postponed to Saturday
+**Status:** ⏸️ POSTPONED (Using generic TTS until Saturday)
+**Priority:** MEDIUM (was CRITICAL, now unblocked)
+**Estimated Effort:** 1-2 hours (Saturday)
 **Assigned To:** USER
 
-**Tasks (Monday-Tuesday):**
+**Temporary Solution (Completed):**
+- ✅ Installed Edge-TTS (FREE Microsoft neural voices)
+- ✅ Created VoiceProductionAgent with hybrid voice system
+- ✅ Configured VOICE_MODE=edge in .env
+- ✅ Tested voice generation (works perfectly!)
+- ✅ Can now produce videos with professional generic voices
+
+**Saturday Tasks (Custom Voice):**
 - [ ] Record 10-15 min voice samples (teaching mode, varied emotion)
 - [ ] Upload to ElevenLabs Professional Voice Cloning
-- [ ] Create Supabase project (enable pgvector extension)
-- [ ] Run schema migrations (`docs/supabase_migrations.sql`)
-- [ ] Set up `.env` file with API keys (Supabase, ElevenLabs, OpenAI, Claude)
-- [ ] Test voice clone (generate 30s sample, verify quality)
+- [ ] Get voice clone ID
+- [ ] Update .env: VOICE_MODE=elevenlabs
+- [ ] Add ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID
+- [ ] (Optional) Re-render videos with custom voice
 
-**Success Criteria:**
-- Voice clone sounds natural (< 10% robotic artifacts)
-- Supabase connection test passes (can insert/query atoms)
-- All API keys valid (test calls succeed)
+**Migration Path:**
+```bash
+# Now (generic voice, FREE)
+VOICE_MODE=edge
 
-**Deliverables:**
-- ElevenLabs voice clone ID
-- Supabase project URL + anon key
-- `.env` configured and tested
+# Saturday (custom voice, PAID)
+VOICE_MODE=elevenlabs
+ELEVENLABS_API_KEY=your_key
+ELEVENLABS_VOICE_ID=your_voice_id
+```
+
+**Result:** Week 2 agent development UNBLOCKED. Can start Research Agent, Scriptwriter Agent TODAY!
 
 ---
+
+## 🔴 Remaining Blockers - Waiting on User
 
 ### [WEEK 1] Create First 10 Knowledge Atoms (Issue #45)
 **Status:** Pending (After Issue #44)
