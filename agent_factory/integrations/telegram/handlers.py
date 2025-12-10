@@ -98,6 +98,11 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /agent - Switch to different agent
 /reset - Clear conversation history
 
+*GitHub Automation:*
+/list-issues - List all open issues
+/list-issues <label> - List issues by label
+/solve-issue <number> - Auto-solve issue with FREE Ollama
+
 *How to Use:*
 1. Choose an agent with /start or /agent
 2. Send your question or task
@@ -108,11 +113,18 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 - *Coding* - File operations, code analysis
 - *Bob* - Market research and opportunity discovery
 
+*GitHub Example:*
+/list-issues bug
+/solve-issue 52
+[Bot solves, you approve via buttons]
+Issue auto-closes!
+
 *Tips:*
 - Be specific in your questions
 - Sessions persist - your history is remembered
 - Use /reset to start fresh
 - Rate limit: 10 messages per minute
+- GitHub solving costs $0.00 (FREE Ollama)
 
 *Need more help?*
 Visit: github.com/Mikecranesync/Agent-Factory
