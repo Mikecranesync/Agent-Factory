@@ -240,6 +240,10 @@ Please respond to the current message, referencing the previous conversation whe
         # Save session
         session.save()
 
+        # LOG QUERY FOR STREAM 2 (Query Intelligence)
+        # This captures what equipment users ask about to prioritize scraping
+        self._log_query_intelligence(user_id, message)
+
         # Filter PII if enabled
         if self.config.enable_pii_filtering:
             response_text = self._filter_pii(response_text)
@@ -288,6 +292,73 @@ Please respond to the current message, referencing the previous conversation whe
         )
 
         return text
+
+    def _log_query_intelligence(self, user_id: str, query: str):
+        """
+        Log query for Stream 2 intelligence (DaaS business model).
+
+        Captures what equipment users ask about to prioritize manual scraping.
+        This is the "secret weapon" - user queries tell us what's valuable.
+
+        Args:
+            user_id: Telegram user ID (will be hashed for privacy)
+            query: User's query text
+
+        Example queries to capture:
+            - "ABB ACS880 error 2210"
+            - "Siemens S7-1200 PLC troubleshooting"
+            - "Carrier 30XA chiller maintenance"
+        """
+        import re
+        import hashlib
+        import json
+        from datetime import datetime
+
+        # Hash user ID for privacy (GDPR/CCPA compliance)
+        user_hash = hashlib.sha256(str(user_id).encode()).hexdigest()[:16]
+
+        # Extract equipment models using common patterns
+        equipment_patterns = [
+            r'\b(ACS\d+|ACH\d+|ACS[A-Z]\d+)\b',  # ABB drives
+            r'\b(S7-\d+)\b',  # Siemens PLCs
+            r'\b(\d+XA|\d+HX)\b',  # Carrier chillers
+            r'\b(PowerFlex \d+|ControlLogix)\b',  # Rockwell
+        ]
+
+        equipment_model = None
+        for pattern in equipment_patterns:
+            match = re.search(pattern, query, re.IGNORECASE)
+            if match:
+                equipment_model = match.group(1).upper()
+                break
+
+        # Extract error codes (e.g., "error 2210", "fault E123")
+        error_code = None
+        error_match = re.search(r'\b(?:error|fault|code)\s*([A-Z]?\d+)\b', query, re.IGNORECASE)
+        if error_match:
+            error_code = error_match.group(1).upper()
+
+        # Only log if query mentions equipment or errors (not general chat)
+        if equipment_model or error_code or any(word in query.lower() for word in
+            ['manual', 'troubleshoot', 'repair', 'service', 'maintenance', 'diagnostic', 'wiring']):
+
+            log_entry = {
+                'timestamp': datetime.utcnow().isoformat(),
+                'user_hash': user_hash,
+                'equipment_model': equipment_model,
+                'error_code': error_code,
+                'query_length': len(query),
+                'has_error_keyword': bool(error_code),
+                'query_preview': query[:100]  # First 100 chars only for privacy
+            }
+
+            # TODO: Write to database (query_intelligence table)
+            # For now, log to file for manual review
+            try:
+                with open('query_intelligence.log', 'a') as f:
+                    f.write(json.dumps(log_entry) + '\n')
+            except Exception:
+                pass  # Silent fail - don't break bot if logging fails
 
     async def run(self):
         """

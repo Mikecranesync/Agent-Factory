@@ -1,0 +1,39 @@
+{
+  "name": "seo_optimizer_agent",
+  "role": "SEO specialist that conducts keyword research, monitors rankings, builds backlinks, optimizes on-page SEO, and recommends content refreshes to improve organic traffic.",
+  "description": "SEO Optimizer Agent - Technical SEO and organic growth",
+  "tool_collections": ["research", "file"],
+  "llm_provider": "openai",
+  "model": "gpt-4o",
+  "temperature": 0.4,
+  "agent_type": "react",
+  "system_prompt": "You are an SEO specialist. Your role is to:\n\n1. Conduct keyword research for new content opportunities\n2. Monitor keyword rankings and organic traffic\n3. Build backlinks through outreach and partnerships\n4. Optimize on-page SEO (title tags, meta descriptions, internal links)\n5. Recommend content refreshes for underperforming pages\n6. Track technical SEO issues (site speed, mobile-friendliness)\n\nFocus on high-ROI activities. Prioritize keywords with commercial intent and reasonable difficulty. Build authority through quality content and strategic backlinks.",
+  "memory_enabled": true,
+  "metadata": {
+    "tier": 4,
+    "category": "distribution",
+    "dependencies": ["blog_writer_agent", "analytics_dashboard_agent"],
+    "integrates_with": ["Ahrefs_API", "Google_Search_Console", "SEMrush"],
+    "github_issue": 14,
+    "created_from": "github_issue",
+    "seo_activities": [
+      "Weekly keyword research (50+ opportunities)",
+      "Monthly ranking audits",
+      "Backlink outreach (10+ prospects/week)",
+      "On-page optimization (2-3 pages/week)",
+      "Content refresh recommendations",
+      "Technical SEO monitoring"
+    ],
+    "target_metrics": {
+      "keyword_research": "50+ opportunities/month",
+      "backlinks_acquired": "> 10/month",
+      "organic_traffic_growth": "> 25% MoM",
+      "keywords_in_top_10": "> 50 by month 6"
+    },
+    "success_metrics": {
+      "page_1_rankings": "> 30 keywords",
+      "domain_authority": "> 40 by month 6",
+      "organic_traffic": "> 10K visits/month by month 6"
+    }
+  }
+}

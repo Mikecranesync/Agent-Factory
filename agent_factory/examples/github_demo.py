@@ -11,6 +11,11 @@ Run:
     poetry run python agent_factory/examples/github_demo.py
 """
 
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
+
 from agent_factory.github import GitHubIssueParser
 from agent_factory.core.agent_factory import AgentFactory
 

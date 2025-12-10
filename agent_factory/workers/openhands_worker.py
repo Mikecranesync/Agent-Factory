@@ -110,29 +110,58 @@ class OpenHandsWorker:
 
     def __init__(
         self,
-        model: str = "claude-3-5-sonnet-20241022",  # Default to latest Claude
+        model: str = "deepseek-coder:6.7b",  # Default to FREE Ollama model
         port: int = 3000,  # OpenHands web UI port
         workspace_dir: Optional[Path] = None,  # Where OpenHands works
+        use_ollama: bool = None,  # Auto-detect from env if None
+        ollama_base_url: str = None,  # Auto-detect from env if None
     ):
         """
         Initialize OpenHands worker (doesn't start container yet).
 
         PARAMETERS:
             model: Which LLM OpenHands should use
-                Options: claude-3-5-sonnet, gpt-4, gemini-2.0-flash, etc.
+                FREE: deepseek-coder:6.7b, codellama:7b, llama3.1:8b
+                PAID: claude-3-5-sonnet, gpt-4, gemini-2.0-flash, etc.
             port: HTTP port for OpenHands API (default 3000)
             workspace_dir: Local directory OpenHands can access
                 If None, creates temp directory per task
+            use_ollama: Use FREE local Ollama instead of paid APIs
+                If None, reads USE_OLLAMA from environment
+            ollama_base_url: Ollama API endpoint (default: http://localhost:11434)
+                If None, reads OLLAMA_BASE_URL from environment
 
         WHAT HAPPENS:
             - Validates Docker is installed
+            - Auto-detects Ollama configuration from .env
             - Stores configuration
             - Does NOT start container (that happens in run_task)
+
+        OLLAMA SETUP:
+            1. Install Ollama: winget install Ollama.Ollama
+            2. Pull model: ollama pull deepseek-coder:6.7b
+            3. Set USE_OLLAMA=true in .env
+            4. Run tasks for FREE!
         """
+        import os
+
+        # Auto-detect Ollama from environment
+        if use_ollama is None:
+            use_ollama = os.getenv("USE_OLLAMA", "false").lower() == "true"
+
+        if ollama_base_url is None:
+            ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+        # If no model specified but USE_OLLAMA=true, use default Ollama model
+        if use_ollama and model == "deepseek-coder:6.7b":
+            model = os.getenv("OLLAMA_MODEL", "deepseek-coder:6.7b")
+
         self.model = model
         self.port = port
         self.workspace_dir = workspace_dir or Path("./openhands_workspace")
         self.container_name = f"openhands_worker_{port}"
+        self.use_ollama = use_ollama
+        self.ollama_base_url = ollama_base_url
 
         # Validate Docker is available (like checking PLC I/O before starting)
         try:
@@ -147,6 +176,10 @@ class OpenHandsWorker:
                 "Docker not found or not running. Please install Docker Desktop.\n"
                 f"Error: {e}"
             )
+
+        # Validate Ollama if enabled
+        if self.use_ollama:
+            self._validate_ollama()
 
     def run_task(
         self,
@@ -284,8 +317,21 @@ class OpenHandsWorker:
             "-p", f"{self.port}:{self.port}",
             "--pull=always",
             "ghcr.io/all-hands-dev/openhands:main-latest",
-            "--model", self.model
         ]
+
+        # Configure model and API endpoint
+        if self.use_ollama:
+            # Point OpenHands to Ollama instead of paid APIs
+            cmd.extend([
+                "--model", self.model,
+                "--llm-api-base", self.ollama_base_url,
+                "--llm-provider", "ollama"
+            ])
+            print(f"[OpenHands] Starting with FREE Ollama ({self.model})...")
+        else:
+            # Use paid API (Claude, GPT, etc.)
+            cmd.extend(["--model", self.model])
+            print(f"[OpenHands] Starting with PAID API ({self.model})...")
 
         subprocess.run(cmd, check=True, timeout=60)
 
@@ -450,6 +496,54 @@ class OpenHandsWorker:
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             pass  # Already stopped/removed, that's fine
+
+    def _validate_ollama(self) -> None:
+        """
+        Validate Ollama is running and model is available.
+
+        WHAT THIS DOES:
+            Checks if Ollama service is running and requested model exists.
+            Provides helpful error messages if setup incomplete.
+
+        WHY WE DO THIS:
+            Fail fast with clear instructions instead of cryptic Docker errors.
+
+        ERROR MESSAGES:
+            - Ollama not running → Instructions to start Ollama
+            - Model not found → Instructions to pull model
+        """
+        try:
+            # Check if Ollama is accessible
+            response = requests.get(f"{self.ollama_base_url}/api/tags", timeout=5)
+            response.raise_for_status()
+
+            # Check if model is available
+            data = response.json()
+            available_models = [m["name"] for m in data.get("models", [])]
+
+            if self.model not in available_models:
+                raise RuntimeError(
+                    f"Ollama model '{self.model}' not found.\n"
+                    f"Available models: {', '.join(available_models)}\n\n"
+                    f"To fix, run:\n"
+                    f"  ollama pull {self.model}\n"
+                )
+
+            print(f"[OpenHands] ✓ Using FREE Ollama model: {self.model}")
+
+        except requests.exceptions.ConnectionError:
+            raise RuntimeError(
+                f"Ollama not running at {self.ollama_base_url}\n\n"
+                f"To fix:\n"
+                f"  1. Install Ollama: winget install Ollama.Ollama\n"
+                f"  2. Ollama auto-starts on Windows after install\n"
+                f"  3. Or run: ollama serve\n"
+            )
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(
+                f"Failed to connect to Ollama: {e}\n"
+                f"Make sure Ollama is running at {self.ollama_base_url}"
+            )
 
 
 # FACTORY FUNCTION (convenience wrapper like PLC function block)

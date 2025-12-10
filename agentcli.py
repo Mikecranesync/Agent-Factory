@@ -48,10 +48,18 @@ import argparse
 from pathlib import Path
 from typing import Optional
 import subprocess
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
 
 from agent_factory.codegen import SpecParser, CodeGenerator, EvalGenerator
 from agent_factory.cli import InteractiveAgentCreator, list_templates
 from agent_factory.cli.agent_editor import AgentEditor, list_editable_agents
+from agent_factory.cli.crew_creator import CrewCreator
+from agent_factory.core.crew_spec import load_crew_spec, list_crew_specs, CrewSpec
+from agent_factory.core.crew import Crew, ProcessType, VotingStrategy
+from agent_factory.core.agent_factory import AgentFactory
 
 
 # ========================================================================
@@ -378,6 +386,195 @@ class AgentCLI:
 
         return 0
 
+    def create_crew(self) -> int:
+        """
+        PURPOSE: Launch interactive crew creation wizard
+
+        WHAT THIS DOES:
+            Run CrewCreator wizard to build crew YAML specification
+
+        OUTPUTS:
+            int: 0 on success, 1 on error
+        """
+        creator = CrewCreator()
+        success = creator.run()
+        return 0 if success else 1
+
+    def list_crews(self) -> int:
+        """
+        PURPOSE: List all available crew specifications
+
+        WHAT THIS DOES:
+            Show all crew YAML files in crews/ directory
+
+        OUTPUTS:
+            int: Always 0
+        """
+        print("=" * 72)
+        print("AVAILABLE CREWS")
+        print("=" * 72)
+
+        crew_specs = list_crew_specs()
+
+        if not crew_specs:
+            print(f"\n  No crews found in crews/")
+            print(f"  Create one with: agentcli create-crew")
+            return 0
+
+        print(f"\n  Found {len(crew_specs)} crew(s):")
+        for spec_path in crew_specs:
+            # Load to get metadata
+            try:
+                spec = CrewSpec.load(spec_path)
+                print(f"\n    {spec.name} (v{spec.version})")
+                print(f"      Process: {spec.process}")
+                print(f"      Agents: {len(spec.agents)}")
+                print(f"      Description: {spec.description}")
+            except Exception as e:
+                print(f"\n    {spec_path.name} [ERROR: {e}]")
+
+        print(f"\n  Run with: agentcli run-crew <crew-name> --task \"Your task\"")
+        return 0
+
+    def run_crew(self, crew_name: str, task: str, verbose: bool = False) -> int:
+        """
+        PURPOSE: Execute crew from YAML specification
+
+        WHAT THIS DOES:
+            1. Load crew spec from YAML
+            2. Create agents from spec
+            3. Build crew with correct process type
+            4. Execute task
+            5. Report results
+
+        INPUTS:
+            crew_name (str): Crew name or path to YAML
+            task (str): Task for crew to execute
+            verbose (bool): Show detailed execution logs
+
+        OUTPUTS:
+            int: 0 on success, 1 on error
+        """
+        print("=" * 72)
+        print(f"RUNNING CREW: {crew_name}")
+        print("=" * 72)
+
+        try:
+            # Load spec
+            print(f"\n[1/4] Loading crew specification...")
+            spec = load_crew_spec(crew_name)
+            print(f"  [OK] Loaded: {spec.name} v{spec.version}")
+            print(f"      Process: {spec.process}")
+            print(f"      Agents: {len(spec.agents)}")
+
+            # Create agents
+            print(f"\n[2/4] Creating agents...")
+            factory = AgentFactory()
+            agents = []
+
+            # Import tool classes
+            from agent_factory.tools.research_tools import (
+                CurrentTimeTool,
+                WikipediaSearchTool,
+                DuckDuckGoSearchTool,
+                TavilySearchTool
+            )
+
+            tool_map = {
+                "current_time": CurrentTimeTool,
+                "wikipedia": WikipediaSearchTool,
+                "duckduckgo": DuckDuckGoSearchTool,
+                "tavily": TavilySearchTool,
+            }
+
+            for agent_spec in spec.agents:
+                # Build tools list
+                tools = []
+                for tool_name in agent_spec.tools:
+                    if tool_name in tool_map:
+                        tools.append(tool_map[tool_name]())
+                    else:
+                        print(f"    [WARNING] Unknown tool '{tool_name}' for agent '{agent_spec.name}'")
+
+                # Create agent
+                agent = factory.create_agent(
+                    role=agent_spec.role,
+                    tools_list=tools,
+                    system_prompt=agent_spec.prompt
+                )
+                agents.append(agent)
+                print(f"    [OK] {agent_spec.role}")
+
+            # Create manager if needed
+            manager = None
+            if spec.process == "hierarchical" and spec.manager:
+                print(f"\n    Creating manager...")
+                manager_tools = []
+                for tool_name in spec.manager.tools:
+                    if tool_name in tool_map:
+                        manager_tools.append(tool_map[tool_name]())
+
+                manager = factory.create_agent(
+                    role=spec.manager.role,
+                    tools_list=manager_tools,
+                    system_prompt=spec.manager.prompt
+                )
+                print(f"    [OK] {spec.manager.role}")
+
+            # Build crew
+            print(f"\n[3/4] Building crew...")
+            process_type = ProcessType[spec.process.upper()]
+
+            crew_kwargs = {
+                "agents": agents,
+                "process": process_type,
+                "verbose": verbose
+            }
+
+            if manager:
+                crew_kwargs["manager"] = manager
+
+            if spec.voting:
+                voting_strategy = VotingStrategy[spec.voting.upper()]
+                crew_kwargs["voting_strategy"] = voting_strategy
+
+            crew = Crew(**crew_kwargs)
+            print(f"  [OK] Crew ready with {len(agents)} agents")
+
+            # Execute
+            print(f"\n[4/4] Executing task...")
+            print(f"  Task: {task}")
+            print()
+
+            result = crew.run(task)
+
+            # Show results
+            print()
+            print("=" * 72)
+            print("EXECUTION RESULTS")
+            print("=" * 72)
+            print(f"\nSuccess: {result.success}")
+            print(f"Process: {result.process_type}")
+            print(f"Agents: {len(result.agent_outputs)}")
+            print(f"Execution Time: {result.execution_time:.2f}s")
+
+            if hasattr(result, 'consensus_details') and result.consensus_details:
+                print(f"Consensus: {result.consensus_details}")
+
+            print(f"\nResult:")
+            print(f"  {result.result}")
+
+            return 0 if result.success else 1
+
+        except FileNotFoundError as e:
+            print(f"\n[ERROR] {e}")
+            return 1
+        except Exception as e:
+            print(f"\n[ERROR] Crew execution failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return 1
+
     def _find_spec_file(self, spec_name: str) -> Optional[Path]:
         """
         PURPOSE: Find spec file by name
@@ -425,6 +622,323 @@ class AgentCLI:
             size_kb = spec_file.stat().st_size / 1024
             print(f"    - {spec_file.name} ({size_kb:.1f} KB)")
 
+    def _check_worktree_safety(self, warn_only: bool = True) -> bool:
+        """
+        PURPOSE: Check if we're in a worktree (for multi-agent safety)
+
+        WHAT THIS DOES:
+            Check if current directory is a worktree or main directory.
+            Optionally warn user if they're in main directory.
+
+        INPUTS:
+            warn_only (bool): If True, only warn. If False, block operation.
+
+        OUTPUTS:
+            bool: True if in worktree, False if in main directory
+
+        USAGE:
+            Call this before git operations to remind user about worktrees.
+        """
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--git-dir"],
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode != 0:
+                return True  # Not in git repo, don't block
+
+            git_dir = result.stdout.strip()
+
+            # Check if in main directory
+            if git_dir == ".git":
+                if warn_only:
+                    print("\n⚠️  WARNING: You're in the MAIN directory")
+                    print("   For multi-agent safety, consider using a worktree:")
+                    print("     agentcli worktree-create myfeature")
+                    print("   See: docs/GIT_WORKTREE_GUIDE.md\n")
+                    return False
+                else:
+                    print("\n[ERROR] Operation blocked - you're in the MAIN directory")
+                    print("  Create a worktree first: agentcli worktree-create myfeature")
+                    print("  See: docs/GIT_WORKTREE_GUIDE.md\n")
+                    return False
+
+            # In worktree - all good
+            return True
+
+        except Exception:
+            # If check fails, don't block
+            return True
+
+    def worktree_create(self, name: str) -> int:
+        """
+        PURPOSE: Create new git worktree with branch
+
+        WHAT THIS DOES:
+            1. Validates name
+            2. Creates worktree in parent directory
+            3. Creates new branch
+            4. Reports success with instructions
+
+        INPUTS:
+            name (str): Worktree/branch name (e.g., "myfeature")
+
+        OUTPUTS:
+            int: 0 on success, 1 on error
+        """
+        print("=" * 72)
+        print(f"CREATING WORKTREE: {name}")
+        print("=" * 72)
+
+        # Validate name
+        if not name or not name.strip():
+            print("\n[ERROR] Worktree name cannot be empty")
+            return 1
+
+        # Clean name (lowercase, hyphens)
+        clean_name = name.lower().replace(" ", "-").replace("_", "-")
+        worktree_path = f"../agent-factory-{clean_name}"
+        branch_name = clean_name
+
+        print(f"\n[1/3] Checking if worktree already exists...")
+
+        # Check if worktree exists
+        result = subprocess.run(
+            ["git", "worktree", "list"],
+            capture_output=True,
+            text=True
+        )
+
+        if worktree_path in result.stdout or clean_name in result.stdout:
+            print(f"  [ERROR] Worktree already exists!")
+            print(f"\n  List worktrees with: agentcli worktree-list")
+            return 1
+
+        print(f"  [OK] Name available")
+
+        # Create worktree
+        print(f"\n[2/3] Creating worktree with new branch...")
+        print(f"  Path: {worktree_path}")
+        print(f"  Branch: {branch_name}")
+
+        result = subprocess.run(
+            ["git", "worktree", "add", worktree_path, "-b", branch_name],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            print(f"\n[ERROR] Failed to create worktree:")
+            print(result.stderr)
+            return 1
+
+        print(f"  [OK] Worktree created successfully")
+
+        # Success message
+        print(f"\n[3/3] Setup complete!")
+        print(f"\n{'='*72}")
+        print("WORKTREE READY")
+        print(f"{'='*72}")
+        print(f"\nWorktree: {worktree_path}")
+        print(f"Branch: {branch_name}")
+        print(f"\nNext steps:")
+        print(f"  1. cd {worktree_path}")
+        print(f"  2. Start coding!")
+        print(f"  3. git add . && git commit -m \"Your message\"")
+        print(f"  4. git push -u origin {branch_name}")
+        print(f"\nWhen done:")
+        print(f"  agentcli worktree-remove {clean_name}")
+
+        return 0
+
+    def worktree_list(self) -> int:
+        """
+        PURPOSE: List all git worktrees
+
+        WHAT THIS DOES:
+            Show all active worktrees with paths and branches
+
+        OUTPUTS:
+            int: Always 0
+        """
+        print("=" * 72)
+        print("GIT WORKTREES")
+        print("=" * 72)
+
+        result = subprocess.run(
+            ["git", "worktree", "list"],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            print(f"\n[ERROR] Failed to list worktrees:")
+            print(result.stderr)
+            return 1
+
+        # Parse and display
+        lines = result.stdout.strip().split("\n")
+
+        print(f"\n  Found {len(lines)} worktree(s):\n")
+
+        for line in lines:
+            parts = line.split()
+            if len(parts) >= 2:
+                path = parts[0]
+                commit = parts[1]
+                branch = parts[2] if len(parts) >= 3 else "(detached)"
+
+                # Clean up display
+                branch = branch.strip("[]")
+
+                # Mark main directory
+                is_main = ".git" not in path or path.endswith("Agent Factory")
+                marker = "[MAIN]" if is_main else "[WORK]"
+
+                print(f"  {marker} {Path(path).name}")
+                print(f"        Branch: {branch}")
+                print(f"        Path: {path}")
+                print()
+
+        print(f"Create new worktree with: agentcli worktree-create <name>")
+        print(f"Remove worktree with: agentcli worktree-remove <name>")
+
+        return 0
+
+    def worktree_remove(self, name: str) -> int:
+        """
+        PURPOSE: Remove git worktree
+
+        WHAT THIS DOES:
+            1. Find worktree by name
+            2. Remove worktree and clean up
+            3. Report success
+
+        INPUTS:
+            name (str): Worktree name (e.g., "myfeature")
+
+        OUTPUTS:
+            int: 0 on success, 1 on error
+        """
+        print("=" * 72)
+        print(f"REMOVING WORKTREE: {name}")
+        print("=" * 72)
+
+        # Clean name
+        clean_name = name.lower().replace(" ", "-").replace("_", "-")
+        worktree_path = f"../agent-factory-{clean_name}"
+
+        print(f"\n[1/2] Checking if worktree exists...")
+
+        # Check if worktree exists
+        result = subprocess.run(
+            ["git", "worktree", "list"],
+            capture_output=True,
+            text=True
+        )
+
+        if worktree_path not in result.stdout and clean_name not in result.stdout:
+            print(f"  [ERROR] Worktree not found!")
+            print(f"\n  List worktrees with: agentcli worktree-list")
+            return 1
+
+        print(f"  [OK] Found worktree")
+
+        # Remove worktree
+        print(f"\n[2/2] Removing worktree...")
+
+        result = subprocess.run(
+            ["git", "worktree", "remove", worktree_path],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            # Try with --force if there are uncommitted changes
+            print(f"  [WARNING] Worktree has uncommitted changes")
+            print(f"  [ACTION] Forcing removal...")
+
+            result = subprocess.run(
+                ["git", "worktree", "remove", worktree_path, "--force"],
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode != 0:
+                print(f"\n[ERROR] Failed to remove worktree:")
+                print(result.stderr)
+                return 1
+
+        print(f"  [OK] Worktree removed")
+
+        # Prune
+        subprocess.run(["git", "worktree", "prune"], capture_output=True)
+
+        print(f"\n{'='*72}")
+        print("WORKTREE REMOVED")
+        print(f"{'='*72}")
+        print(f"\nRemoved: {worktree_path}")
+        print(f"\nNote: Branch '{clean_name}' still exists in git")
+        print(f"      Delete it with: git branch -d {clean_name}")
+
+        return 0
+
+    def worktree_status(self) -> int:
+        """
+        PURPOSE: Show current worktree status
+
+        WHAT THIS DOES:
+            Check if we're in a worktree or main directory
+
+        OUTPUTS:
+            int: Always 0
+        """
+        print("=" * 72)
+        print("WORKTREE STATUS")
+        print("=" * 72)
+
+        # Check git dir
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            print(f"\n[ERROR] Not in a git repository")
+            return 1
+
+        git_dir = result.stdout.strip()
+
+        # Check if in worktree
+        if git_dir == ".git":
+            print(f"\n[STATUS] In MAIN directory")
+            print(f"\n⚠️  WARNING: Direct commits are blocked!")
+            print(f"\nYou should be working in a worktree:")
+            print(f"  agentcli worktree-create myfeature")
+            print(f"\nWhy? See docs/GIT_WORKTREE_GUIDE.md")
+        else:
+            # In a worktree
+            worktree_name = Path(git_dir).parent.name
+            print(f"\n[STATUS] In WORKTREE: {worktree_name}")
+            print(f"\n✓ Safe to commit!")
+
+            # Show current branch
+            result = subprocess.run(
+                ["git", "branch", "--show-current"],
+                capture_output=True,
+                text=True
+            )
+            branch = result.stdout.strip()
+            print(f"\nCurrent branch: {branch}")
+            print(f"Worktree path: {Path.cwd()}")
+
+        print(f"\nList all worktrees with: agentcli worktree-list")
+
+        return 0
+
 
 # ========================================================================
 # MAIN ENTRY POINT
@@ -452,6 +966,17 @@ Examples:
   # Edit existing agents
   agentcli edit bob-1
   agentcli edit --list
+
+  # Multi-agent crew orchestration
+  agentcli create-crew
+  agentcli list-crews
+  agentcli run-crew email-triage --task "Process this email: ..."
+
+  # Git worktree management (required for multi-agent safety)
+  agentcli worktree-create myfeature
+  agentcli worktree-list
+  agentcli worktree-status
+  agentcli worktree-remove myfeature
 
   # Build from existing spec
   agentcli build research-agent-v1.0
@@ -519,6 +1044,53 @@ Philosophy:
     )
     edit_parser.add_argument('agent_name', nargs='?', help='Agent name to edit (e.g., bob-1)')
     edit_parser.add_argument('--list', action='store_true', help='List all editable agents')
+
+    # Create-crew command
+    subparsers.add_parser(
+        'create-crew',
+        help='Create multi-agent crew interactively (wizard mode)'
+    )
+
+    # Run-crew command
+    run_crew_parser = subparsers.add_parser(
+        'run-crew',
+        help='Execute crew from YAML specification'
+    )
+    run_crew_parser.add_argument('crew_name', help='Crew name or path to YAML file')
+    run_crew_parser.add_argument('--task', '-t', required=True, help='Task for crew to execute')
+    run_crew_parser.add_argument('--verbose', '-v', action='store_true', help='Show detailed execution logs')
+
+    # List-crews command
+    subparsers.add_parser(
+        'list-crews',
+        help='List all available crew specifications'
+    )
+
+    # Worktree-create command
+    worktree_create_parser = subparsers.add_parser(
+        'worktree-create',
+        help='Create new git worktree for safe multi-agent development'
+    )
+    worktree_create_parser.add_argument('name', help='Worktree/branch name (e.g., myfeature)')
+
+    # Worktree-list command
+    subparsers.add_parser(
+        'worktree-list',
+        help='List all git worktrees'
+    )
+
+    # Worktree-remove command
+    worktree_remove_parser = subparsers.add_parser(
+        'worktree-remove',
+        help='Remove git worktree'
+    )
+    worktree_remove_parser.add_argument('name', help='Worktree name to remove')
+
+    # Worktree-status command
+    subparsers.add_parser(
+        'worktree-status',
+        help='Show current worktree status'
+    )
 
     args = parser.parse_args()
 
@@ -600,6 +1172,20 @@ Philosophy:
             import traceback
             traceback.print_exc()
             return 1
+    elif args.command == 'create-crew':
+        return cli.create_crew()
+    elif args.command == 'run-crew':
+        return cli.run_crew(args.crew_name, args.task, args.verbose)
+    elif args.command == 'list-crews':
+        return cli.list_crews()
+    elif args.command == 'worktree-create':
+        return cli.worktree_create(args.name)
+    elif args.command == 'worktree-list':
+        return cli.worktree_list()
+    elif args.command == 'worktree-remove':
+        return cli.worktree_remove(args.name)
+    elif args.command == 'worktree-status':
+        return cli.worktree_status()
     else:
         parser.print_help()
         return 1

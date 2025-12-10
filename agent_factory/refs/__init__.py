@@ -1,31 +1,42 @@
 """
-Project Twin (refs) - Digital Twin System for Codebase
+Project Twin - Codebase Understanding System
 
-This module provides a digital twin representation of the project:
-- ProjectTwin: Main twin class that mirrors the codebase
-- CodeAnalyzer: AST-based Python code analysis
-- KnowledgeGraph: Dependency relationship graph
-- TwinAgent: LLM agent interface to query the twin
+This module provides codebase parsing, indexing, and querying capabilities
+to help agents understand project structure, dependencies, and patterns.
 
-Usage:
-    from agent_factory.refs import ProjectTwin, TwinAgent
-
-    twin = ProjectTwin(project_root=Path.cwd())
-    twin.sync(include_patterns=["*.py"])
-
-    twin_agent = TwinAgent(twin, llm)
-    result = twin_agent.query("Where is AgentFactory defined?")
+Phase 6 Components:
+- parser: AST-based Python code parser
+- indexer: Searchable code index with fuzzy matching
+- query: Natural language query interface
+- patterns: Pattern detection and code suggestions
 """
 
-from .project_twin import FileNode, ProjectTwin
-from .code_analyzer import CodeAnalyzer
-from .knowledge_graph import KnowledgeGraph
-from .twin_agent import TwinAgent
+from agent_factory.refs.parser import (
+    CodeElement,
+    PythonParser,
+)
+from agent_factory.refs.indexer import (
+    ProjectIndex,
+)
+from agent_factory.refs.query import (
+    QueryResult,
+    QueryEngine,
+)
+from agent_factory.refs.patterns import (
+    CodePattern,
+    PatternDetector,
+)
 
 __all__ = [
-    "FileNode",
-    "ProjectTwin",
-    "CodeAnalyzer",
-    "KnowledgeGraph",
-    "TwinAgent",
+    # Parser
+    "CodeElement",
+    "PythonParser",
+    # Indexer
+    "ProjectIndex",
+    # Query
+    "QueryResult",
+    "QueryEngine",
+    # Patterns
+    "CodePattern",
+    "PatternDetector",
 ]

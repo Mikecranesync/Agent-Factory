@@ -22,6 +22,17 @@ from .orchestrator import AgentOrchestrator
 from .callbacks import EventBus, create_default_event_bus
 from ..workers.openhands_worker import OpenHandsWorker, create_openhands_worker
 
+# Phase 2: Intelligent routing imports
+try:
+    from ..llm.langchain_adapter import RoutedChatModel, create_routed_chat_model
+    from ..llm.types import ModelCapability
+    from ..llm.tracker import UsageTracker
+    ROUTING_AVAILABLE = True
+except ImportError:
+    ROUTING_AVAILABLE = False
+    ModelCapability = None  # type: ignore
+    UsageTracker = None  # type: ignore
+
 
 class AgentFactory:
     """
@@ -48,7 +59,9 @@ class AgentFactory:
         default_llm_provider: str = LLM_OPENAI,
         default_model: str = "gpt-4o",
         default_temperature: float = 0.0,
-        verbose: bool = True
+        verbose: bool = True,
+        enable_routing: bool = False,
+        exclude_local: bool = False
     ):
         """
         Initialize the AgentFactory.
@@ -58,24 +71,56 @@ class AgentFactory:
             default_model: Default model name
             default_temperature: Default temperature for LLM
             verbose: Whether to show agent reasoning steps
+            enable_routing: Enable Phase 2 intelligent routing (cost-optimized model selection)
+            exclude_local: Exclude local Ollama models from routing (requires cloud APIs)
         """
         self.default_llm_provider = default_llm_provider
         self.default_model = default_model
         self.default_temperature = default_temperature
         self.verbose = verbose
+        self.enable_routing = enable_routing
+        self.exclude_local = exclude_local
+
+        # Phase 2: Initialize routing components
+        if enable_routing:
+            if not ROUTING_AVAILABLE:
+                raise ImportError(
+                    "Routing not available. Phase 1 LLM module may not be installed correctly."
+                )
+            self.usage_tracker = UsageTracker()
+        else:
+            self.usage_tracker = None
 
     def _create_llm(
         self,
         provider: Optional[str] = None,
         model: Optional[str] = None,
         temperature: Optional[float] = None,
+        capability: Optional[Any] = None,  # ModelCapability (Any for type compatibility)
         **kwargs
     ):
-        """Create LLM instance based on provider."""
+        """
+        Create LLM instance based on provider.
+
+        Phase 2: If routing enabled, returns RoutedChatModel for cost optimization.
+        Otherwise returns direct provider LLM (backward compatible).
+        """
         provider = provider or self.default_llm_provider
         model = model or self.default_model
         temperature = temperature if temperature is not None else self.default_temperature
 
+        # Phase 2: Use routed chat model if enabled
+        if self.enable_routing and ROUTING_AVAILABLE:
+            return create_routed_chat_model(
+                capability=capability or ModelCapability.MODERATE,
+                exclude_local=self.exclude_local,
+                track_costs=True,
+                explicit_model=model if model != self.default_model else None,
+                temperature=temperature,
+                **kwargs
+            )
+
+        # Legacy path: Direct provider LLM (backward compatible)
         if provider == self.LLM_OPENAI:
             return ChatOpenAI(
                 model=model,
@@ -97,6 +142,68 @@ class AgentFactory:
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
+    def _infer_capability(
+        self,
+        role: str,
+        tools_list: List[Union[BaseTool, Any]],
+        agent_type: str
+    ) -> Any:  # Returns ModelCapability
+        """
+        Infer appropriate capability level from agent role and tools.
+
+        Uses heuristics to determine task complexity:
+        - Role keywords (research, coding, simple, complex)
+        - Tool count (more tools = more complex)
+        - Agent type (structured_chat for conversations, react for coding)
+
+        Args:
+            role: Agent role string
+            tools_list: List of tools
+            agent_type: Agent type (react/structured_chat)
+
+        Returns:
+            ModelCapability enum value
+
+        Examples:
+            "Research Agent" + 8 tools → RESEARCH
+            "Coding Agent" + 10 tools → CODING
+            "Simple Task" + 2 tools → SIMPLE
+            "Complex Analysis" + 12 tools → COMPLEX
+        """
+        if not ROUTING_AVAILABLE:
+            return None
+
+        role_lower = role.lower()
+
+        # Explicit role-based detection (highest priority)
+        if any(kw in role_lower for kw in ['research', 'researcher', 'search', 'investigate']):
+            return ModelCapability.RESEARCH
+
+        if any(kw in role_lower for kw in ['cod', 'developer', 'programmer', 'engineer']):
+            return ModelCapability.CODING
+
+        if any(kw in role_lower for kw in ['simple', 'basic', 'quick', 'easy', 'trivial']):
+            return ModelCapability.SIMPLE
+
+        if any(kw in role_lower for kw in ['complex', 'advanced', 'sophisticated', 'expert']):
+            return ModelCapability.COMPLEX
+
+        # Tool count-based inference (fallback)
+        tool_count = len(tools_list) if tools_list else 0
+
+        if tool_count >= 8:
+            # Many tools suggest complex multi-step tasks
+            return ModelCapability.COMPLEX
+        elif tool_count >= 4:
+            # Moderate tool count for moderate complexity
+            return ModelCapability.MODERATE
+        elif tool_count >= 1:
+            # Few tools for simple tasks
+            return ModelCapability.SIMPLE
+        else:
+            # No tools? Default to moderate
+            return ModelCapability.MODERATE
+
     def create_agent(
         self,
         role: str,
@@ -110,6 +217,7 @@ class AgentFactory:
         memory_key: str = "chat_history",
         handle_parsing_errors: bool = True,
         response_schema: Optional[Type[BaseModel]] = None,
+        capability: Optional[Any] = None,  # ModelCapability for routing
         **kwargs
     ) -> AgentExecutor:
         """
@@ -127,6 +235,7 @@ class AgentFactory:
             memory_key: Key for storing chat history in memory
             handle_parsing_errors: Whether to gracefully handle LLM parsing errors
             response_schema: Optional Pydantic model for structured outputs
+            capability: ModelCapability for routing (auto-inferred if not specified)
             **kwargs: Additional arguments passed to AgentExecutor
 
         Returns:
@@ -143,11 +252,16 @@ class AgentFactory:
             ... )
             >>> response = agent.invoke({"input": "What is LangChain?"})
         """
-        # Create LLM
+        # Phase 2: Infer capability if routing enabled and not specified
+        if self.enable_routing and capability is None and ROUTING_AVAILABLE:
+            capability = self._infer_capability(role, tools_list, agent_type)
+
+        # Create LLM (with routing if enabled)
         llm = self._create_llm(
             provider=llm_provider,
             model=model,
-            temperature=temperature
+            temperature=temperature,
+            capability=capability
         )
 
         # Bind structured output schema if provided

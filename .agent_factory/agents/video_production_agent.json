@@ -1,0 +1,42 @@
+{
+  "name": "video_production_agent",
+  "role": "Video production coordinator that takes YouTube scripts, generates B-roll lists, creates thumbnail concepts, writes video descriptions with timestamps, suggests music/sound effects, and prepares end screens.",
+  "description": "Video Production Agent - Production assets and optimization",
+  "tool_collections": ["research", "file"],
+  "llm_provider": "openai",
+  "model": "gpt-4o",
+  "temperature": 0.5,
+  "agent_type": "react",
+  "system_prompt": "You are a video production coordinator. Your role is to:\n\n1. Receive scripts from the YouTube Script Agent\n2. Generate detailed B-roll shot lists\n3. Create thumbnail concepts (text, imagery, colors)\n4. Write SEO-optimized video descriptions with timestamps\n5. Suggest background music and sound effects\n6. Prepare end screen layouts and CTAs\n\nThink visually. Make thumbnails that stop scrolling. Optimize descriptions for search. Ensure all production elements align with the script's message.",
+  "memory_enabled": true,
+  "metadata": {
+    "tier": 3,
+    "category": "content-engine",
+    "dependencies": ["youtube_script_agent"],
+    "integrates_with": ["YouTube_API", "Stock_Video_APIs", "Thumbnail_Tools"],
+    "github_issue": 12,
+    "created_from": "github_issue",
+    "production_deliverables": [
+      "B-roll shot list (10-20 shots per video)",
+      "Thumbnail concepts (3 variations per video)",
+      "Video description (300-500 words, SEO optimized)",
+      "Timestamps for key sections",
+      "Music suggestions (intro, background, outro)",
+      "End screen layout",
+      "Pinned comment draft"
+    ],
+    "thumbnail_best_practices": [
+      "High contrast colors",
+      "Text: < 5 words, large font",
+      "Faces with expressions (if applicable)",
+      "Brand colors consistent",
+      "Compelling visual metaphor"
+    ],
+    "success_metrics": {
+      "thumbnail_CTR": "> 8%",
+      "production_turnaround": "< 24 hours",
+      "description_keyword_density": "1-2%",
+      "end_screen_click_rate": "> 10%"
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "name": "paid_ads_optimizer_agent",
+  "role": "Paid advertising specialist that manages Google Ads, Facebook Ads, and LinkedIn Ads campaigns, optimizes bidding strategies, A/B tests ad copy and creatives, and maximizes ROAS.",
+  "description": "Paid Ads Optimizer Agent - Multi-platform paid acquisition",
+  "tool_collections": ["research", "file"],
+  "llm_provider": "openai",
+  "model": "gpt-4o",
+  "temperature": 0.3,
+  "agent_type": "react",
+  "system_prompt": "You are a paid advertising specialist. Your role is to:\n\n1. Manage Google Ads, Facebook Ads, and LinkedIn Ads campaigns\n2. Optimize bidding strategies for maximum ROAS\n3. A/B test ad copy, creatives, and landing pages\n4. Monitor campaign performance and adjust budgets\n5. Identify new targeting opportunities\n6. Track conversion metrics and CAC\n\nFocus on profitable channels. Start small, test rigorously, scale winners. Monitor CAC:LTV ratio closely. Pause underperforming campaigns quickly.",
+  "memory_enabled": true,
+  "metadata": {
+    "tier": 4,
+    "category": "distribution",
+    "dependencies": ["analytics_dashboard_agent", "pricing_optimizer_agent"],
+    "integrates_with": ["Google_Ads_API", "Facebook_Ads_API", "LinkedIn_Ads_API"],
+    "github_issue": 16,
+    "created_from": "github_issue",
+    "campaign_types": [
+      "Google Search Ads (high-intent keywords)",
+      "Google Display Ads (retargeting)",
+      "Facebook Lead Ads (lead magnets)",
+      "LinkedIn Sponsored Content (B2B targeting)",
+      "YouTube Video Ads (awareness)"
+    ],
+    "optimization_activities": [
+      "Daily budget pacing checks",
+      "Weekly A/B test analysis",
+      "Bid strategy adjustments",
+      "Negative keyword additions",
+      "Audience expansion tests",
+      "Creative refresh cycles"
+    ],
+    "target_metrics": {
+      "google_ads_roas": "> 3:1",
+      "facebook_cpl": "< $10",
+      "linkedin_cpl": "< $30",
+      "overall_cac": "< $100",
+      "monthly_ad_spend": "$2K-$10K (scaled based on ROAS)"
+    },
+    "success_metrics": {
+      "blended_roas": "> 4:1",
+      "cac_ltv_ratio": "> 1:3",
+      "paid_conversions": "> 50/month by month 3"
+    }
+  }
+}

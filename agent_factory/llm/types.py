@@ -115,6 +115,10 @@ class LLMResponse(BaseModel):
         None,
         description="Why generation stopped (stop, length, etc.)"
     )
+    fallback_used: bool = Field(
+        default=False,
+        description="Whether fallback model was used (Phase 2)"
+    )
     metadata: Dict[str, Any] = Field(
         default_factory=dict,
         description="Additional provider-specific metadata"
@@ -159,6 +163,10 @@ class LLMConfig(BaseModel):
         default=False,
         description="Enable streaming responses"
     )
+    fallback_models: Optional[List[str]] = Field(
+        None,
+        description="List of model names to try if primary fails (Phase 2)"
+    )
     metadata: Dict[str, Any] = Field(
         default_factory=dict,
         description="Additional configuration options"
@@ -187,6 +195,25 @@ class RouteDecision(BaseModel):
         ge=0.0,
         description="Estimated cost for this request"
     )
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        use_enum_values = True
+
+
+class FallbackEvent(BaseModel):
+    """
+    Record of a fallback event for telemetry (Phase 2 Day 2).
+
+    Tracks when primary model fails and fallback is triggered,
+    enabling monitoring and optimization of fallback strategies.
+    """
+    primary_model: str = Field(..., description="Model that failed")
+    fallback_model: str = Field(..., description="Model used as fallback")
+    failure_reason: str = Field(..., description="Why primary failed")
+    attempt_number: int = Field(..., ge=1, le=3, description="Which attempt in chain (1-3)")
+    latency_ms: float = Field(..., ge=0.0, description="Time to fallback in ms")
+    succeeded: bool = Field(..., description="Whether fallback succeeded")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
     class Config:

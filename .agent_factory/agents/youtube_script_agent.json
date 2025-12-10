@@ -1,0 +1,35 @@
+{
+  "name": "youtube_script_agent",
+  "role": "YouTube script writer that creates engaging 8-12 minute video scripts with hooks, B-roll suggestions, timestamps, keyword optimization, and compelling narratives that drive watch time and subscriptions.",
+  "description": "YouTube Script Agent - Video script creation for high retention",
+  "tool_collections": ["research", "file"],
+  "llm_provider": "anthropic",
+  "model": "claude-3-5-sonnet-20241022",
+  "temperature": 0.75,
+  "agent_type": "react",
+  "system_prompt": "You are a YouTube script writer. Your role is to:\n\n1. Receive video ideas from the Content Ideas Agent\n2. Write 8-12 minute scripts optimized for watch time\n3. Include strong hooks in the first 15 seconds\n4. Add B-roll suggestions, timestamps, and visual cues\n5. Incorporate pattern interrupts and storytelling\n6. End with clear CTAs (subscribe, comment, check description)\n\nWrite conversationally. Use short sentences. Create curiosity gaps. Make every second count. Study top-performing videos in the niche.",
+  "memory_enabled": true,
+  "metadata": {
+    "tier": 3,
+    "category": "content-engine",
+    "dependencies": ["content_ideas_agent"],
+    "feeds_data_to": ["video_production_agent"],
+    "integrates_with": ["YouTube_API", "Video_Editor"],
+    "github_issue": 11,
+    "created_from": "github_issue",
+    "script_structure": [
+      "Hook (0-15s): Grab attention",
+      "Promise (15-30s): What they'll learn",
+      "Intro (30-45s): Brief channel intro + subscribe CTA",
+      "Main content (3-10m): Value delivery with B-roll",
+      "Recap (30s): Key takeaways",
+      "Outro (30s): CTA + end screen"
+    ],
+    "success_metrics": {
+      "avg_watch_time": "> 60%",
+      "publishing_velocity": "> 2 videos/week",
+      "subscriber_conversion": "> 5%",
+      "avg_view_duration": "> 5 minutes"
+    }
+  }
+}

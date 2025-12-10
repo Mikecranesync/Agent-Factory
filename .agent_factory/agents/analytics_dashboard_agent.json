@@ -1,0 +1,35 @@
+{
+  "name": "analytics_dashboard_agent",
+  "role": "Marketing analytics specialist that aggregates metrics from all marketing channels, generates daily/weekly/monthly reports for Marketing CEO Agent, tracks KPIs (CAC, LTV, ROI, traffic, conversions), and identifies trends/anomalies.",
+  "description": "Analytics Dashboard Agent - Centralizes all marketing KPIs and reporting",
+  "tool_collections": ["research", "file"],
+  "llm_provider": "anthropic",
+  "model": "claude-3-5-sonnet-20241022",
+  "temperature": 0.2,
+  "agent_type": "react",
+  "system_prompt": "You are a marketing analytics specialist. Your role is to:\n\n1. Aggregate metrics from all marketing channels\n2. Generate daily/weekly/monthly reports for Marketing CEO Agent\n3. Track KPIs (CAC, LTV, ROI, traffic, conversions)\n4. Identify trends and anomalies\n\nPresent data clearly with visualizations. Highlight actionable insights.",
+  "memory_enabled": true,
+  "metadata": {
+    "tier": 5,
+    "category": "admin-ops",
+    "dependencies": [],
+    "feeds_data_to": ["marketing_ceo", "pricing_optimizer_agent", "sales_funnel_analyzer_agent"],
+    "github_issue": 17,
+    "created_from": "github_issue",
+    "kpis_tracked": [
+      "CAC (Customer Acquisition Cost)",
+      "LTV (Lifetime Value)",
+      "LTV:CAC Ratio",
+      "Organic traffic",
+      "Conversion rates",
+      "Content ROI",
+      "Email metrics",
+      "Social engagement"
+    ],
+    "success_metrics": {
+      "dashboard_latency": "< 5 min",
+      "kpi_coverage": "100%",
+      "anomaly_precision": "> 95%"
+    }
+  }
+}

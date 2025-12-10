@@ -6,6 +6,331 @@ Agent Factory - a framework for building multi-agent AI systems. Part of a large
 
 **You are building the engine that turns blueprints into working agents.**
 
+**But it's bigger than that:** This engine powers RIVET (industrial maintenance platform) → which generates knowledge → which becomes the standard → which robots license → which creates perpetual income. See `MASTER_ROADMAP.md` for the full vision (Weeks → Years → Decades).
+
+---
+
+## The Meta Structure: Agent Factory → RIVET
+
+Agent Factory is the engine. **RIVET** is the product it powers.
+
+### The Full System (3 Layers)
+
+**Layer 1: Knowledge Factory**
+- Scrapers that harvest industrial maintenance data (Reddit, Stack Overflow, PDFs, forums, YouTube)
+- Validators that verify accuracy against official documentation
+- Vector database (Pinecone) storing validated "Knowledge Atoms"
+- Ensures data integrity via 6-stage validation pipeline
+
+**Layer 2: Agent Orchestration (← YOU ARE HERE)**
+- Agent Factory builds and manages these agents
+- Agents route queries, generate responses, publish content, flag for human help
+- This is what you're building right now
+
+**Layer 3: Distribution & Monetization**
+- Social media distribution (YouTube, TikTok, Reddit, Twitter/X, LinkedIn)
+- Premium troubleshooting calls ($50-100/hour)
+- B2B integrations (CMMS vendors like ServiceTitan, MaintainX)
+- Data licensing (clean industrial datasets)
+
+### What is RIVET?
+
+RIVET is an industrial maintenance AI platform that:
+- Answers technician questions with validated, sourced solutions
+- Distributes knowledge via social media (YouTube, Reddit, TikTok)
+- Escalates complex issues to human experts
+- Integrates into CMMS platforms for B2B revenue
+
+**The Core Insight:** Build a brand + community + distribution network that technicians discover organically, trust immediately, and evangelize to peers.
+
+### Agents Agent Factory Must Build for RIVET
+
+These are the production agents you're building the framework to support:
+
+1. **RedditMonitor-v1.0** - Finds unanswered technical questions (runs every 2 hours)
+2. **KnowledgeAnswerer-v1.0** - Generates confidence-ranked answers with citations
+3. **RedditResponder-v1.0** - Posts comments to Reddit (with human approval)
+4. **YouTubePublisher-v1.0** - Creates 3-5 minute faceless videos from solved problems
+5. **SocialAmplifier-v1.0** - Distributes content across TikTok, Instagram, Twitter, LinkedIn
+6. **HumanFlagger-v1.0** - Escalates to human expert when needed (10min SLA)
+
+### Why This Matters for Your Work
+
+**Phase 1 (Orchestration)** enables these agents to work together:
+- One agent monitors Reddit → routes to answerer → routes to responder
+- Answerer queries Knowledge Factory → generates response → flags human if confidence <0.9
+- YouTubePublisher receives solved problem → generates video → triggers SocialAmplifier
+
+**The Knowledge Atom Standard** is the data contract:
+- Every scraper outputs atoms in same format (JSON-LD 1.1 + JSON Schema + Schema.org)
+- Every atom passes validation pipeline
+- Agents consume/produce Knowledge Atoms
+- See: `knowledge-atom-standard-v1.0.md` for full spec
+
+### RIVET Timeline
+
+- **Month 1:** Knowledge Factory foundation (1k atoms indexed)
+- **Month 2:** First agent channel (Reddit monitoring + manual approval)
+- **Month 3:** Content generation (YouTube channel launch)
+- **Month 4:** Multi-platform distribution
+- **Month 5:** Human-in-the-loop escalation (premium calls)
+- **Month 6:** B2B outreach (CMMS integrations)
+
+**Year 1 Target:** $80k revenue, proof of concept
+**Year 3 Target:** $2.5M revenue, sustainable business
+**Year 5 Vision:** $10-50M ARR, 1M+ users, community of 50+ technician experts
+
+### The Data is the Moat
+
+RIVET's competitive advantage isn't the code—it's the validated knowledge base.
+- Competitors can copy tools
+- They can't replicate 100k+ validated Knowledge Atoms
+- You own the knowledge, the distribution, and the community
+
+**Your role:** Build the agent orchestration layer that turns this knowledge into automated responses at scale.
+
+---
+
+## The PLC Vertical (Parallel Track)
+
+Agent Factory powers **TWO verticals** simultaneously:
+1. **RIVET** - Industrial Maintenance (described above)
+2. **PLC Tutor** - PLC Programming Education + Automation (NEW)
+
+### What is PLC Tutor?
+
+PLC Tutor is an AI-powered platform that teaches PLC programming AND evolves into an autonomous PLC coding assistant.
+
+**For Learners:**
+- Interactive AI tutor for Allen-Bradley & Siemens PLC programming
+- Works with real hardware (or simulation)
+- Backed by PLC knowledge atoms (no hallucinations)
+- Progresses from basics → advanced → autonomous coding
+
+**For Professionals:**
+- Autonomous PLC programmer (spec → verified code)
+- Uses computer-use to drive Studio 5000 / TIA Portal / CODESYS
+- Proposes ladder/ST code, runs verification loops
+- Human-in-loop for production deployments
+
+**For Organizations:**
+- White-label PLC tutor for trade schools, OEMs
+- Pre-built curriculum with exercises
+- B2B training programs
+
+### Why PLC Tutor Matters
+
+**1. Validates Multi-Vertical Platform:**
+- Proves Agent Factory works across domains
+- Same Knowledge Atom Standard, different vertical
+- Same DAAS monetization pattern
+
+**2. Faster Monetization:**
+- Month 4: First paid subscribers ($29-$99/mo)
+- Month 6: B2B training contracts ($10K-$20K/org)
+- Year 1: ~$35K ARR (proof of concept)
+- Year 3: ~$2.5M ARR (same as RIVET target)
+
+**3. Different GTM Strategy:**
+- RIVET = community-driven (Reddit, forums)
+- PLC Tutor = education-driven (YouTube courses)
+- Validates multiple acquisition channels
+
+**4. Cross-Selling:**
+- PLC programmers ALSO do industrial maintenance
+- RIVET users may need PLC training
+- Bundle pricing potential
+
+### PLC Agents Agent Factory Must Build (18 Total)
+
+**Executive Team (2 agents):**
+1. **AICEOAgent** - Strategy, metrics, KPIs, resource allocation
+2. **AIChiefOfStaffAgent** - Project management, issue tracking, orchestration
+
+**Research & Knowledge Base Team (4 agents):**
+3. **ResearchAgent** - Web scraping, YouTube transcripts, PDF processing (Issue #47)
+4. **AtomBuilderAgent** - Convert raw data → structured atoms (Pydantic models)
+5. **AtomLibrarianAgent** - Organize atoms, build prerequisite chains, detect gaps
+6. **QualityCheckerAgent** - Validate accuracy, safety compliance, citation integrity
+
+**Content Production Team (5 agents):**
+7. **MasterCurriculumAgent** - A-to-Z roadmap, learning paths, sequencing
+8. **ContentStrategyAgent** - Keyword research, topic selection, SEO optimization
+9. **ScriptwriterAgent** - Transform atoms → engaging video scripts (Issue #48)
+10. **SEOAgent** - Optimize metadata (titles, descriptions, tags)
+11. **ThumbnailAgent** - Generate eye-catching thumbnails, A/B testing
+
+**Media & Publishing Team (4 agents):**
+12. **VoiceProductionAgent** - ElevenLabs voice clone, narration generation
+13. **VideoAssemblyAgent** - Sync audio + visuals, render final video
+14. **PublishingStrategyAgent** - Schedule uploads, optimal timing, playlists
+15. **YouTubeUploaderAgent** - Execute uploads, set metadata, handle errors
+
+**Engagement & Analytics Team (3 agents):**
+16. **CommunityAgent** - Respond to comments, moderate, engage viewers
+17. **AnalyticsAgent** - Track metrics, detect trends, generate insights
+18. **SocialAmplifierAgent** - Extract clips, post to TikTok/Instagram/LinkedIn
+
+**See:** `docs/AGENT_ORGANIZATION.md` for complete specifications (responsibilities, tools, success metrics)
+
+### The PLC Knowledge Atom Standard
+
+**PLC Atom Types:**
+- `concept`: What is a PLC, digital I/O, scan cycle
+- `pattern`: Start/stop/seal-in motor, timer patterns
+- `fault`: Common error codes, diagnostic procedures
+- `procedure`: Step-by-step troubleshooting, setup wizards
+
+**Example PLC Pattern Atom:**
+```json
+{
+  "atom_id": "plc:ab:motor-start-stop-seal",
+  "type": "pattern",
+  "vendor": "allen_bradley",
+  "platform": "control_logix",
+  "title": "3-Wire Motor Start/Stop/Seal-In",
+  "summary": "Basic motor control with maintained contact seal-in",
+  "inputs": [
+    {"tag": "Start_PB", "type": "NO_contact", "address": "I:0/0"},
+    {"tag": "Stop_PB", "type": "NC_contact", "address": "I:0/1"},
+    {"tag": "Motor_Run", "type": "auxiliary_contact", "address": "O:0/0"}
+  ],
+  "outputs": [
+    {"tag": "Motor_Contactor", "type": "coil", "address": "O:0/0"}
+  ],
+  "logic_description": "Parallel seal-in circuit with stop button in series",
+  "steps": [
+    "Press Start_PB → Motor_Contactor energizes",
+    "Motor_Run auxiliary contact seals in",
+    "Release Start_PB → Motor stays running (sealed)",
+    "Press Stop_PB → Motor_Contactor de-energizes"
+  ],
+  "constraints": [
+    "Stop button must be NC for fail-safe operation",
+    "Seal-in contact must be sized for coil current",
+    "Requires overload protection (not shown in logic)"
+  ],
+  "difficulty": "beginner",
+  "prereqs": ["plc:generic:io-basics", "plc:generic:ladder-fundamentals"],
+  "source": "AB ControlLogix Programming Manual Chapter 3",
+  "last_reviewed_at": "2025-12-09",
+  "safety_level": "info"
+}
+```
+
+### PLC Tutor Timeline
+
+**Month 2:** Knowledge base ingestion (50-100 atoms from manuals + YouTube)
+**Month 3:** PLC Tutor v0.1 (Lessons 1-5 functional)
+**Month 4:** YouTube series launch + first paid subscribers
+**Month 6:** Autonomous PLC coder prototype
+**Month 12:** Full multi-platform tutor (Siemens + Allen-Bradley)
+
+**Year 1 Target:** $35K ARR (50 subscribers + courses)
+**Year 3 Target:** $2.5M ARR (sustainable business)
+
+### Strategy: Same Infrastructure, Different Domain
+
+```
+Layer 1: Agent Factory (powers both)
+    ↓
+Layer 2: Knowledge Atom Standard
+    ├── Industrial Maintenance Atoms (RIVET)
+    └── PLC Programming Atoms (PLC Tutor)
+    ↓
+Layer 3: Multi-Vertical Products
+    ├── RIVET ($2.5M ARR)
+    └── PLC Tutor ($2.5M ARR)
+    ↓
+Layer 4: DAAS (sell both knowledge bases)
+    ↓
+Layer 5: Robot Licensing (both are robot-ready)
+```
+
+---
+
+## The YouTube-Wiki Strategy (CRITICAL)
+
+**"YouTube IS the knowledge base"**
+
+Instead of scraping first then creating content, we **build the knowledge base BY creating original educational content**.
+
+### Why This Changes Everything
+
+1. **Zero Copyright Issues** - Original content = you own 100% of rights, immediate monetization
+2. **Learning-by-Teaching** - You retain 90% of what you teach vs 10% of what you read
+3. **Voice Clone = 24/7 Production** - ElevenLabs voice clone enables autonomous content creation
+4. **Multi-Use Content** - One video → knowledge atom → blog post → social clips → course module
+
+### The YouTube-Wiki Pipeline
+
+```
+YOU learn concept → Research Agent compiles sources
+    ↓
+Scriptwriter Agent drafts teaching script
+    ↓
+Voice Production Agent generates narration (your voice clone)
+    ↓
+Video Assembly Agent combines audio + visuals
+    ↓
+YouTube Uploader Agent publishes
+    ↓
+Atom Builder Agent extracts knowledge atom from video
+    ↓
+Social Amplifier Agent creates clips for TikTok/Instagram
+```
+
+### Key Principles
+
+- **Videos 1-20:** YOU approve every one (set quality standard)
+- **Videos 21-50:** YOU sample every 3rd (quality gates)
+- **Videos 51+:** Agents autonomous (exception flagging only)
+- **Content Roadmap:** 100+ videos pre-planned (A-to-Z curriculum)
+- **Voice Training:** 10-15 min samples → ElevenLabs Pro → natural-sounding narration
+- **SEO-First:** Every video targets low-competition, high-volume keywords
+
+### Success Metrics
+
+- **Week 4:** 3 videos live, voice clone validated
+- **Week 12:** 30 videos, 1K subs, $500 revenue, agents 80% autonomous
+- **Month 12:** 100 videos, 20K subs, $5K/mo revenue, fully autonomous
+
+**See:** `docs/YOUTUBE_WIKI_STRATEGY.md` for complete details.
+
+---
+
+### PLC Implementation References
+
+**Complete Strategy Suite (Updated Dec 2025):**
+- **Master Strategy:** `docs/TRIUNE_STRATEGY.md` - Complete integration (RIVET + PLC Tutor + Agent Factory), 18-agent system, revenue models
+- **YouTube-Wiki Approach:** `docs/YOUTUBE_WIKI_STRATEGY.md` - Build knowledge BY teaching (original content, voice clone, 24/7 production)
+- **18-Agent System:** `docs/AGENT_ORGANIZATION.md` - Complete specs for all autonomous agents (Executive, Research, Content, Media, Engagement)
+- **Implementation Plan:** `docs/IMPLEMENTATION_ROADMAP.md` - Week-by-week roadmap (Week 1-12, then Month 4-12)
+- **Content A-to-Z:** `plc/content/CONTENT_ROADMAP_AtoZ.md` - 100+ video topics sequenced (electricity → AI automation)
+- **Universal Atom Spec:** `docs/ATOM_SPEC_UNIVERSAL.md` - IEEE LOM-based schema for all verticals
+- **Pydantic Models:** `core/models.py` - Production-ready schemas (LearningObject, PLCAtom, RIVETAtom, VideoScript, etc.)
+
+**Legacy/Research:**
+- `MASTER_ROADMAP.md` - Original 5-layer vision
+- `PLan_fullauto_plc.md` - Initial PLC implementation plan
+- `Computers, programming PLCs..md` - Market research + business insights
+
+### PLC Validation Commands
+
+```bash
+# Verify PLC atom schema
+poetry run python -c "from plc.atoms.pydantic_models import PLCAtom; print('PLC schema OK')"
+
+# Test PLC tutor agent
+poetry run python -c "from plc.agents.plc_tutor_agent import PLCTutorAgent; print('Tutor OK')"
+
+# Run PLC atom builder
+poetry run python plc/agents/plc_atom_builder_agent.py --source plc/sources/siemens/s7-1200/
+
+# Test with real hardware
+poetry run python examples/plc_tutor_demo.py --platform siemens --lesson 1
+```
+
 ---
 
 ## Current Focus
@@ -20,8 +345,17 @@ See `docs/PHASE1_SPEC.md` for implementation details.
 
 ## Execution Rules
 
+### Rule 0: Task Tracking (NEW)
+**Before starting ANY task:**
+1. **Check TASK.md** - See what's in progress and backlog
+2. **Update status** - Mark task as "In Progress" when you start
+3. **Mark complete** - Update status to "Completed" immediately after finishing
+4. **Add discovered work** - New tasks found during implementation go to "Discovered During Work" section
+
+**Pattern from context-engineering-intro (11.8k⭐)**
+
 ### Rule 1: One Thing at a Time
-Check `PROGRESS.md` for the current checkbox. Complete it. Validate it. Move to next.
+Check `TASK.md` for the current task. Complete it. Validate it. Move to next.
 
 ### Rule 2: Always Validate
 After ANY change, run:
@@ -123,15 +457,58 @@ See `docs/SECURITY_STANDARDS.md` for implementation patterns and checklists.
 ```
 agent_factory/
 +-- core/
-|   +-- agent_factory.py      # Main factory [EXISTS]
-|   +-- orchestrator.py       # Routing [PHASE 1]
-|   +-- callbacks.py          # Events [PHASE 1]
-+-- schemas/                   # [PHASE 2]
-+-- tools/                     # [EXISTS]
-+-- refs/                      # [PHASE 5]
+|   +-- agent_factory.py        # Main factory [EXISTS]
+|   +-- settings_service.py     # Runtime config [NEW - Dec 2025]
+|   +-- orchestrator.py         # Routing [PHASE 1]
+|   +-- callbacks.py            # Events [PHASE 1]
++-- memory/
+|   +-- storage.py              # Supabase storage [EXISTS]
+|   +-- history.py              # Message history [EXISTS]
+|   +-- hybrid_search.py        # Hybrid search [PLANNED]
++-- schemas/                     # [PHASE 2]
++-- tools/                       # [EXISTS]
++-- refs/                        # [PHASE 5]
 ```
 
 For full architecture, see `docs/ARCHITECTURE.md`.
+
+---
+
+## Settings Service (Production Pattern from Archon 13.4k⭐)
+
+**Database-backed configuration with environment fallback**
+
+```python
+from agent_factory.core.settings_service import settings
+
+# Get string settings
+model = settings.get("DEFAULT_MODEL", category="llm")
+
+# Get typed settings
+batch_size = settings.get_int("BATCH_SIZE", default=50, category="memory")
+use_hybrid = settings.get_bool("USE_HYBRID_SEARCH", category="memory")
+temperature = settings.get_float("DEFAULT_TEMPERATURE", default=0.7, category="llm")
+
+# Set values programmatically (if database available)
+settings.set("DEBUG_MODE", "true", category="general")
+
+# Reload from database (picks up runtime changes)
+settings.reload()
+```
+
+**Key Benefits:**
+- No code changes needed for configuration
+- No service restarts required
+- Environment variable fallback (works without database)
+- Category-based organization (llm, memory, orchestration)
+- 5-minute cache with auto-reload
+
+**Setup:**
+1. Run SQL migration: `docs/supabase_migrations.sql` in Supabase SQL Editor
+2. Settings automatically load on first import
+3. Use in your code - falls back to .env if database unavailable
+
+**See:** `examples/settings_demo.py` for complete usage examples
 
 ---
 
@@ -139,6 +516,11 @@ For full architecture, see `docs/ARCHITECTURE.md`.
 
 | Document | Purpose | When to Read |
 |----------|---------|--------------|
+| `TASK.md` | **Active task tracking** | **Every session start** |
+| `MASTER_ROADMAP.md` | **Complete vision: Weeks → Years → Decades** | **Understanding the full strategy** |
+| `docs/cole_medin_patterns.md` | Production patterns from Archon (13.4k⭐) | Building RAG/memory features |
+| `docs/archon_architecture_analysis.md` | Microservices architecture deep dive | Understanding Supabase + pgvector |
+| `docs/integration_recommendations.md` | Prioritized roadmap for Agent Factory | Planning next features |
 | `PROGRESS.md` | Current checklist | Every task |
 | `docs/GIT_WORKTREE_GUIDE.md` | Git worktree setup and usage | Before starting work |
 | `docs/SECURITY_STANDARDS.md` | Compliance patterns & checklists | Building any feature |
@@ -148,7 +530,11 @@ For full architecture, see `docs/ARCHITECTURE.md`.
 | `docs/ARCHITECTURE.md` | Full system design | Need big picture |
 | `docs/PATTERNS.md` | Google ADK patterns | Unsure how to structure something |
 | `docs/PRODUCTION.md` | Observability, evals, failover | Production readiness |
+| `docs/00_platform_roadmap.md` | CLI → SaaS platform transformation | Platform planning |
 | `CLAUDE_CODEBASE.md` | Existing code documentation | Need to understand current code |
+| `rivet-complete-summary.md` | RIVET platform details | Understanding end product |
+| `knowledge-atom-standard-v1.0.md` | Data schema specification | Building knowledge features |
+| `Futureproof.md` | Robot licensing strategy | Long-term vision context |
 
 ---
 
@@ -167,13 +553,19 @@ For full architecture, see `docs/ARCHITECTURE.md`.
 # 1. Import check (run after any change)
 poetry run python -c "from agent_factory.core.agent_factory import AgentFactory; print('OK')"
 
-# 2. Demo check (run after completing a feature)
+# 2. Settings Service check (verify database-backed config)
+poetry run python -c "from agent_factory.core.settings_service import settings; print(settings)"
+
+# 3. Demo check (run after completing a feature)
 poetry run python agent_factory/examples/demo.py
 
-# 3. Test check (run before marking phase complete)
+# 4. Settings demo (verify runtime config)
+poetry run python examples/settings_demo.py
+
+# 5. Test check (run before marking phase complete)
 poetry run pytest
 
-# 4. Orchestrator check (Phase 1 specific)
+# 6. Orchestrator check (Phase 1 specific)
 poetry run python -c "from agent_factory.core.orchestrator import AgentOrchestrator; print('OK')"
 ```
 
@@ -232,7 +624,12 @@ response = orchestrator.route("user query")
 
 Build agents that are "AI amazing to the customer" - reliable, fast, trustworthy.
 
-The human's apps: **Friday** (voice AI assistant), **Jarvis** (digital ecosystem manager).
+**The human's apps:**
+- **Friday** - Voice AI assistant (personal productivity)
+- **Jarvis** - Digital ecosystem manager (workflow automation)
+- **RIVET** - Industrial maintenance AI platform (community + knowledge + agents)
+
+All three rely on Agent Factory as their agent orchestration engine.
 
 ---
 

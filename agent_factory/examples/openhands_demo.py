@@ -43,6 +43,11 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
+
 from agent_factory.core.agent_factory import AgentFactory
 from agent_factory.workers.openhands_worker import OpenHandsResult
 

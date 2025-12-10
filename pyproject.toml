@@ -54,6 +54,13 @@ networkx = ">=3.2,<3.6"
 pygithub = "^2.1.1"
 pyyaml = "^6.0"
 litellm = "1.30.0"
+fastapi = "^0.124.0"
+uvicorn = {extras = ["standard"], version = "^0.38.0"}
+python-multipart = "^0.0.20"
+
+# Telegram bot integration
+python-telegram-bot = "^22.5"
+supabase = "^2.25.0"
 
 [tool.poetry.group.dev.dependencies]
 # Development tools
@@ -66,7 +73,21 @@ ruff = "^0.1.8"
 [tool.pyright]
 # https://github.com/microsoft/pyright/blob/main/docs/configuration.md
 useLibraryCodeForTypes = true
-exclude = [".cache", ".venv", "**/__pycache__"]
+exclude = [
+    ".cache",
+    ".venv",
+    "**/__pycache__",
+    "Agent-Factory",     # Removed duplicate directory
+    "crews",             # Generated YAML specs
+    "scripts",           # Shell scripts
+    "tests",             # Test files
+    ".pytest_cache",
+    "dist",
+    "build",
+    ".git",
+    ".githooks",
+    "drafts"
+]
 
 [tool.ruff]
 # https://beta.ruff.rs/docs/configuration/
@@ -82,8 +103,25 @@ target-version = ['py310']
 profile = "black"
 line_length = 100
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+]
+# Ignore removed duplicate directory and cache
+norecursedirs = ["Agent-Factory", ".git", ".venv", "__pycache__", ".pytest_cache", "drafts"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+]
+
 [tool.poetry.scripts]
-agentcli = "agent_factory.cli:app"
+agentcli = "agentcli:main"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

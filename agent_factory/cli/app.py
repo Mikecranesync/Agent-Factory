@@ -18,6 +18,7 @@ from .agent_presets import (
     list_available_agents,
     get_agent_description
 )
+from .commands.build_command import build as build_agent
 
 # Load environment variables
 load_dotenv()

@@ -76,3 +76,14 @@ langchain-crash-course-temp/
 # Wizard drafts
 drafts/
 Agent-Factory/
+
+# Git worktrees (created in parent directory to avoid conflicts)
+# Pattern: ../agent-factory-*/ for worktrees created alongside main dir
+../*agent-factory*/
+../agent-factory-*/
+
+# Worktree metadata (git manages these, but exclude from view)
+.git/worktrees/
+
+# Claude Code local settings (contains API keys)
+.claude/settings.local.json
