@@ -86,8 +86,8 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("reset", handlers.reset_handler))
 
         # GitHub automation commands
-        self.app.add_handler(CommandHandler("solve-issue", github_handlers.solve_issue_handler))
-        self.app.add_handler(CommandHandler("list-issues", github_handlers.list_issues_handler))
+        self.app.add_handler(CommandHandler("solveissue", github_handlers.solve_issue_handler))
+        self.app.add_handler(CommandHandler("listissues", github_handlers.list_issues_handler))
 
         # Callback handler (inline buttons)
         self.app.add_handler(CallbackQueryHandler(self._unified_callback_handler))
