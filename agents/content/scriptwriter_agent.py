@@ -15,7 +15,7 @@ Based on: docs/AGENT_ORGANIZATION.md Section 4
 import os
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from agent_factory.memory.storage import SupabaseMemoryStorage
 
@@ -108,63 +108,362 @@ class ScriptwriterAgent:
         except Exception as e:
             logger.error(f"Failed to update status: {e}")
 
+    def query_atoms(self, topic: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Query Supabase for relevant atoms by topic using keyword search.
+
+        Args:
+            topic: Topic keyword to search for in atom titles/content
+            limit: Maximum number of atoms to return (default: 5)
+
+        Returns:
+            List of atom dictionaries from Supabase
+
+        Example:
+            >>> agent = ScriptwriterAgent()
+            >>> atoms = agent.query_atoms("motor control", limit=3)
+            >>> print(len(atoms))
+            3
+        """
+        try:
+            # Simple keyword search (no vector search needed for MVP)
+            # Search in title, summary, content, and keywords fields
+            result = self.storage.client.table('knowledge_atoms') \
+                .select('*') \
+                .or_(f'title.ilike.%{topic}%,summary.ilike.%{topic}%,content.ilike.%{topic}%') \
+                .limit(limit) \
+                .execute()
+
+            logger.info(f"Query '{topic}' returned {len(result.data)} atoms")
+            return result.data
+
+        except Exception as e:
+            logger.error(f"Failed to query atoms for topic '{topic}': {e}")
+            return []
+
+    def generate_script(self, topic: str, atoms: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Generate video script from knowledge atoms using templates.
+
+        Args:
+            topic: Video topic/title
+            atoms: List of atoms retrieved from query_atoms()
+
+        Returns:
+            Dictionary with script structure:
+            {
+                'title': str,
+                'hook': str,
+                'intro': str,
+                'sections': List[Dict],
+                'summary': str,
+                'cta': str,
+                'citations': List[str],
+                'word_count': int
+            }
+
+        Example:
+            >>> atoms = agent.query_atoms("PLC basics")
+            >>> script = agent.generate_script("Introduction to PLCs", atoms)
+            >>> print(script['word_count'])
+            450
+        """
+        if not atoms:
+            raise ValueError("No atoms provided for script generation")
+
+        # Extract key information from atoms
+        primary_atom = atoms[0]
+        supporting_atoms = atoms[1:] if len(atoms) > 1 else []
+
+        # Generate hook (first 10 seconds - grab attention)
+        hook = self._generate_hook(topic, primary_atom)
+
+        # Generate intro (establish credibility)
+        intro = self._generate_intro(topic, primary_atom)
+
+        # Generate main content sections
+        sections = self._generate_sections(primary_atom, supporting_atoms)
+
+        # Generate summary/recap
+        summary = self._generate_summary(topic, primary_atom)
+
+        # Generate call-to-action
+        cta = self._generate_cta()
+
+        # Collect citations
+        citations = self._extract_citations(atoms)
+
+        # Combine all parts
+        full_script = f"{hook}\n\n{intro}\n\n"
+        for section in sections:
+            full_script += f"{section['content']}\n\n"
+        full_script += f"{summary}\n\n{cta}"
+
+        # Calculate word count
+        word_count = len(full_script.split())
+
+        return {
+            'title': topic,
+            'hook': hook,
+            'intro': intro,
+            'sections': sections,
+            'summary': summary,
+            'cta': cta,
+            'citations': citations,
+            'full_script': full_script,
+            'word_count': word_count,
+            'estimated_duration_seconds': word_count // 2.5  # ~150 words/minute
+        }
+
+    def _generate_hook(self, topic: str, atom: Dict[str, Any]) -> str:
+        """Generate attention-grabbing hook (first 10 seconds)"""
+        difficulty = atom.get('difficulty', 'beginner')
+
+        if difficulty == 'beginner':
+            return f"Ever wondered how {topic.lower()} works? Let me break it down in simple terms."
+        elif difficulty == 'intermediate':
+            return f"Ready to level up your {topic.lower()} skills? Here's what you need to know."
+        else:
+            return f"Let's dive deep into {topic.lower()}. This is advanced stuff, so pay attention."
+
+    def _generate_intro(self, topic: str, atom: Dict[str, Any]) -> str:
+        """Generate intro with credibility and context"""
+        manufacturer = atom.get('manufacturer', '').replace('_', ' ').title()
+        atom_type = atom.get('atom_type', 'concept')
+
+        intro = f"Today we're covering {topic}. "
+
+        if manufacturer:
+            intro += f"This is based on official {manufacturer} documentation, "
+        else:
+            intro += f"This is based on industry-standard documentation, "
+
+        intro += f"so you're getting accurate, reliable information. "
+
+        if atom_type == 'procedure':
+            intro += "I'll walk you through the exact steps you need to follow."
+        elif atom_type == 'concept':
+            intro += "I'll explain the core concepts and how they work."
+        elif atom_type == 'pattern':
+            intro += "I'll show you the pattern and when to use it."
+        else:
+            intro += "Let's get started."
+
+        return intro
+
+    def _generate_sections(self, primary_atom: Dict[str, Any], supporting_atoms: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Generate main content sections from atoms"""
+        sections = []
+
+        # Primary section from main atom
+        primary_section = {
+            'title': primary_atom.get('title', 'Main Content'),
+            'content': self._format_atom_content(primary_atom),
+            'source': primary_atom.get('source_document', 'Official documentation')
+        }
+        sections.append(primary_section)
+
+        # Supporting sections
+        for atom in supporting_atoms[:2]:  # Max 2 supporting atoms to keep video concise
+            section = {
+                'title': atom.get('title', 'Additional Information'),
+                'content': self._format_atom_content(atom),
+                'source': atom.get('source_document', 'Official documentation')
+            }
+            sections.append(section)
+
+        return sections
+
+    def _format_atom_content(self, atom: Dict[str, Any]) -> str:
+        """Format atom content for narration"""
+        content = atom.get('content', atom.get('summary', ''))
+
+        # Clean up content for narration
+        # Remove excessive newlines
+        content = ' '.join(content.split())
+
+        # Limit length for video (max 200 words per section)
+        words = content.split()
+        if len(words) > 200:
+            content = ' '.join(words[:200]) + '...'
+
+        return content
+
+    def _generate_summary(self, topic: str, atom: Dict[str, Any]) -> str:
+        """Generate recap/summary"""
+        summary = f"So to recap: {topic} is "
+
+        # Use atom summary as base
+        atom_summary = atom.get('summary', '')
+        if atom_summary:
+            # Take first sentence
+            first_sentence = atom_summary.split('.')[0] + '.'
+            summary += first_sentence.lower()
+
+        summary += " Remember, this information comes from official documentation, "
+        summary += "so you can trust it's accurate and up-to-date."
+
+        return summary
+
+    def _generate_cta(self) -> str:
+        """Generate call-to-action"""
+        return ("If you found this helpful, hit that like button and subscribe for more PLC tutorials. "
+                "Drop a comment if you have questions - I read every single one. "
+                "See you in the next video!")
+
+    def _extract_citations(self, atoms: List[Dict[str, Any]]) -> List[str]:
+        """Extract source citations from atoms"""
+        citations = []
+        for atom in atoms:
+            source_doc = atom.get('source_document', '')
+            source_pages = atom.get('source_pages', [])
+
+            if source_doc:
+                citation = source_doc
+                if source_pages:
+                    citation += f" (pages {', '.join(map(str, source_pages))})"
+                citations.append(citation)
+
+        return list(set(citations))  # Remove duplicates
 
     def transform_atom_to_script(self, *args, **kwargs):
         """
-        Transform atom content into narration
+        [DEPRECATED] Use generate_script() instead.
 
-        TODO: Implement transform_atom_to_script logic
+        This method is kept for backwards compatibility.
+        """
+        raise NotImplementedError("Use generate_script() instead of transform_atom_to_script")
+
+    def add_personality_markers(self, script: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Add personality markers for voice production guidance.
+
+        Markers guide voice tone/emotion:
+        - [enthusiastic] - excited, energetic delivery
+        - [cautionary] - careful, warning tone
+        - [explanatory] - clear, teaching tone
+        - [emphasize] - stress this point
+        - [pause] - brief pause for effect
 
         Args:
-            *args: Method arguments
-            **kwargs: Method keyword arguments
+            script: Script dictionary from generate_script()
 
         Returns:
-            TODO: Define return type
+            Updated script with personality markers added to text
 
-        Raises:
-            NotImplementedError: Not yet implemented
+        Example:
+            >>> script = agent.generate_script("PLC Basics", atoms)
+            >>> marked_script = agent.add_personality_markers(script)
+            >>> print(marked_script['hook'])
+            '[enthusiastic] Ever wondered how plcs work? [pause] Let me break it down!'
         """
-        # TODO: Implement transform_atom_to_script
-        raise NotImplementedError("transform_atom_to_script not yet implemented")
+        # Add markers to hook (always enthusiastic)
+        script['hook'] = f"[enthusiastic] {script['hook']}"
 
-    def add_personality_markers(self, *args, **kwargs):
+        # Add markers to intro (explanatory tone)
+        script['intro'] = f"[explanatory] {script['intro']}"
+
+        # Add markers to sections based on content
+        for section in script['sections']:
+            content = section['content']
+
+            # Add cautionary markers for warning/error content
+            if any(word in content.lower() for word in ['warning', 'error', 'fault', 'danger', 'caution']):
+                content = f"[cautionary] {content}"
+
+            # Add emphasize markers for important points
+            if any(word in content.lower() for word in ['important', 'critical', 'must', 'required']):
+                content = content.replace('important', '[emphasize] important')
+                content = content.replace('Important', '[emphasize] Important')
+                content = content.replace('critical', '[emphasize] critical')
+                content = content.replace('Critical', '[emphasize] Critical')
+
+            # Add pause after key phrases
+            content = content.replace('. ', '. [pause] ')
+
+            section['content'] = content
+
+        # Add markers to summary (reflective, calm)
+        script['summary'] = f"[explanatory] {script['summary']}"
+
+        # Add markers to CTA (enthusiastic, encouraging)
+        script['cta'] = f"[enthusiastic] {script['cta']}"
+
+        # Rebuild full_script with markers
+        full_script = f"{script['hook']}\n\n{script['intro']}\n\n"
+        for section in script['sections']:
+            full_script += f"{section['content']}\n\n"
+        full_script += f"{script['summary']}\n\n{script['cta']}"
+
+        script['full_script'] = full_script
+
+        return script
+
+    def add_visual_cues(self, script: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Add personality markers ([enthusiastic], [cautionary])
+        Add visual cues for video production guidance.
 
-        TODO: Implement add_personality_markers logic
+        Cues guide visual elements:
+        - [show title: TEXT] - Display title card
+        - [show diagram: DESC] - Display diagram/image
+        - [highlight: TEXT] - Highlight specific text
+        - [show code: LANG] - Display code snippet
+        - [show table] - Display table/data
 
         Args:
-            *args: Method arguments
-            **kwargs: Method keyword arguments
+            script: Script dictionary from generate_script()
 
         Returns:
-            TODO: Define return type
+            Updated script with visual cues added
 
-        Raises:
-            NotImplementedError: Not yet implemented
+        Example:
+            >>> script = agent.generate_script("PLC Basics", atoms)
+            >>> visual_script = agent.add_visual_cues(script)
         """
-        # TODO: Implement add_personality_markers
-        raise NotImplementedError("add_personality_markers not yet implemented")
+        # Add title card cue at beginning
+        script['hook'] = f"[show title: {script['title']}] {script['hook']}"
+
+        # Add visual cues based on content type
+        for section in script['sections']:
+            content = section['content']
+            atom_type = section.get('type', '')
+
+            # Add diagram cue for concepts
+            if 'diagram' in content.lower() or 'figure' in content.lower():
+                content = f"[show diagram: {section['title']}] {content}"
+
+            # Add code cue for programming content
+            if any(word in content.lower() for word in ['code', 'programming', 'ladder', 'function']):
+                content = f"[show code: ladder_logic] {content}"
+
+            # Add table cue for specifications
+            if 'table' in content.lower() or atom_type == 'specification':
+                content = f"[show table] {content}"
+
+            # Add citation visual at end of section
+            source = section.get('source', '')
+            if source:
+                content += f" [show citation: {source}]"
+
+            section['content'] = content
+
+        # Rebuild full_script with visual cues
+        full_script = f"{script['hook']}\n\n{script['intro']}\n\n"
+        for section in script['sections']:
+            full_script += f"{section['content']}\n\n"
+        full_script += f"{script['summary']}\n\n{script['cta']}"
+
+        script['full_script'] = full_script
+
+        return script
 
     def include_visual_cues(self, *args, **kwargs):
         """
-        Include visual cues (show diagram, highlight code)
+        [DEPRECATED] Use add_visual_cues() instead.
 
-        TODO: Implement include_visual_cues logic
-
-        Args:
-            *args: Method arguments
-            **kwargs: Method keyword arguments
-
-        Returns:
-            TODO: Define return type
-
-        Raises:
-            NotImplementedError: Not yet implemented
+        This method is kept for backwards compatibility.
         """
-        # TODO: Implement include_visual_cues
-        raise NotImplementedError("include_visual_cues not yet implemented")
+        raise NotImplementedError("Use add_visual_cues() instead of include_visual_cues")
 
     def cite_sources(self, *args, **kwargs):
         """
