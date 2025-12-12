@@ -1,0 +1,11 @@
+======================================================================
+Traceback (most recent call last):
+  File "C:\Users\hharp\OneDrive\Desktop\Agent Factory\scripts\upload_atoms_to_supabase.py", line 201, in <module>
+    success = main()
+              ^^^^^^
+  File "C:\Users\hharp\OneDrive\Desktop\Agent Factory\scripts\upload_atoms_to_supabase.py", line 156, in main
+    print("KNOWLEDGE ATOMS \u2192 SUPABASE UPLOAD")
+  File "C:\Program Files\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 16: character maps to <undefined>

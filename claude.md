@@ -652,6 +652,15 @@ Agent-Factory/
 +-- CLAUDE.md              # Meta doc (above) - Claude CLI reads this
 +-- PROGRESS.md            # Checklist - tracks what's done
 +-- CLAUDE_CODEBASE.md     # Existing - your current code docs
++-- Guides for Users/      # User-facing setup/deployment guides
+    +-- README.md          # Complete guide index
+    +-- QUICKSTART.md      # First-time setup (15 min)
+    +-- PRODUCTION_DEPLOYMENT.md  # Cloud deployment
+    +-- BOT_DEPLOYMENT_GUIDE.md   # Telegram bot deployment
+    +-- TELEGRAM_KB_INTEGRATION.md  # Knowledge base integration
+    +-- POETRY_GUIDE.md    # Dependency management
+    +-- OLLAMA_SETUP_COMPLETE.md  # FREE LLM setup
+    +-- *.md               # Other user guides
 +-- docs/
     +-- ARCHITECTURE.md    # Full architecture + pipeline diagram
     +-- PATTERNS.md        # 8 Google ADK patterns with examples
