@@ -1,0 +1,2 @@
+# A/B test results are generated dynamically
+data/ab_tests/*.json
