@@ -57,6 +57,38 @@ Agent Factory is not just a framework—it's the **orchestration engine** poweri
 
 **Next Milestone:** Week 4 - Launch ISH swarm (3 videos/week autonomous)
 
+### 🔍 NEW: Perplexity Citation Format Integration
+
+**Critical Update (2025-12-12):** All knowledge atoms now follow **Perplexity-style citation format** for maximum credibility and legal safety.
+
+**Why This Matters:**
+- ✅ Every claim has authoritative sources
+- ✅ Footnote citations [^1][^2] preserved from research → atoms → scripts → videos
+- ✅ YouTube descriptions include full "Sources:" section
+- ✅ Prevents copyright issues (proper attribution)
+- ✅ Builds viewer trust (verifiable claims)
+
+**Example Format** (see `CLAUDEUPDATE.md`):
+```markdown
+# What is 5S methodology?
+
+5S is a lean workplace-organization system...[^1][^6]
+
+- **Sort**: Remove unnecessary items...[^5]
+- **Set in Order**: Arrange with defined places...[^6]
+
+[^1]: https://worktrek.com/blog/what-is-5s-principal-for-maintenance/
+[^5]: https://business.adobe.com/blog/basics/the-5s-methodology
+```
+
+**Implementation:**
+- ResearchAgent now outputs Perplexity-format research
+- AtomBuilderAgent parses footnote citations → JSONB storage
+- ScriptwriterAgent includes inline citations in scripts
+- YouTubeUploaderAgent adds "Sources:" section to descriptions
+
+**See:** `docs/PERPLEXITY_INTEGRATION.md` for complete integration guide
+
 ---
 
 ## 🎯 What We're Building
