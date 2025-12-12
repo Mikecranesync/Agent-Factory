@@ -170,7 +170,7 @@ class VoiceProductionAgent:
         # TODO: Implement parse_personality_markers
         raise NotImplementedError("parse_personality_markers not yet implemented")
 
-    def generate_audio(self, text: str, output_path: str) -> str:
+    async def generate_audio(self, text: str, output_path: str) -> str:
         """
         Generate audio using configured voice mode (hybrid system)
 
@@ -187,7 +187,7 @@ class VoiceProductionAgent:
 
         Example:
             >>> agent = VoiceProductionAgent()
-            >>> agent.generate_audio("Hello world", "output/hello.mp3")
+            >>> await agent.generate_audio("Hello world", "output/hello.mp3")
             'output/hello.mp3'
         """
         # Ensure output directory exists
@@ -195,15 +195,15 @@ class VoiceProductionAgent:
 
         if self.voice_mode == "edge":
             # FREE - Edge TTS (Microsoft neural voices)
-            return asyncio.run(self._generate_edge_tts(text, output_path))
+            return await self._generate_edge_tts(text, output_path)
 
         elif self.voice_mode == "openai":
-            # PAID - OpenAI TTS
-            return self._generate_openai_tts(text, output_path)
+            # PAID - OpenAI TTS (sync method, run in thread pool)
+            return await asyncio.to_thread(self._generate_openai_tts, text, output_path)
 
         elif self.voice_mode == "elevenlabs":
             # PAID - ElevenLabs (custom voice clone)
-            return self._generate_elevenlabs_tts(text, output_path)
+            return await asyncio.to_thread(self._generate_elevenlabs_tts, text, output_path)
 
         else:
             raise ValueError(f"Unknown voice mode: {self.voice_mode}. Use: edge, openai, or elevenlabs")
