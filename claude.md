@@ -295,22 +295,22 @@ Social Amplifier Agent creates clips for TikTok/Instagram
 - **Week 12:** 30 videos, 1K subs, $500 revenue, agents 80% autonomous
 - **Month 12:** 100 videos, 20K subs, $5K/mo revenue, fully autonomous
 
-**See:** `docs/YOUTUBE_WIKI_STRATEGY.md` for complete details.
+**See:** `docs/implementation/YOUTUBE_WIKI_STRATEGY.md` for complete details.
 
 ---
 
 ### PLC Implementation References
 
 **Complete Strategy Suite (Updated Dec 2025):**
-- **Master Strategy:** `docs/TRIUNE_STRATEGY.md` - Complete integration (RIVET + PLC Tutor + Agent Factory), 18-agent system, revenue models
-- **YouTube-Wiki Approach:** `docs/YOUTUBE_WIKI_STRATEGY.md` - Build knowledge BY teaching (original content, voice clone, 24/7 production)
-- **18-Agent System:** `docs/AGENT_ORGANIZATION.md` - Complete specs for all autonomous agents (Executive, Research, Content, Media, Engagement)
-- **Implementation Plan:** `docs/IMPLEMENTATION_ROADMAP.md` - Week-by-week roadmap (Week 1-12, then Month 4-12)
+- **Master Strategy:** `docs/architecture/TRIUNE_STRATEGY.md` - Complete integration (RIVET + PLC Tutor + Agent Factory), 18-agent system, revenue models
+- **YouTube-Wiki Approach:** `docs/implementation/YOUTUBE_WIKI_STRATEGY.md` - Build knowledge BY teaching (original content, voice clone, 24/7 production)
+- **18-Agent System:** `docs/architecture/AGENT_ORGANIZATION.md` - Complete specs for all autonomous agents (Executive, Research, Content, Media, Engagement)
+- **Implementation Plan:** `docs/implementation/IMPLEMENTATION_ROADMAP.md` - Week-by-week roadmap (Week 1-12, then Month 4-12)
 - **Content A-to-Z:** `plc/content/CONTENT_ROADMAP_AtoZ.md` - 100+ video topics sequenced (electricity → AI automation)
-- **Universal Atom Spec:** `docs/ATOM_SPEC_UNIVERSAL.md` - IEEE LOM-based schema for all verticals
+- **Universal Atom Spec:** `docs/architecture/ATOM_SPEC_UNIVERSAL.md` - IEEE LOM-based schema for all verticals
 - **Pydantic Models:** `core/models.py` - Production-ready schemas (LearningObject, PLCAtom, RIVETAtom, VideoScript, etc.)
 
-**Legacy/Research:**
+**Legacy/Research:** (Moved to `archive/legacy-docs/`)
 - `MASTER_ROADMAP.md` - Original 5-layer vision
 - `PLan_fullauto_plc.md` - Initial PLC implementation plan
 - `Computers, programming PLCs..md` - Market research + business insights
@@ -401,7 +401,7 @@ git worktree add ../agent-factory-feature-name -b feature-name
 cd ../agent-factory-feature-name
 ```
 
-**See:** `docs/GIT_WORKTREE_GUIDE.md` for complete guide.
+**See:** `docs/patterns/GIT_WORKTREE_GUIDE.md` for complete guide.
 
 ### Rule 5: Three Strikes
 If something fails 3 times, STOP. Report the error. Don't keep trying different approaches - it may be a direction problem, not an execution problem.
@@ -449,7 +449,7 @@ Ask these 5 questions:
 - Security incidents destroy trust and revenue
 - Compliance unlocks enterprise tier pricing ($299/mo vs $49/mo)
 
-See `docs/SECURITY_STANDARDS.md` for implementation patterns and checklists.
+See `docs/patterns/SECURITY_STANDARDS.md` for implementation patterns and checklists.
 
 ---
 
@@ -470,7 +470,7 @@ agent_factory/
 +-- refs/                        # [PHASE 5]
 ```
 
-For full architecture, see `docs/ARCHITECTURE.md`.
+For full architecture, see `docs/architecture/00_architecture_platform.md`.
 
 ---
 
@@ -516,25 +516,36 @@ settings.reload()
 
 | Document | Purpose | When to Read |
 |----------|---------|--------------|
+| **ESSENTIAL DOCS (Root)** |
 | `TASK.md` | **Active task tracking** | **Every session start** |
-| `MASTER_ROADMAP.md` | **Complete vision: Weeks → Years → Decades** | **Understanding the full strategy** |
-| `docs/cole_medin_patterns.md` | Production patterns from Archon (13.4k⭐) | Building RAG/memory features |
-| `docs/archon_architecture_analysis.md` | Microservices architecture deep dive | Understanding Supabase + pgvector |
-| `docs/integration_recommendations.md` | Prioritized roadmap for Agent Factory | Planning next features |
-| `PROGRESS.md` | Current checklist | Every task |
-| `docs/GIT_WORKTREE_GUIDE.md` | Git worktree setup and usage | Before starting work |
-| `docs/SECURITY_STANDARDS.md` | Compliance patterns & checklists | Building any feature |
-| `docs/lessons_learned/LESSONS_DATABASE.md` | Debugging insights & gotchas | Before implementing similar patterns |
-| `docs/security/*.md` | Policy templates | Writing security docs |
-| `docs/PHASE1_SPEC.md` | Phase 1 implementation details | Building Phase 1 |
-| `docs/ARCHITECTURE.md` | Full system design | Need big picture |
-| `docs/PATTERNS.md` | Google ADK patterns | Unsure how to structure something |
-| `docs/PRODUCTION.md` | Observability, evals, failover | Production readiness |
-| `docs/00_platform_roadmap.md` | CLI → SaaS platform transformation | Platform planning |
-| `CLAUDE_CODEBASE.md` | Existing code documentation | Need to understand current code |
-| `rivet-complete-summary.md` | RIVET platform details | Understanding end product |
-| `knowledge-atom-standard-v1.0.md` | Data schema specification | Building knowledge features |
-| `Futureproof.md` | Robot licensing strategy | Long-term vision context |
+| `PROJECT_STRUCTURE.md` | **Complete codebase map** | **When navigating the project** |
+| `README.md` | Project overview | Getting started |
+| `CLAUDE.md` | This file - AI assistant instructions | Reference for rules |
+| **ARCHITECTURE** |
+| `docs/architecture/00_architecture_platform.md` | Full system design | Need big picture |
+| `docs/architecture/TRIUNE_STRATEGY.md` | RIVET + PLC Tutor integration | Understanding strategy |
+| `docs/architecture/AGENT_ORGANIZATION.md` | 18-agent system specs | Planning agent work |
+| `docs/architecture/archon_architecture_analysis.md` | Archon microservices analysis | Understanding Supabase + pgvector |
+| **IMPLEMENTATION** |
+| `docs/implementation/00_platform_roadmap.md` | CLI → SaaS transformation | Platform planning |
+| `docs/implementation/IMPLEMENTATION_ROADMAP.md` | Week-by-week roadmap | Current sprint planning |
+| `docs/implementation/YOUTUBE_WIKI_STRATEGY.md` | Build knowledge BY teaching | Content strategy |
+| **DATABASE** |
+| `docs/database/00_database_schema.md` | Schema documentation | Database work |
+| `docs/database/supabase_complete_schema.sql` | Full schema SQL | Deploying schema |
+| `docs/database/DATABASE_TOOLS_GUIDE.md` | Database utilities | Using DB scripts |
+| **PATTERNS & STANDARDS** |
+| `docs/patterns/cole_medin_patterns.md` | Production patterns from Archon | Building RAG/memory features |
+| `docs/patterns/GIT_WORKTREE_GUIDE.md` | Git worktree setup | Before starting work |
+| `docs/patterns/SECURITY_STANDARDS.md` | Compliance patterns | Building features |
+| **USER GUIDES** |
+| `Guides for Users/README.md` | User guide index | Finding user documentation |
+| `Guides for Users/quickstart/QUICKSTART.md` | First-time setup | New users |
+| `Guides for Users/deployment/PRODUCTION_DEPLOYMENT.md` | Production deployment | Going live |
+| **LEGACY (Archived)** |
+| `archive/legacy-docs/MASTER_ROADMAP.md` | Original 5-layer vision | Historical context |
+| `archive/legacy-docs/rivet-complete-summary.md` | RIVET platform details | Understanding end product |
+| `archive/legacy-docs/knowledge-atom-standard-v1.0.md` | Data schema specification | Building knowledge features |
 
 ---
 
