@@ -67,6 +67,8 @@ pillow = "11.0.0"
 filelock = "^3.13.0"  # Cross-platform process lock to prevent duplicate bot instances
 aiohttp = "^3.9.0"  # HTTP server for health check endpoint
 psycopg2-binary = "^2.9.11"
+psycopg = {extras = ["binary"], version = "^3.3.2"}
+psycopg-pool = "^3.3.0"
 
 [tool.poetry.group.dev.dependencies]
 # Development tools

@@ -87,3 +87,19 @@ Agent-Factory/
 
 # Claude Code local settings (contains API keys)
 .claude/settings.local.json
+
+# Generated data directories
+data/atoms/
+data/cache/
+data/extracted/
+data/videos/
+
+# Archive (old/outdated files)
+archive/
+
+# Logs
+logs/
+*.log
+
+# Output
+output/
