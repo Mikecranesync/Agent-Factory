@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: agent-factory-telegram-bot
+    runtime: python
+    region: virginia
+    plan: free
+    branch: main
+    buildCommand: poetry install
+    startCommand: poetry run python -m agent_factory.integrations.telegram
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: LOG_LEVEL
+        value: INFO
+    # Health check configuration
+    healthCheckPath: /health
+    autoDeploy: true

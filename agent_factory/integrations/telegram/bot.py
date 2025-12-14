@@ -450,17 +450,21 @@ Please respond to the current message, referencing the previous conversation whe
         })
 
     async def _start_health_server(self):
-        """Start health check HTTP server on localhost:9876."""
+        """Start health check HTTP server on 0.0.0.0 with PORT from env (default 9876)."""
+        # Use PORT from environment (Render) or default to 9876
+        port = int(os.getenv('PORT', '9876'))
+        host = '0.0.0.0'  # Bind to all interfaces for Render
+
         self.health_app = web.Application()
         self.health_app.router.add_get('/health', self._health_check_handler)
 
         self.health_runner = web.AppRunner(self.health_app)
         await self.health_runner.setup()
 
-        site = web.TCPSite(self.health_runner, 'localhost', 9876)
+        site = web.TCPSite(self.health_runner, host, port)
         await site.start()
 
-        print("[OK] Health check endpoint: http://localhost:9876/health")
+        print(f"[OK] Health check endpoint: http://{host}:{port}/health")
 
     async def _stop_health_server(self):
         """Stop health check HTTP server."""
