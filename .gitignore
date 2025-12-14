@@ -103,3 +103,5 @@ logs/
 
 # Output
 output/
+render-env-vars.txt
+render-env-vars-template.txt
