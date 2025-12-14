@@ -34,6 +34,7 @@ from . import handlers
 from . import github_handlers
 from . import kb_handlers
 from . import fieldeye_handlers
+from . import management_handlers
 
 
 class TelegramBot:
@@ -116,6 +117,23 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("fieldeye_stats", fieldeye_handlers.fieldeye_stats_handler))
         self.app.add_handler(CommandHandler("fieldeye_defects", fieldeye_handlers.fieldeye_defects_handler))
         self.app.add_handler(CommandHandler("fieldeye_sessions", fieldeye_handlers.fieldeye_sessions_handler))
+
+        # Management/Executive commands (CEO dashboard)
+        self.app.add_handler(CommandHandler("status", management_handlers.status_handler))
+        self.app.add_handler(CommandHandler("agents", management_handlers.agents_handler))
+        self.app.add_handler(CommandHandler("metrics", management_handlers.metrics_handler))
+        self.app.add_handler(CommandHandler("errors", management_handlers.errors_handler))
+        self.app.add_handler(CommandHandler("pending", management_handlers.pending_handler))
+        self.app.add_handler(CommandHandler("approve", management_handlers.approve_handler))
+        self.app.add_handler(CommandHandler("reject", management_handlers.reject_handler))
+        self.app.add_handler(CommandHandler("pause", management_handlers.pause_agent_handler))
+        self.app.add_handler(CommandHandler("resume", management_handlers.resume_agent_handler))
+        self.app.add_handler(CommandHandler("restart", management_handlers.restart_agent_handler))
+        self.app.add_handler(CommandHandler("daily", management_handlers.daily_report_handler))
+        self.app.add_handler(CommandHandler("weekly", management_handlers.weekly_report_handler))
+        self.app.add_handler(CommandHandler("monthly", management_handlers.monthly_report_handler))
+        self.app.add_handler(CommandHandler("config", management_handlers.config_handler))
+        self.app.add_handler(CommandHandler("backup", management_handlers.backup_handler))
 
         # Callback handler (inline buttons)
         self.app.add_handler(CallbackQueryHandler(self._unified_callback_handler))
