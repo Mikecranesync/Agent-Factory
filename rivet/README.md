@@ -1,230 +1,326 @@
-# Rivet Industrial - Knowledge Base Factory
+# Rivet Industrial - KB Factory V1
 
-24/7 automated knowledge base ingestion pipeline powered by LangGraph + Ollama + Postgres+pgvector.
+**24/7 autonomous knowledge base factory for industrial documentation**
 
-## Architecture
+Powered by LangGraph + Postgres + pgvector + Ollama
 
-```
-┌─────────────┐     ┌──────────┐     ┌─────────────┐
-│  Scheduler  │────▶│  Redis   │◀────│   Worker    │
-│  (hourly)   │     │  Queue   │     │  (24/7)     │
-└─────────────┘     └──────────┘     └──────┬──────┘
-                                             │
-                           ┌─────────────────┴─────────────────┐
-                           │      LangGraph Pipeline           │
-                           │  Discovery → Download → Parse     │
-                           │  → Critique → Index               │
-                           └─────────────────┬─────────────────┘
-                                             │
-                ┌────────────────────────────┴────────────────────┐
-                │                                                  │
-          ┌─────▼──────┐                                  ┌───────▼──────┐
-          │  Postgres  │                                  │    Ollama    │
-          │ + pgvector │                                  │  LLM+Embed   │
-          └────────────┘                                  └──────────────┘
-```
-
-## Components
-
-- **Postgres + pgvector**: Vector database for atom storage and semantic search
-- **Redis**: Job queue for URL processing
-- **Ollama**: Open-source LLM (Mistral) + embeddings (nomic-embed-text)
-- **LangGraph App**: Python worker with 5-node ingestion pipeline
+---
 
 ## Quick Start (VPS Deployment)
 
 ### Prerequisites
 
-- VPS with:
-  - 8+ vCPU
-  - 32+ GB RAM
-  - 300+ GB SSD
-  - Ubuntu 22.04 or similar
-- Docker + Docker Compose installed
-- Git
+- **VPS Requirements:**
+  - 8 vCPU minimum (16 recommended for heavy LLM workloads)
+  - 32 GB RAM minimum (64 GB recommended)
+  - 300 GB SSD minimum
+  - Ubuntu 22.04 or similar Linux distribution
 
-### 1. Clone Repository
+- **Software:**
+  - Docker 24+ and Docker Compose V2
+  - Git
 
-```bash
-git clone <your-repo-url>
-cd rivet
-```
-
-### 2. Configure Environment
+### 1-Command Deployment
 
 ```bash
+# Clone repository
+git clone <your-repo-url> rivet-kb-factory
+cd rivet-kb-factory/rivet
+
+# Copy environment variables
 cp .env.example .env
-# Edit .env if needed (defaults work for Docker Compose setup)
-```
 
-### 3. Start Services
+# Edit .env with your configuration (optional for testing)
+nano .env
 
-```bash
+# Start all services
 cd infra
 docker compose up -d
-```
 
-### 4. Load Ollama Models
+# Pull Ollama models (required on first run)
+docker exec -it rivet-ollama ollama pull mistral:latest
+docker exec -it rivet-ollama ollama pull nomic-embed-text
 
-```bash
-# Load LLM (takes ~5-10 min, 4.1GB)
-docker exec -it infra-ollama-1 ollama pull mistral:latest
-
-# Load embedding model (takes ~2 min, 274MB)
-docker exec -it infra-ollama-1 ollama pull nomic-embed-text
-```
-
-### 5. Verify Services
-
-```bash
-# Check all services running
+# Verify services are running
 docker compose ps
 
-# Watch worker logs
+# Check worker logs
 docker compose logs -f rivet-worker
 
-# Watch scheduler logs
+# Check scheduler logs
 docker compose logs -f rivet-scheduler
 ```
 
-### 6. Monitor Processing
+---
 
-```bash
-# Check Redis queue
-docker exec -it infra-redis-1 redis-cli LLEN kb_ingest_jobs
+## Architecture
 
-# Check database for atoms
-docker exec -it infra-postgres-1 psql -U rivet -d rivet -c "SELECT COUNT(*) FROM knowledge_atoms;"
+```
+┌─────────────┐
+│  Scheduler  │  ← Enqueues source URLs every hour
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│    Redis    │  ← Job queue (kb_ingest_jobs)
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐      ┌──────────────┐
+│   Worker    │ ───▶ │  LangGraph   │
+└──────┬──────┘      │   Pipeline   │
+       │             └──────────────┘
+       │                     │
+       │          ┌──────────┴──────────┐
+       │          │                     │
+       ▼          ▼                     ▼
+┌─────────────┐ ┌──────────┐    ┌──────────┐
+│  Postgres   │ │  Ollama  │    │  Ollama  │
+│ + pgvector  │ │   LLM    │    │  Embed   │
+└─────────────┘ └──────────┘    └──────────┘
 ```
 
-## Development / Testing
-
-### Local CLI Test
-
-```bash
-# Build image
-docker build -f infra/docker/Dockerfile -t rivet-app .
-
-# Test single URL
-docker run --rm --env-file .env rivet-app \
-  python -m langgraph_app.cli "https://example.com/manual.pdf"
-```
-
-### Database Schema
-
-The `knowledge_atoms` table is auto-created on first run:
-
-```sql
-CREATE TABLE knowledge_atoms (
-    id SERIAL PRIMARY KEY,
-    atom_type VARCHAR(50),
-    title TEXT NOT NULL,
-    content TEXT NOT NULL,
-    embedding vector(768),
-    source_url TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-## Configuration
-
-All configuration via environment variables (see `.env.example`):
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `POSTGRES_HOST` | `postgres` | Postgres hostname |
-| `POSTGRES_DB` | `rivet` | Database name |
-| `REDIS_URL` | `redis://redis:6379/0` | Redis connection string |
-| `OLLAMA_BASE_URL` | `http://ollama:11434` | Ollama API endpoint |
-| `OLLAMA_LLM_MODEL` | `mistral:latest` | LLM for extraction |
-| `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Embedding model |
-| `SCHEDULER_INTERVAL` | `3600` | Seconds between scheduler runs |
-| `WORKER_POLL_INTERVAL` | `5` | Worker Redis poll interval |
+---
 
 ## LangGraph Pipeline
 
-### Nodes
+**5 nodes in sequence:**
 
-1. **Discovery**: Validate source URL
-2. **Downloader**: Fetch PDF/HTML and extract text
-3. **Parser**: Use Ollama LLM to extract structured atoms
-4. **Critic**: Validate atom quality
-5. **Indexer**: Store in Postgres with pgvector embeddings
+1. **Discovery** - Fetch source URL from queue
+2. **Downloader** - Download PDF/HTML and extract text
+3. **Parser** - Use Ollama LLM to extract structured atoms
+4. **Critic** - Validate atoms (required fields, content quality)
+5. **Indexer** - Store atoms in Postgres with pgvector embeddings
 
-### Flow
+---
 
-```python
-Discovery → Downloader → Parser → Critic → (if valid) → Indexer → END
-                                         → (if errors) → END
+## Testing the Pipeline
+
+### Run a single job (CLI)
+
+```bash
+docker exec -it rivet-worker python -m langgraph_app.cli "https://example.com/manual.pdf"
 ```
 
-## Adding New Sources
+### Check database
 
-Edit `langgraph_app/scheduler.py` and add URLs to `SEED_SOURCES`:
+```bash
+# Connect to Postgres
+docker exec -it rivet-postgres psql -U rivet -d rivet
 
-```python
-SEED_SOURCES = [
-    "https://your-doc-1.pdf",
-    "https://your-doc-2.html",
-]
+# Query atoms
+SELECT id, atom_type, title, vendor, product 
+FROM knowledge_atoms 
+ORDER BY created_at DESC 
+LIMIT 10;
+
+# Check total count
+SELECT atom_type, COUNT(*) 
+FROM knowledge_atoms 
+GROUP BY atom_type;
+
+# Semantic search example
+SELECT title, 1 - (embedding <=> '[0.1, 0.2, ...]'::vector) AS similarity
+FROM knowledge_atoms
+ORDER BY embedding <=> '[0.1, 0.2, ...]'::vector
+LIMIT 5;
 ```
 
-Or implement database-driven discovery (query `sources` table).
+---
+
+## Configuration
+
+### Environment Variables
+
+See `.env.example` for all available configuration options.
+
+**Key variables:**
+
+- `POSTGRES_PASSWORD` - Change from default!
+- `OLLAMA_LLM_MODEL` - LLM for parsing (mistral:latest, deepseek-coder, etc.)
+- `OLLAMA_EMBED_MODEL` - Embedding model (nomic-embed-text recommended)
+- `SCHEDULER_INTERVAL` - Seconds between scheduling runs (default: 3600)
+- `WORKER_POLL_INTERVAL` - Seconds worker waits for jobs (default: 5)
+
+### Adding Source URLs
+
+**Option 1 - Hardcoded (V1):**
+Edit `langgraph_app/scheduler.py` and add URLs to the `source_urls` list.
+
+**Option 2 - Database (Production):**
+Insert into `ingestion_sources` table:
+
+```sql
+INSERT INTO ingestion_sources (source_url, source_type, vendor, product, priority)
+VALUES ('https://example.com/manual.pdf', 'pdf', 'Siemens', 'S7-1200', 10);
+```
+
+Then modify scheduler to query the table.
+
+---
+
+## Monitoring
+
+### View logs
+
+```bash
+# All services
+docker compose logs -f
+
+# Specific service
+docker compose logs -f rivet-worker
+docker compose logs -f rivet-scheduler
+```
+
+### Check service health
+
+```bash
+docker compose ps
+```
+
+All services should show "healthy" status.
+
+### Job history
+
+```sql
+SELECT job_id, source_url, status, atoms_indexed, 
+       started_at, completed_at
+FROM ingestion_jobs
+ORDER BY started_at DESC
+LIMIT 20;
+```
+
+---
+
+## Ollama Models
+
+### Recommended Models
+
+**For LLM parsing:**
+- `mistral:latest` (7B, fast, good quality)
+- `deepseek-coder:6.7b` (specialized for technical docs)
+- `llama3.2:latest` (8B, balanced)
+
+**For embeddings:**
+- `nomic-embed-text` (768 dimensions, recommended)
+- `all-minilm` (384 dimensions, faster but lower quality)
+
+### Pull models
+
+```bash
+docker exec -it rivet-ollama ollama pull mistral:latest
+docker exec -it rivet-ollama ollama pull deepseek-coder:6.7b
+docker exec -it rivet-ollama ollama pull nomic-embed-text
+```
+
+### List installed models
+
+```bash
+docker exec -it rivet-ollama ollama list
+```
+
+---
 
 ## Troubleshooting
 
 ### Worker not processing jobs
 
+Check logs:
 ```bash
-# Check Redis queue has jobs
-docker exec -it infra-redis-1 redis-cli LLEN kb_ingest_jobs
-
-# Manually enqueue test job
-docker exec -it infra-redis-1 redis-cli RPUSH kb_ingest_jobs "https://example.com/test.pdf"
+docker compose logs rivet-worker | tail -50
 ```
 
-### Ollama model not found
+Common issues:
+- Ollama models not pulled
+- Postgres connection failed
+- Redis connection failed
 
+### Ollama errors
+
+Restart Ollama service:
 ```bash
-# List loaded models
-docker exec -it infra-ollama-1 ollama list
-
-# Pull missing model
-docker exec -it infra-ollama-1 ollama pull mistral:latest
+docker compose restart ollama
 ```
 
-### Database connection failed
-
+Pull models again:
 ```bash
-# Check Postgres health
+docker exec -it rivet-ollama ollama pull mistral:latest
+```
+
+### Database connection errors
+
+Check Postgres is running:
+```bash
 docker compose ps postgres
-
-# Test connection
-docker exec -it infra-postgres-1 psql -U rivet -d rivet -c "SELECT 1;"
 ```
 
-## Production Checklist
+Test connection:
+```bash
+docker exec -it rivet-postgres psql -U rivet -d rivet -c "SELECT 1;"
+```
 
-- [ ] Change `POSTGRES_PASSWORD` in `.env`
-- [ ] Set `LOG_LEVEL=WARNING` for production
-- [ ] Configure firewall (only expose necessary ports)
-- [ ] Set up backups for `pgdata` volume
-- [ ] Monitor disk usage (Ollama models + pgvector data)
-- [ ] Add observability (Langfuse, Prometheus, etc.)
+### Low memory warnings
 
-## Next Steps
+Ollama requires significant RAM for LLM inference:
+- 7B models: ~8 GB RAM
+- 13B models: ~16 GB RAM
 
-1. **Implement proper PDF parsing** (replace placeholder in `downloader.py`)
-2. **Add discovery from database** (replace hardcoded URLs in `scheduler.py`)
-3. **Add semantic search API** (query pgvector for similar atoms)
-4. **Add observability** (Langfuse for LangGraph tracing)
-5. **Add tests** (pytest for nodes and graph)
-
-## License
-
-Proprietary - Rivet Industrial
+Reduce model size or increase VPS RAM.
 
 ---
 
-**Status**: V1 - Production-ready for single VPS deployment
-**Last Updated**: 2024-12-13
+## Performance Tuning
+
+### Speed up processing
+
+1. Use smaller LLM models (mistral:7b instead of llama3.2:70b)
+2. Reduce `SCHEDULER_INTERVAL` for faster job submission
+3. Run multiple worker containers (scale horizontally)
+4. Increase Postgres `max_connections` if running many workers
+
+### Horizontal scaling
+
+```bash
+# Run 3 worker instances
+docker compose up -d --scale rivet-worker=3
+```
+
+---
+
+## Production Checklist
+
+- [ ] Change `POSTGRES_PASSWORD` from default
+- [ ] Set up automated backups for Postgres data
+- [ ] Configure firewall (block ports 5432, 6379, 11434 from public)
+- [ ] Set up monitoring (Prometheus + Grafana)
+- [ ] Configure log rotation
+- [ ] Add SSL/TLS for Postgres connections
+- [ ] Implement proper error alerting
+- [ ] Set resource limits in docker-compose.yml
+- [ ] Enable Postgres query logging for debugging
+- [ ] Set up pgvector HNSW index for better search performance
+
+---
+
+## Next Steps
+
+1. **Add more sources** - Edit scheduler or insert into `ingestion_sources` table
+2. **Improve parsing** - Fine-tune LLM prompts in `parser_node`
+3. **Add observability** - Integrate Langfuse or Langsmith
+4. **Build API** - Add FastAPI endpoints for querying atoms
+5. **Build UI** - Admin dashboard for monitoring ingestion
+
+---
+
+## Support
+
+For issues, check:
+1. Docker logs: `docker compose logs -f`
+2. Postgres logs: `docker compose logs postgres`
+3. Ollama API health: `curl http://localhost:11434/api/tags`
+
+---
+
+**Status:** Production-ready V1 ✅
+
+Deploy, test, iterate. The KB factory is autonomous from day 1.
