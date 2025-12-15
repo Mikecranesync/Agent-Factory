@@ -258,27 +258,26 @@ start_bot() {
     print_info "Bot started (PID: $bot_pid)"
     print_info "Waiting for initialization..."
 
-    # Wait for health endpoint (max 15 seconds)
-    local count=0
-    while [ $count -lt 15 ]; do
-        if curl -sf "$HEALTH_URL" > /dev/null 2>&1; then
-            local health_response=$(curl -s "$HEALTH_URL")
-            print_success "Bot is running!"
-            echo ""
-            echo "Health response:"
-            echo "$health_response" | python3 -m json.tool 2>/dev/null || echo "$health_response"
-            echo ""
-            return 0
-        fi
-        sleep 1
-        count=$((count + 1))
-    done
+    # Wait for bot process to be fully running (5 seconds)
+    sleep 5
 
-    print_error "Bot failed to start (health endpoint unreachable)"
-    echo ""
-    echo "Check logs:"
-    echo "  tail -n 50 $ERROR_LOG"
-    exit 1
+    # Check if process is still running
+    if ps -p $bot_pid > /dev/null 2>&1; then
+        print_success "Bot is running!"
+        echo ""
+        echo "Process info:"
+        ps aux | grep "telegram_bot.py" | grep -v grep
+        echo ""
+        echo "Recent logs:"
+        tail -n 10 "$BOT_LOG" 2>/dev/null || echo "(No logs yet)"
+        return 0
+    else
+        print_error "Bot failed to start (process died)"
+        echo ""
+        echo "Check logs:"
+        echo "  tail -n 50 $ERROR_LOG"
+        exit 1
+    fi
 }
 
 # ============================================================================
@@ -331,12 +330,12 @@ deploy() {
     echo ""
     echo "📊 Status:"
     echo "  - Bot PID: $(pgrep -f telegram_bot.py)"
-    echo "  - Health: $HEALTH_URL"
     echo "  - Logs: $BOT_LOG"
+    echo "  - Error logs: $ERROR_LOG"
     echo ""
     echo "🔧 Management:"
     echo "  - View logs: tail -f $BOT_LOG"
-    echo "  - Check health: curl $HEALTH_URL"
+    echo "  - Check process: ps aux | grep telegram_bot.py"
     echo "  - Restart: ./deploy_rivet_pro.sh"
     echo ""
     echo "🤖 Telegram:"
