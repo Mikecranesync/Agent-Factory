@@ -621,6 +621,7 @@ def main():
     application.add_handler(CommandHandler("book_expert", rivet_handlers.handle_book_expert))
     application.add_handler(CommandHandler("my_sessions", rivet_handlers.handle_my_sessions))
     application.add_handler(CommandHandler("pro_stats", rivet_handlers.handle_pro_stats))
+    application.add_handler(CommandHandler("vps_status", rivet_handlers.handle_vps_status))
 
     # Add message handler for natural language troubleshooting (lower priority)
     application.add_handler(
