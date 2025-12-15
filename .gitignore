@@ -33,6 +33,7 @@ poetry.lock
 # Environment variables
 .env
 .env.local
+.env.vps
 
 # IDE
 .vscode/
