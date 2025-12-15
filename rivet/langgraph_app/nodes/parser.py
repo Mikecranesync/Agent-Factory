@@ -1,167 +1,232 @@
 """
-Parser node: Extract structured atoms from raw text using LLM
+Parser Node - Extract structured atoms using LLM
+
+Uses Ollama LLM to parse raw document text into knowledge atoms.
 """
 
 import logging
 import json
 import requests
-from typing import List, Dict, Any
-from langgraph_app.state import RivetState
+from typing import Dict, Any, List
+from langgraph_app.state import RivetState, KnowledgeAtom
 from langgraph_app.config import settings
 
 logger = logging.getLogger(__name__)
 
 
-def call_ollama_llm(prompt: str, model: str = None) -> str:
+def parser_node(state: RivetState) -> Dict[str, Any]:
     """
-    Call Ollama LLM for text generation
+    Parse raw document into structured knowledge atoms using LLM
+
+    Calls Ollama LLM with schema-constrained prompt to extract:
+    - Faults (error codes, symptoms, causes, fixes)
+    - Patterns (procedures, configurations)
+    - Concepts (definitions, explanations)
 
     Args:
-        prompt: Input prompt
-        model: Model name (defaults to settings.OLLAMA_LLM_MODEL)
-
-    Returns:
-        Generated text
-    """
-    model = model or settings.OLLAMA_LLM_MODEL
-
-    url = f"{settings.OLLAMA_BASE_URL}/api/generate"
-
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {
-            "temperature": 0.1,  # Low temperature for structured extraction
-            "num_predict": 2000,
-        }
-    }
-
-    try:
-        response = requests.post(url, json=payload, timeout=120)
-        response.raise_for_status()
-        result = response.json()
-        return result.get("response", "")
-    except Exception as e:
-        logger.error(f"Ollama LLM call failed: {e}")
-        raise
-
-
-def extract_atoms_from_text(text: str, metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    Extract structured knowledge atoms from raw text using LLM
-
-    Args:
-        text: Raw document text
-        metadata: Document metadata
-
-    Returns:
-        List of structured atoms
-    """
-    # Limit text length for LLM context
-    max_chars = 8000
-    if len(text) > max_chars:
-        text = text[:max_chars] + "...[truncated]"
-
-    prompt = f"""You are an expert at extracting structured industrial maintenance knowledge from technical documents.
-
-Extract knowledge atoms from the following document. Each atom should be a self-contained piece of knowledge.
-
-Document:
-{text}
-
-Extract atoms in JSON format. Each atom should have:
-- type: "fault", "procedure", "concept", or "pattern"
-- vendor: Equipment vendor (e.g., "Allen-Bradley", "Siemens") if applicable
-- product: Product name if applicable
-- title: Brief title
-- content: Main content
-- keywords: List of relevant keywords
-
-Return ONLY a JSON array of atoms, no other text.
-
-Example:
-[
-  {{
-    "type": "fault",
-    "vendor": "Allen-Bradley",
-    "product": "ControlLogix",
-    "title": "Fault Code 0x1234",
-    "content": "Fault 0x1234 indicates communication error...",
-    "keywords": ["fault", "communication", "controllogix"]
-  }}
-]
-
-Atoms:"""
-
-    try:
-        logger.info("Calling Ollama LLM for atom extraction...")
-        response_text = call_ollama_llm(prompt)
-
-        # Try to parse JSON
-        # Extract JSON array from response (LLM might add extra text)
-        start_idx = response_text.find("[")
-        end_idx = response_text.rfind("]") + 1
-
-        if start_idx >= 0 and end_idx > start_idx:
-            json_text = response_text[start_idx:end_idx]
-            atoms = json.loads(json_text)
-
-            # Validate atoms
-            if isinstance(atoms, list):
-                # Add metadata to each atom
-                for atom in atoms:
-                    atom["source_url"] = metadata.get("source_url", "")
-                    atom["source_type"] = metadata.get("source_type", "")
-
-                logger.info(f"Extracted {len(atoms)} atoms")
-                return atoms
-            else:
-                logger.error("LLM response was not a JSON array")
-                return []
-        else:
-            logger.error("Could not find JSON array in LLM response")
-            return []
-
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse LLM JSON response: {e}")
-        return []
-    except Exception as e:
-        logger.error(f"Atom extraction failed: {e}")
-        return []
-
-
-def parser_node(state: RivetState) -> RivetState:
-    """
-    Parse raw document into structured atoms using LLM
-
-    Args:
-        state: Current graph state
+        state: Current workflow state
 
     Returns:
         Updated state with atoms populated
     """
-    state.logs.append("Starting parsing")
+    logger.info(f"[{state.job_id}] Parser node started")
 
     if not state.raw_document:
-        error_msg = "No raw document to parse"
-        logger.error(f"[{state.job_id}] {error_msg}")
-        state.errors.append(error_msg)
-        return state
+        state.errors.append("No raw document to parse")
+        return state.dict()
+
+    # Chunk document if too large (LLM context limits)
+    chunks = chunk_document(state.raw_document, max_chars=4000)
+    logger.info(f"[{state.job_id}] Split into {len(chunks)} chunks")
+
+    all_atoms = []
+
+    for i, chunk in enumerate(chunks, 1):
+        logger.info(f"[{state.job_id}] Processing chunk {i}/{len(chunks)}")
+
+        try:
+            atoms = extract_atoms_from_chunk(chunk, state.metadata)
+            all_atoms.extend(atoms)
+            state.logs.append(f"Chunk {i}: extracted {len(atoms)} atoms")
+
+        except Exception as e:
+            error_msg = f"Chunk {i} parsing failed: {str(e)}"
+            state.errors.append(error_msg)
+            logger.error(f"[{state.job_id}] {error_msg}")
+
+    state.atoms = all_atoms
+    state.stats["total_atoms"] = len(all_atoms)
+    state.logs.append(f"Total atoms extracted: {len(all_atoms)}")
+
+    logger.info(f"[{state.job_id}] Parsing complete: {len(all_atoms)} atoms")
+
+    return state.dict()
+
+
+def chunk_document(text: str, max_chars: int = 4000) -> List[str]:
+    """
+    Split document into chunks for LLM processing
+
+    Args:
+        text: Full document text
+        max_chars: Maximum characters per chunk
+
+    Returns:
+        List of text chunks
+    """
+    chunks = []
+    current_chunk = []
+    current_length = 0
+
+    # Split by paragraphs first
+    paragraphs = text.split('\n\n')
+
+    for para in paragraphs:
+        para_length = len(para)
+
+        if current_length + para_length > max_chars and current_chunk:
+            # Save current chunk and start new one
+            chunks.append('\n\n'.join(current_chunk))
+            current_chunk = [para]
+            current_length = para_length
+        else:
+            current_chunk.append(para)
+            current_length += para_length
+
+    # Add final chunk
+    if current_chunk:
+        chunks.append('\n\n'.join(current_chunk))
+
+    return chunks
+
+
+def extract_atoms_from_chunk(chunk: str, metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Extract knowledge atoms from text chunk using Ollama LLM
+
+    Args:
+        chunk: Text to parse
+        metadata: Document metadata
+
+    Returns:
+        List of atom dictionaries
+    """
+    prompt = build_extraction_prompt(chunk, metadata)
 
     try:
-        # Extract atoms using LLM
-        atoms = extract_atoms_from_text(state.raw_document, state.metadata)
+        # Call Ollama API
+        response = requests.post(
+            f"{settings.OLLAMA_BASE_URL}/api/generate",
+            json={
+                "model": settings.OLLAMA_LLM_MODEL,
+                "prompt": prompt,
+                "stream": False,
+                "format": "json"  # Request JSON output
+            },
+            timeout=settings.TIMEOUT_SECONDS
+        )
+        response.raise_for_status()
 
-        state.atoms = atoms
-        state.atoms_created = len(atoms)
+        result = response.json()
+        generated_text = result.get("response", "")
 
-        logger.info(f"[{state.job_id}] Parsed {len(atoms)} atoms")
-        state.logs.append(f"Extracted {len(atoms)} atoms")
+        # Parse JSON response
+        atoms_data = json.loads(generated_text)
 
-    except Exception as e:
-        error_msg = f"Parsing failed: {str(e)}"
-        logger.error(f"[{state.job_id}] {error_msg}")
-        state.errors.append(error_msg)
+        # Validate against schema
+        if isinstance(atoms_data, dict) and "atoms" in atoms_data:
+            atoms = atoms_data["atoms"]
+        elif isinstance(atoms_data, list):
+            atoms = atoms_data
+        else:
+            logger.warning(f"Unexpected LLM response format: {type(atoms_data)}")
+            return []
 
-    return state
+        # Validate each atom
+        validated_atoms = []
+        for atom_dict in atoms:
+            try:
+                # Add metadata
+                atom_dict["source_url"] = metadata.get("source_url")
+
+                # Validate with Pydantic
+                atom = KnowledgeAtom(**atom_dict)
+                validated_atoms.append(atom.dict())
+
+            except Exception as e:
+                logger.warning(f"Atom validation failed: {e}")
+
+        return validated_atoms
+
+    except requests.RequestException as e:
+        logger.error(f"Ollama API error: {e}")
+        return []
+
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON parse error: {e}")
+        return []
+
+
+def build_extraction_prompt(text: str, metadata: Dict[str, Any]) -> str:
+    """
+    Build prompt for LLM extraction
+
+    Args:
+        text: Text to analyze
+        metadata: Document metadata
+
+    Returns:
+        Structured prompt
+    """
+    return f"""Extract knowledge atoms from this industrial/PLC documentation.
+
+DOCUMENT METADATA:
+Vendor: {metadata.get('vendor', 'unknown')}
+Product: {metadata.get('product', 'unknown')}
+
+TEXT TO ANALYZE:
+{text[:2000]}
+
+EXTRACTION RULES:
+1. Identify knowledge atoms of these types:
+   - fault: Error codes with symptoms, causes, fixes
+   - pattern: Programming patterns, procedures, configurations
+   - concept: Definitions, explanations, theory
+
+2. For each atom, extract:
+   - atom_type: (fault|pattern|concept)
+   - title: Clear descriptive title
+   - summary: 1-2 sentence summary
+   - content: Full detailed content
+   - keywords: List of search keywords
+
+3. For faults, also extract:
+   - code: Error/fault code
+   - symptoms: Observable symptoms list
+   - causes: Possible causes list
+   - fixes: Remediation steps list
+
+4. For patterns, also extract:
+   - pattern_type: Type of pattern
+   - steps: Implementation steps list
+   - prerequisites: Prerequisites list
+
+OUTPUT FORMAT (JSON):
+{{
+  "atoms": [
+    {{
+      "atom_type": "fault",
+      "title": "Motor Overcurrent Fault",
+      "summary": "Motor trips on excessive current draw",
+      "content": "...",
+      "code": "F0010",
+      "symptoms": ["Motor stops", "Alarm flashing"],
+      "causes": ["Jam", "Short"],
+      "fixes": ["Check wiring", "Test motor"],
+      "keywords": ["motor", "overcurrent", "fault"]
+    }}
+  ]
+}}
+
+Extract all atoms from the text above. Return valid JSON only.
+"""

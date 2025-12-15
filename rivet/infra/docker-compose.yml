@@ -2,33 +2,33 @@ version: "3.9"
 
 services:
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: rivet
       POSTGRES_USER: rivet
-      POSTGRES_PASSWORD: rivet_password_change_me
+      POSTGRES_PASSWORD: rivet_factory_2025!
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+      - ../init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
     ports:
       - "5432:5432"
-    restart: always
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U rivet"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: always
 
   redis:
-    image: redis:7-alpine
+    image: redis:7
     ports:
       - "6379:6379"
-    restart: always
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: always
 
   ollama:
     image: ollama/ollama:latest
@@ -37,34 +37,23 @@ services:
     ports:
       - "11434:11434"
     restart: always
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    # Note: After first start, exec into container and run:
+    # ollama pull deepseek-r1:1.5b
+    # ollama pull nomic-embed-text
 
   rivet-worker:
     build:
       context: ..
       dockerfile: infra/docker/Dockerfile
-    environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=rivet
-      - POSTGRES_USER=rivet
-      - POSTGRES_PASSWORD=rivet_password_change_me
-      - REDIS_URL=redis://redis:6379/0
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - OLLAMA_LLM_MODEL=mistral:latest
-      - OLLAMA_EMBED_MODEL=nomic-embed-text
-      - LOG_LEVEL=INFO
+    env_file:
+      - ../.env
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       ollama:
-        condition: service_healthy
+        condition: service_started
     restart: always
     command: ["python", "-m", "langgraph_app.worker"]
 
@@ -72,15 +61,8 @@ services:
     build:
       context: ..
       dockerfile: infra/docker/Dockerfile
-    environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=rivet
-      - POSTGRES_USER=rivet
-      - POSTGRES_PASSWORD=rivet_password_change_me
-      - REDIS_URL=redis://redis:6379/0
-      - SCHEDULER_INTERVAL=3600
-      - LOG_LEVEL=INFO
+    env_file:
+      - ../.env
     depends_on:
       redis:
         condition: service_healthy

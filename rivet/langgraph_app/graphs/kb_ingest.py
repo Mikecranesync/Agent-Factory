@@ -1,7 +1,10 @@
 """
-KB Ingestion Graph - Main LangGraph workflow
+KB Ingestion Graph - Main workflow for knowledge base ingestion
+
+Flow: Discovery → Downloader → Parser → Critic → Indexer
 """
 
+import logging
 from langgraph.graph import StateGraph, END
 from langgraph_app.state import RivetState
 from langgraph_app.nodes import (
@@ -12,38 +15,26 @@ from langgraph_app.nodes import (
     indexer_node
 )
 
-
-def should_continue_after_critic(state: RivetState) -> str:
-    """
-    Decide whether to index or stop after critique
-
-    Args:
-        state: Current state
-
-    Returns:
-        Next node name or END
-    """
-    if state.errors:
-        return END
-    if not state.atoms:
-        return END
-    return "indexer"
+logger = logging.getLogger(__name__)
 
 
 def build_kb_ingest_graph():
     """
-    Build the KB ingestion LangGraph workflow
+    Build knowledge base ingestion workflow
 
-    Pipeline:
-    1. Discovery: Find source URL
-    2. Downloader: Fetch document
-    3. Parser: Extract structured atoms via LLM
-    4. Critic: Validate atoms
-    5. Indexer: Store in Postgres + pgvector (if valid)
+    Nodes:
+    - discovery: Find source document URL
+    - downloader: Download and extract text
+    - parser: Extract knowledge atoms using LLM
+    - critic: Validate extracted atoms
+    - indexer: Store atoms in database with embeddings
 
     Returns:
-        Compiled graph
+        Compiled LangGraph workflow
     """
+    logger.info("Building KB ingestion graph")
+
+    # Create graph
     graph = StateGraph(RivetState)
 
     # Add nodes
@@ -53,16 +44,23 @@ def build_kb_ingest_graph():
     graph.add_node("critic", critic_node)
     graph.add_node("indexer", indexer_node)
 
-    # Define edges
+    # Define flow
     graph.set_entry_point("discovery")
     graph.add_edge("discovery", "downloader")
     graph.add_edge("downloader", "parser")
     graph.add_edge("parser", "critic")
 
-    # Conditional edge: only index if validation passed
+    # Conditional edge from critic
+    def should_index(state):
+        """Check if we should proceed to indexing"""
+        if state.errors:
+            logger.warning(f"Job {state.job_id}: Skipping indexing due to errors")
+            return END
+        return "indexer"
+
     graph.add_conditional_edges(
         "critic",
-        should_continue_after_critic,
+        should_index,
         {
             "indexer": "indexer",
             END: END
@@ -71,4 +69,8 @@ def build_kb_ingest_graph():
 
     graph.add_edge("indexer", END)
 
-    return graph.compile()
+    # Compile and return
+    compiled_graph = graph.compile()
+    logger.info("KB ingestion graph compiled successfully")
+
+    return compiled_graph

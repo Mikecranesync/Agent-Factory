@@ -1,60 +1,51 @@
 """
-Configuration for Rivet KB Factory
-Loads environment variables and provides centralized settings
+Configuration for Rivet application
+
+Loads settings from environment variables.
 """
 
 import os
-from pydantic_settings import BaseSettings
 from typing import Optional
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """
-    Application settings loaded from environment variables
+    """Application settings loaded from environment"""
 
-    Required environment variables:
-    - POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD
-    - REDIS_URL
-    - OLLAMA_BASE_URL
-    """
+    # PostgreSQL
+    POSTGRES_HOST: str = Field(default="postgres", description="PostgreSQL host")
+    POSTGRES_PORT: int = Field(default=5432, description="PostgreSQL port")
+    POSTGRES_DB: str = Field(default="rivet", description="Database name")
+    POSTGRES_USER: str = Field(default="rivet", description="Database user")
+    POSTGRES_PASSWORD: str = Field(default="change_me", description="Database password")
 
-    # Postgres configuration
-    POSTGRES_HOST: str = "postgres"
-    POSTGRES_PORT: int = 5432
-    POSTGRES_DB: str = "rivet"
-    POSTGRES_USER: str = "rivet"
-    POSTGRES_PASSWORD: str = "change_me"
+    # Redis
+    REDIS_URL: str = Field(default="redis://redis:6379/0", description="Redis connection URL")
 
-    # Redis configuration
-    REDIS_URL: str = "redis://redis:6379/0"
+    # Ollama
+    OLLAMA_BASE_URL: str = Field(default="http://ollama:11434", description="Ollama API endpoint")
+    OLLAMA_LLM_MODEL: str = Field(default="deepseek-r1:1.5b", description="LLM model for extraction")
+    OLLAMA_EMBED_MODEL: str = Field(default="nomic-embed-text", description="Embedding model")
 
-    # Ollama configuration
-    OLLAMA_BASE_URL: str = "http://ollama:11434"
-    OLLAMA_LLM_MODEL: str = "mistral:latest"  # or deepseek-coder
-    OLLAMA_EMBED_MODEL: str = "nomic-embed-text"
-
-    # Worker configuration
-    WORKER_POLL_INTERVAL: int = 5  # seconds
-    MAX_RETRIES: int = 3
-
-    # Scheduler configuration
-    SCHEDULER_INTERVAL: int = 3600  # 1 hour
+    # Processing
+    BATCH_SIZE: int = Field(default=10, description="Atoms per batch")
+    MAX_RETRIES: int = Field(default=3, description="Max retries for failed jobs")
+    TIMEOUT_SECONDS: int = Field(default=300, description="Job timeout")
 
     # Logging
-    LOG_LEVEL: str = "INFO"
+    LOG_LEVEL: str = Field(default="INFO", description="Logging level")
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     @property
     def POSTGRES_DSN(self) -> str:
-        """PostgreSQL connection string"""
+        """Build PostgreSQL connection string"""
         return (
             f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
 
 
-# Global settings instance
+# Singleton settings instance
 settings = Settings()

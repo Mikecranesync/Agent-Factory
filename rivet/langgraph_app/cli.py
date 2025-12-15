@@ -1,70 +1,108 @@
 """
-CLI tool - Run single ingestion jobs for debugging
+CLI - Command-line interface for testing and debugging
+
+Run individual jobs without Redis queue.
 """
 
-import logging
 import uuid
-import sys
+import logging
+import argparse
 from langgraph_app.state import RivetState
 from langgraph_app.graphs.kb_ingest import build_kb_ingest_graph
+from langgraph_app.config import settings
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-
 logger = logging.getLogger(__name__)
 
 
-def run_single_job(source_url: str):
+def run_job(source_url: str) -> None:
     """
-    Run KB ingestion for a single URL (for debugging)
+    Run single ingestion job
 
     Args:
-        source_url: URL to process
+        source_url: URL of document to ingest
     """
-    logger.info(f"Running single job: {source_url}")
+    logger.info(f"Running job for: {source_url}")
 
     # Build graph
     graph = build_kb_ingest_graph()
 
-    # Create initial state
+    # Create state
+    job_id = str(uuid.uuid4())
     state = RivetState(
-        job_id=str(uuid.uuid4()),
-        source_url=source_url
+        job_id=job_id,
+        source_url=source_url,
+        workflow="kb_ingest"
     )
 
-    # Run graph
-    final_state = None
-    for step_state in graph.stream(state):
-        final_state = step_state
-        logger.info(f"Step completed. Logs: {step_state.logs}")
+    # Execute
+    logger.info(f"[{job_id}] Starting ingestion...")
 
-    # Print results
-    if final_state:
-        print("\n" + "=" * 80)
-        print("JOB COMPLETE")
-        print("=" * 80)
-        print(f"Job ID: {final_state.job_id}")
-        print(f"Source: {final_state.source_url}")
-        print(f"Atoms created: {final_state.atoms_created}")
-        print(f"Atoms indexed: {final_state.atoms_indexed}")
-        print(f"Errors: {len(final_state.errors)}")
+    try:
+        final_state = None
 
-        if final_state.errors:
-            print("\nERRORS:")
-            for error in final_state.errors:
-                print(f"  - {error}")
+        for step_state in graph.stream(state.dict()):
+            final_state = step_state
 
-        print("\nLOGS:")
-        for log in final_state.logs:
-            print(f"  - {log}")
+            # Print progress
+            if "logs" in step_state:
+                for log in step_state["logs"]:
+                    logger.info(f"[{job_id}] {log}")
+
+        # Print results
+        if final_state:
+            errors = final_state.get("errors", [])
+            atoms = final_state.get("atoms", [])
+
+            print("\n" + "="*80)
+            print("JOB RESULTS")
+            print("="*80)
+            print(f"Job ID: {job_id}")
+            print(f"Source: {source_url}")
+            print(f"Atoms extracted: {len(atoms)}")
+            print(f"Errors: {len(errors)}")
+
+            if errors:
+                print("\nERRORS:")
+                for error in errors:
+                    print(f"  - {error}")
+
+            if atoms:
+                print(f"\nFIRST ATOM SAMPLE:")
+                first_atom = atoms[0]
+                print(f"  Type: {first_atom.get('atom_type')}")
+                print(f"  Title: {first_atom.get('title')}")
+                print(f"  Summary: {first_atom.get('summary')}")
+
+            print("="*80)
+
+    except Exception as e:
+        logger.error(f"[{job_id}] Job failed: {e}", exc_info=True)
+
+
+def main():
+    """Main CLI entry point"""
+    parser = argparse.ArgumentParser(description="Rivet KB Ingestion CLI")
+    parser.add_argument(
+        "url",
+        help="URL of document to ingest"
+    )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Enable verbose logging"
+    )
+
+    args = parser.parse_args()
+
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    run_job(args.url)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python -m langgraph_app.cli <source_url>")
-        sys.exit(1)
-
-    url = sys.argv[1]
-    run_single_job(url)
+    main()

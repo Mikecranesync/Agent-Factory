@@ -1,39 +1,88 @@
--- Initialize Rivet KB Factory Database
--- Run this manually if auto-schema creation fails
+-- Rivet Industrial KB Factory - Database Schema
+-- PostgreSQL 16 with pgvector extension
 
 -- Enable pgvector extension
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- Knowledge Atoms table
+-- Knowledge atoms table
 CREATE TABLE IF NOT EXISTS knowledge_atoms (
-    id SERIAL PRIMARY KEY,
-    atom_type VARCHAR(50),
+    atom_id SERIAL PRIMARY KEY,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Core fields
+    atom_type VARCHAR(50) NOT NULL CHECK (atom_type IN ('fault', 'pattern', 'concept', 'procedure')),
     vendor VARCHAR(100),
     product VARCHAR(100),
-    title TEXT NOT NULL,
+
+    -- Content
+    title VARCHAR(500) NOT NULL,
+    summary TEXT NOT NULL,
     content TEXT NOT NULL,
+
+    -- Fault-specific fields
+    code VARCHAR(50),
+    symptoms TEXT[],
+    causes TEXT[],
+    fixes TEXT[],
+
+    -- Pattern-specific fields
+    pattern_type VARCHAR(100),
+    prerequisites TEXT[],
+    steps TEXT[],
+
+    -- Metadata
     keywords TEXT[],
+    difficulty VARCHAR(20) CHECK (difficulty IN ('beginner', 'intermediate', 'advanced') OR difficulty IS NULL),
     source_url TEXT,
-    source_type VARCHAR(50),
-    metadata JSONB,
-    embedding vector(768),  -- nomic-embed-text produces 768-dim vectors
-    created_at TIMESTAMP DEFAULT NOW()
+    source_pages VARCHAR(100),
+
+    -- Vector embedding for semantic search
+    embedding vector(768)  -- nomic-embed-text dimension
 );
 
--- Create indexes for fast search
-CREATE INDEX IF NOT EXISTS atoms_type_idx ON knowledge_atoms(atom_type);
-CREATE INDEX IF NOT EXISTS atoms_vendor_idx ON knowledge_atoms(vendor);
-CREATE INDEX IF NOT EXISTS atoms_created_idx ON knowledge_atoms(created_at DESC);
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_atoms_type ON knowledge_atoms(atom_type);
+CREATE INDEX IF NOT EXISTS idx_atoms_vendor ON knowledge_atoms(vendor);
+CREATE INDEX IF NOT EXISTS idx_atoms_product ON knowledge_atoms(product);
+CREATE INDEX IF NOT EXISTS idx_atoms_difficulty ON knowledge_atoms(difficulty);
+CREATE INDEX IF NOT EXISTS idx_atoms_keywords ON knowledge_atoms USING GIN(keywords);
 
--- Vector similarity search index (IVFFlat)
-CREATE INDEX IF NOT EXISTS atoms_embedding_idx 
-ON knowledge_atoms USING ivfflat (embedding vector_cosine_ops)
-WITH (lists = 100);
+-- Vector similarity index (HNSW for fast nearest-neighbor search)
+CREATE INDEX IF NOT EXISTS idx_atoms_embedding ON knowledge_atoms
+USING hnsw (embedding vector_cosine_ops);
 
--- Sample query: Find similar atoms
--- SELECT title, content, 1 - (embedding <=> '[0.1, 0.2, ...]'::vector) AS similarity
--- FROM knowledge_atoms
--- ORDER BY embedding <=> '[0.1, 0.2, ...]'::vector
--- LIMIT 10;
+-- Full-text search index
+CREATE INDEX IF NOT EXISTS idx_atoms_fulltext ON knowledge_atoms
+USING GIN(to_tsvector('english', title || ' ' || summary || ' ' || content));
 
-COMMENT ON TABLE knowledge_atoms IS 'Industrial maintenance knowledge base atoms with vector embeddings';
+-- Ingestion jobs tracking table (optional - for future use)
+CREATE TABLE IF NOT EXISTS ingestion_jobs (
+    job_id UUID PRIMARY KEY,
+    source_url TEXT NOT NULL,
+    status VARCHAR(50) NOT NULL CHECK (status IN ('pending', 'running', 'completed', 'failed')),
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    atoms_extracted INTEGER DEFAULT 0,
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON ingestion_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_jobs_created ON ingestion_jobs(created_at);
+
+-- Update timestamp trigger
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER update_atoms_updated_at BEFORE UPDATE ON knowledge_atoms
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Grant permissions
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO rivet;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO rivet;

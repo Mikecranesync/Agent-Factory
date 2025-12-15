@@ -17,9 +17,23 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
+
 from agent_factory.memory.storage import SupabaseMemoryStorage
 
+load_dotenv()
 logger = logging.getLogger(__name__)
+
+# VPS KB Factory Database Configuration
+VPS_KB_CONFIG = {
+    'host': os.getenv('VPS_KB_HOST', '72.60.175.144'),
+    'port': int(os.getenv('VPS_KB_PORT', 5432)),
+    'user': os.getenv('VPS_KB_USER', 'rivet'),
+    'password': os.getenv('VPS_KB_PASSWORD', 'rivet_factory_2025!'),
+    'database': os.getenv('VPS_KB_DATABASE', 'rivet'),
+}
 
 
 class ScriptwriterAgent:
@@ -140,6 +154,128 @@ class ScriptwriterAgent:
         except Exception as e:
             logger.error(f"Failed to query atoms for topic '{topic}': {e}")
             return []
+
+    def query_vps_atoms(self, topic: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Query VPS KB Factory database for relevant atoms using keyword search.
+
+        Connects to Hostinger VPS PostgreSQL with pgvector for industrial knowledge.
+
+        Args:
+            topic: Topic keyword to search for
+            limit: Maximum number of atoms to return (default: 5)
+
+        Returns:
+            List of atom dictionaries from VPS database
+
+        Example:
+            >>> agent = ScriptwriterAgent()
+            >>> atoms = agent.query_vps_atoms("ControlLogix", limit=3)
+            >>> print(len(atoms))
+            3
+        """
+        try:
+            conn = psycopg2.connect(
+                host=VPS_KB_CONFIG['host'],
+                port=VPS_KB_CONFIG['port'],
+                user=VPS_KB_CONFIG['user'],
+                password=VPS_KB_CONFIG['password'],
+                dbname=VPS_KB_CONFIG['database'],
+                cursor_factory=RealDictCursor
+            )
+
+            with conn.cursor() as cur:
+                # Keyword search in title, summary, content
+                query = """
+                    SELECT atom_id, atom_type, vendor, product, title, summary, content,
+                           code, symptoms, causes, fixes, pattern_type, prerequisites,
+                           steps, keywords, difficulty, source_url, source_pages
+                    FROM knowledge_atoms
+                    WHERE title ILIKE %s
+                       OR summary ILIKE %s
+                       OR content ILIKE %s
+                       OR %s = ANY(keywords)
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                """
+                search_pattern = f'%{topic}%'
+                cur.execute(query, (search_pattern, search_pattern, search_pattern, topic.lower(), limit))
+                atoms = [dict(row) for row in cur.fetchall()]
+
+            conn.close()
+
+            logger.info(f"VPS query '{topic}' returned {len(atoms)} atoms")
+            return atoms
+
+        except Exception as e:
+            logger.error(f"Failed to query VPS atoms for topic '{topic}': {e}")
+            return []
+
+    def query_vps_atoms_semantic(self, query_text: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Query VPS KB Factory using semantic search with pgvector.
+
+        Uses embedding similarity to find conceptually related atoms.
+        Requires atoms to have embeddings in the 'embedding' column.
+
+        Args:
+            query_text: Natural language query
+            limit: Maximum number of atoms to return
+
+        Returns:
+            List of atoms sorted by semantic similarity
+
+        Note:
+            This method requires generating an embedding for the query,
+            which needs Ollama or another embedding service.
+        """
+        try:
+            import requests
+
+            # Generate embedding for query using Ollama on VPS
+            ollama_url = f"http://{VPS_KB_CONFIG['host']}:11434/api/embeddings"
+            response = requests.post(ollama_url, json={
+                "model": "nomic-embed-text",
+                "prompt": query_text
+            }, timeout=30)
+            response.raise_for_status()
+            query_embedding = response.json()['embedding']
+
+            # Connect to VPS database
+            conn = psycopg2.connect(
+                host=VPS_KB_CONFIG['host'],
+                port=VPS_KB_CONFIG['port'],
+                user=VPS_KB_CONFIG['user'],
+                password=VPS_KB_CONFIG['password'],
+                dbname=VPS_KB_CONFIG['database'],
+                cursor_factory=RealDictCursor
+            )
+
+            with conn.cursor() as cur:
+                # Semantic search using pgvector cosine similarity
+                query = """
+                    SELECT atom_id, atom_type, vendor, product, title, summary, content,
+                           code, symptoms, causes, fixes, keywords, difficulty,
+                           source_url, source_pages,
+                           1 - (embedding <=> %s::vector) as similarity
+                    FROM knowledge_atoms
+                    WHERE embedding IS NOT NULL
+                    ORDER BY embedding <=> %s::vector
+                    LIMIT %s
+                """
+                embedding_str = f'[{",".join(map(str, query_embedding))}]'
+                cur.execute(query, (embedding_str, embedding_str, limit))
+                atoms = [dict(row) for row in cur.fetchall()]
+
+            conn.close()
+
+            logger.info(f"VPS semantic search '{query_text[:30]}...' returned {len(atoms)} atoms")
+            return atoms
+
+        except Exception as e:
+            logger.error(f"Semantic search failed: {e}")
+            # Fallback to keyword search
+            return self.query_vps_atoms(query_text, limit)
 
     def generate_script(self, topic: str, atoms: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
