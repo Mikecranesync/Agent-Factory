@@ -29,7 +29,7 @@ from supabase import create_client
 from tqdm import tqdm
 
 # Add project root to path
-project_root = Path(__file__).parent.parent
+project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 # Load environment
@@ -153,16 +153,16 @@ def main():
     """Main upload workflow."""
 
     print("=" * 70)
-    print("KNOWLEDGE ATOMS → SUPABASE UPLOAD")
+    print("KNOWLEDGE ATOMS -> SUPABASE UPLOAD")
     print("=" * 70)
 
     # Get credentials
     url = os.getenv('SUPABASE_URL')
-    key = os.getenv('SUPABASE_KEY') or os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+    key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_KEY')
 
     if not url or not key:
         print("\n[ERROR] Missing Supabase credentials in .env")
-        print("Required: SUPABASE_URL, SUPABASE_KEY (or SUPABASE_SERVICE_ROLE_KEY)")
+        print("Required: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_KEY)")
         return False
 
     print(f"\nURL: {url}")
