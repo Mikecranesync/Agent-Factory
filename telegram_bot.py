@@ -56,6 +56,7 @@ from telegram.ext import (
 from telegram.constants import ParseMode
 
 from agent_factory.memory.storage import SupabaseMemoryStorage
+from agent_factory.integrations.telegram.rivet_pro_handlers import RIVETProHandlers
 
 # ============================================================================
 # Configuration
@@ -601,6 +602,9 @@ def main():
     # Create application
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
+    # Initialize RIVET Pro handlers
+    rivet_handlers = RIVETProHandlers()
+
     # Register command handlers
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("help", cmd_help))
@@ -611,12 +615,32 @@ def main():
     application.add_handler(CommandHandler("reject", cmd_reject))
     application.add_handler(CommandHandler("issue", cmd_issue))
 
-    # Schedule daily standup
-    job_queue = application.job_queue
-    job_queue.run_daily(
-        send_daily_standup,
-        time=dt_time(hour=STANDUP_HOUR, minute=STANDUP_MINUTE)
+    # Register RIVET Pro handlers
+    application.add_handler(CommandHandler("troubleshoot", rivet_handlers.handle_troubleshoot))
+    application.add_handler(CommandHandler("upgrade", rivet_handlers.handle_upgrade))
+    application.add_handler(CommandHandler("book_expert", rivet_handlers.handle_book_expert))
+    application.add_handler(CommandHandler("my_sessions", rivet_handlers.handle_my_sessions))
+    application.add_handler(CommandHandler("pro_stats", rivet_handlers.handle_pro_stats))
+
+    # Add message handler for natural language troubleshooting (lower priority)
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            rivet_handlers.handle_troubleshoot
+        ),
+        group=1  # Lower priority than command handlers
     )
+
+    # Schedule daily standup (optional - requires job-queue extra)
+    job_queue = application.job_queue
+    if job_queue:
+        job_queue.run_daily(
+            send_daily_standup,
+            time=dt_time(hour=STANDUP_HOUR, minute=STANDUP_MINUTE)
+        )
+        logger.info("Daily standup scheduled")
+    else:
+        logger.warning("JobQueue not available - daily standup disabled")
 
     # Run bot
     logger.info("=" * 70)
@@ -624,7 +648,8 @@ def main():
     logger.info("=" * 70)
     logger.info(f"Authorized Users: {len(AUTHORIZED_USERS)}")
     logger.info(f"Daily Standup: {STANDUP_HOUR:02d}:{STANDUP_MINUTE:02d}")
-    logger.info("Commands: /start, /help, /status, /agents, /metrics, /approve, /reject, /issue")
+    logger.info("System Commands: /start, /help, /status, /agents, /metrics, /approve, /reject, /issue")
+    logger.info("RIVET Pro: /troubleshoot, /upgrade, /book_expert, /my_sessions, /pro_stats")
     logger.info("=" * 70)
 
     # Run polling
