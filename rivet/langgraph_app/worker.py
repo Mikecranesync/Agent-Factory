@@ -59,6 +59,10 @@ def run_worker():
 
             # Log results
             if final_state:
+                # LangGraph returns dict like {node_name: state}, extract the state
+                state_dict = list(final_state.values())[0] if final_state else {}
+                final_state = RivetState(**state_dict)
+
                 if final_state.errors:
                     logger.error(f"Job failed: {source_url}")
                     logger.error(f"Errors: {final_state.errors}")
