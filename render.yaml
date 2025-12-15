@@ -20,8 +20,8 @@ services:
     buildCommand: poetry install --only main --no-interaction --no-ansi
 
     # Start Configuration
-    # Startup script deploys database schema then starts bot
-    startCommand: bash scripts/automation/start_bot_production.sh
+    # Start bot directly (database schema should be pre-deployed)
+    startCommand: python -m agent_factory.integrations.telegram
 
     # Health Check
     # Bot exposes /health endpoint on port 9876
