@@ -21,7 +21,7 @@ services:
 
     # Start Configuration
     # Start bot directly (database schema should be pre-deployed)
-    startCommand: python -m agent_factory.integrations.telegram
+    startCommand: poetry run python -m agent_factory.integrations.telegram
 
     # Health Check
     # Bot exposes /health endpoint on port 9876
