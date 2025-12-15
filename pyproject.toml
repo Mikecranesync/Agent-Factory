@@ -12,11 +12,11 @@ package-mode = false  # Poetry 2.x: This is a framework/application, not a libra
 python = ">=3.11.0,<3.14"
 
 # Core LangChain dependencies
-langchain = "^0.2.1"
-langchain-openai = "^0.1.8"
-langchain-community = "^0.2.1"
-langchain-anthropic = "^0.1.15"
-langchain-google-genai = "^1.0.5"
+langchain = "^1.2.0"
+langchain-openai = "^1.1.3"
+langchain-community = "^0.4.1"
+langchain-anthropic = "^1.3.0"
+langchain-google-genai = "^4.0.0"
 langchainhub = "^0.1.18"
 
 # LLM & Embeddings
@@ -26,6 +26,11 @@ langchainhub = "^0.1.18"
 wikipedia = "^1.4.0"
 tavily-python = "^0.3.3"
 duckduckgo-search = "^4.1.0"
+
+# Content ingestion tools
+youtube-transcript-api = "^0.6.1"  # YouTube transcript extraction
+trafilatura = "^1.6.0"  # Web article extraction
+beautifulsoup4 = "^4.12.0"  # HTML parsing fallback
 
 # File operations and Git
 gitpython = "^3.1.40"
@@ -80,11 +85,8 @@ aiohttp = "^3.9.0"  # HTTP server for health check endpoint
 psycopg2-binary = "^2.9.11"
 psycopg = {extras = ["binary"], version = "^3.3.2"}
 psycopg-pool = "^3.3.0"
-
-# YouTube upload integration
-google-api-python-client = "^2.100.0"
-google-auth-oauthlib = "^1.1.0"
-google-auth-httplib2 = "^0.2.0"
+langchain-core = "^1.2.1"
+langgraph = "^1.0.5"
 
 [tool.poetry.group.dev.dependencies]
 # Development tools
