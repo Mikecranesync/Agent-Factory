@@ -34,6 +34,7 @@ gitpython = "^3.1.40"
 python-dotenv = "^1.0.1"
 rich = "^13.7.0"
 tenacity = "^8.2.3"
+requests = "^2.31.0"  # HTTP library for Hostinger API
 
 # CLI tools
 typer = "^0.12.0"
@@ -44,7 +45,11 @@ jinja2 = "^3.1.2"
 markdown = "^3.5.0"
 
 # File format support
-PyPDF2 = "^3.0.1"
+PyPDF2 = "^3.0.1"  # Basic PDF reading (no C dependencies)
+tqdm = "^4.66.0"  # Progress bars for batch processing
+# PyMuPDF = "^1.24.0"  # REMOVED - requires C++ compilation, fails on Render
+# pdfplumber = "^0.10.0"  # REMOVED - requires C++ compilation, fails on Render
+# NOTE: PDF processing features gracefully degrade without these libraries
 
 # Data structures
 pydantic = "^2.5.0"
