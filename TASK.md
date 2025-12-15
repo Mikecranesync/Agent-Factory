@@ -19,6 +19,117 @@
 
 ## Recently Completed (Dec 9-15)
 
+### ✅ Automated VPS Deployment with GitHub Actions (COMPLETE)
+**Completed:** 2025-12-15
+**Impact:** Fully automated RIVET Pro Telegram bot deployment to VPS (72.60.175.144) via GitHub Actions
+
+**Deliverables:**
+- `.github/workflows/deploy-vps.yml` - Complete CI/CD pipeline
+  - Automatic deployment on push to main branch
+  - Manual workflow dispatch support
+  - SSH key authentication (ed25519)
+  - Environment file deployment from GitHub Secrets
+  - Process verification (no health endpoint needed)
+  - Telegram notifications on success/failure
+- `deploy_rivet_pro.sh` - VPS deployment script (389 lines)
+  - Poetry 2.x compatibility (`--only main` flag)
+  - Process-based bot verification (removed health endpoint dependency)
+  - Dependency installation and validation
+  - Graceful bot restart with PID tracking
+  - Comprehensive error logging
+- `scripts/setup_vps_deployment.ps1` - Windows automation script (155 lines)
+  - Automated SSH key generation (ed25519)
+  - Key display for GitHub Secrets configuration
+  - Step-by-step setup instructions
+  - ASCII-only output (Windows compatible)
+- `scripts/setup_vps_ssh_key.sh` - VPS-side SSH setup (48 lines)
+  - Automated public key installation
+  - Correct permissions configuration
+  - Idempotent (safe to run multiple times)
+- `docs/CLAUDE_CODE_CLI_VPS_SETUP.md` - Remote debugging guide
+  - SSH connection instructions for Claude Code CLI
+  - Complete handoff prompt for VPS debugging
+  - Troubleshooting guide
+
+**GitHub Secrets Configured:**
+- `VPS_SSH_KEY` - SSH private key (ed25519)
+- `VPS_ENV_FILE` - Complete .env file contents
+- `TELEGRAM_BOT_TOKEN` - Bot authentication token
+- `TELEGRAM_ADMIN_CHAT_ID` - Admin notification recipient
+
+**Environment Files Standardized:**
+- `.env` - 60 lines, production local configuration
+- `.env.vps` - 60 lines, production VPS configuration
+- `.env.example` - 60 lines, template for new users
+- All files follow identical structure (API Keys → Research Tools → Telegram → Database → VPS KB → LLM/Voice → Internal API → Deployment → Python Config)
+
+**Architecture:**
+```
+GitHub Push (main branch)
+    ↓
+GitHub Actions Workflow (.github/workflows/deploy-vps.yml)
+    ↓
+SSH Connection (webfactory/ssh-agent@v0.9.0)
+    ↓
+VPS (72.60.175.144)
+    ↓
+deploy_rivet_pro.sh
+    ├── Poetry dependency installation
+    ├── Bot process start (nohup)
+    ├── Process verification (ps)
+    └── Log generation
+    ↓
+Telegram Notification (success/failure)
+```
+
+**Deployment Process:**
+1. **Automatic:** Any push to `main` triggers deployment if these paths change:
+   - `agent_factory/**`
+   - `telegram_bot.py`
+   - `deploy_rivet_pro.sh`
+   - `rivet-pro.service`
+   - `.github/workflows/deploy-vps.yml`
+
+2. **Manual:** GitHub Actions → "Deploy RIVET Pro to VPS" → "Run workflow"
+
+**Bot Status (Production):**
+- **Running:** 3 processes on VPS (auto-restart on previous deployments)
+- **PID:** 235095, 236393, 237167
+- **Connected:** Telegram API responding
+- **Logs:** `/root/Agent-Factory/logs/bot.log` and `/root/Agent-Factory/logs/bot-error.log`
+
+**Issues Fixed:**
+1. Poetry PATH not available in non-interactive SSH sessions → Added explicit PATH export
+2. Poetry 2.x deprecated `--no-dev` flag → Changed to `--only main`
+3. Health endpoint on port 9876 not implemented → Replaced with process verification
+4. Unicode characters in PowerShell script → Converted to ASCII-only
+
+**Validation:**
+```bash
+# Check latest deployment status
+gh run list --repo Mikecranesync/Agent-Factory --workflow deploy-vps.yml --limit 1
+
+# SSH into VPS
+ssh -i C:/Users/hharp/.ssh/vps_deploy_key root@72.60.175.144
+
+# Check bot status on VPS
+ps aux | grep telegram_bot.py | grep -v grep
+
+# View logs
+tail -f /root/Agent-Factory/logs/bot.log
+
+# Trigger manual deployment
+gh workflow run deploy-vps.yml --repo Mikecranesync/Agent-Factory
+```
+
+**Time to Deploy:** ~1.5 minutes (checkout → SSH setup → deployment → verification → notification)
+
+**Cost:** $0 (uses GitHub Actions free tier)
+
+**Impact:** Zero-touch deployment to production VPS. Push code → automatic deployment → Telegram notification. Bot runs 24/7 with automatic updates on every commit.
+
+---
+
 ### ✅ RIVET Pro Telegram VPS Integration (COMPLETE)
 **Completed:** 2025-12-15
 **Impact:** Live knowledge base queries from 72.60.175.144 VPS (1,964 atoms), multi-stage search with citations
