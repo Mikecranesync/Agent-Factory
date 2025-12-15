@@ -38,6 +38,7 @@ from telegram.constants import ParseMode, ChatAction
 from agent_factory.rivet_pro.intent_detector import IntentDetector, IntentType
 from agent_factory.rivet_pro.confidence_scorer import ConfidenceScorer, AnswerAction
 from agent_factory.rivet_pro.database import RIVETProDatabase
+from agent_factory.rivet_pro.vps_kb_client import VPSKBClient
 from agent_factory.integrations.telegram.conversation_manager import ConversationManager
 
 
@@ -57,6 +58,7 @@ class RIVETProHandlers:
         self.confidence_scorer = ConfidenceScorer()
         self.db = RIVETProDatabase()  # Uses DATABASE_PROVIDER from .env
         self.conversation_manager = ConversationManager(db=self.db)  # Phase 1: Memory
+        self.vps_client = VPSKBClient()  # VPS KB Factory connection
 
         # Stripe config (test mode)
         self.stripe_api_key = os.getenv("STRIPE_API_KEY", "")
@@ -497,24 +499,59 @@ Need help? Reply /help
         equipment_type: Optional[str],
         keywords: list,
     ) -> list:
-        """Search knowledge base for relevant atoms"""
+        """
+        Search VPS Knowledge Base for relevant atoms.
+
+        Uses multi-stage fallback strategy:
+        1. Semantic search (best results)
+        2. Equipment-specific search (if equipment type detected)
+        3. Keyword search (fallback)
+
+        Returns:
+            List of atom dictionaries with similarity scores
+        """
         try:
-            # TODO: Implement actual vector search
-            # For now, return mock atoms
-            return [
-                {
-                    "atom_id": "mock_001",
-                    "title": "Motor Overheating Diagnosis",
-                    "similarity": 0.92,
-                    "equipment_type": equipment_type or "motor",
-                    "human_verified": True,
-                    "citations": ["https://oem-manual.com"],
-                    "symptoms": ["overheating", "tripping"],
-                    "summary": "Motors overheat due to bearing wear, insufficient cooling, or overloading.",
-                }
-            ]
+            # Strategy 1: Semantic search (best results)
+            atoms = self.vps_client.query_atoms_semantic(
+                query_text=question,
+                limit=5,
+                similarity_threshold=0.7
+            )
+
+            if atoms:
+                print(f"[KB] Semantic search returned {len(atoms)} atoms")
+                return atoms
+
+            # Strategy 2: Equipment-specific search
+            if equipment_type:
+                atoms = self.vps_client.search_by_equipment(
+                    equipment_type=equipment_type,
+                    limit=5
+                )
+
+                if atoms:
+                    print(f"[KB] Equipment search ({equipment_type}) returned {len(atoms)} atoms")
+                    return atoms
+
+            # Strategy 3: Keyword search (fallback)
+            if keywords:
+                for keyword in keywords[:3]:  # Try top 3 keywords
+                    atoms = self.vps_client.query_atoms(
+                        topic=keyword,
+                        limit=5
+                    )
+
+                    if atoms:
+                        print(f"[KB] Keyword search ('{keyword}') returned {len(atoms)} atoms")
+                        return atoms
+
+            # No results found
+            print(f"[KB] No atoms found for question: '{question[:50]}...'")
+            return []
+
         except Exception as e:
             print(f"Error searching KB: {e}")
+            # Graceful degradation - return empty list rather than crashing
             return []
 
     async def _create_troubleshooting_session(
@@ -547,22 +584,99 @@ Need help? Reply /help
             return "mock_session_id"
 
     async def _send_answer(self, update: Update, question: str, atoms: list, intent: Any, quality: Any) -> str:
-        """Send AI-generated answer to user and return the text"""
-        # Format answer from atoms
-        answer_text = f"🔍 **Analysis Complete**\n\nConfidence: {quality.overall_confidence:.0%}\n\n"
+        """
+        Send detailed answer with citations to user.
 
-        if atoms:
-            answer_text += f"**Top {len(atoms[:3])} Matches:**\n\n"
-            for i, atom in enumerate(atoms[:3], 1):
-                answer_text += (
-                    f"{i}. **{atom.get('title', 'Unknown')}**\n"
-                    f"   {atom.get('summary', '')[:100]}...\n"
-                    f"   Relevance: {atom.get('similarity', 0):.0%}\n\n"
-                )
+        Generates professional response using atom content with:
+        - Clear problem/solution structure
+        - Step-by-step instructions (if available)
+        - Source citations with page numbers
+        - Follow-up suggestions
+        """
+        if not atoms:
+            # No results - suggest alternatives
+            answer_text = (
+                "😔 **No Knowledge Base Matches**\n\n"
+                "I couldn't find specific documentation for your question in the knowledge base.\n\n"
+                "**Options:**\n"
+                "• Try rephrasing your question\n"
+                "• /book_expert for live tech support\n"
+                "• Describe more symptoms or equipment details\n"
+            )
+            await update.message.reply_text(answer_text, parse_mode=ParseMode.MARKDOWN)
+            return answer_text
 
-            answer_text += "\n💡 Need more details? Ask a follow-up question!"
-        else:
-            answer_text += "😔 No exact matches found.\n\nTry rephrasing or /book_expert for live help."
+        # Format equipment context
+        equipment_context = ""
+        if intent.equipment_info.equipment_type:
+            equipment_context = f"{intent.equipment_info.equipment_type.title()} "
+            if intent.equipment_info.manufacturer:
+                equipment_context += f"({intent.equipment_info.manufacturer.title()}) "
+
+        # Header
+        answer_text = (
+            f"🔧 **{equipment_context}Troubleshooting**\n\n"
+            f"Confidence: {quality.overall_confidence:.0%} | "
+            f"Found: {len(atoms)} atom{'s' if len(atoms) > 1 else ''}\n\n"
+        )
+
+        # Main answer from top 3 atoms
+        for i, atom in enumerate(atoms[:3], 1):
+            similarity = atom.get('similarity', 0)
+            relevance_emoji = "🎯" if similarity > 0.85 else "✅" if similarity > 0.75 else "📍"
+
+            answer_text += f"{relevance_emoji} **{atom.get('title', 'Unknown')}**\n"
+
+            # Add summary
+            summary = atom.get('summary', atom.get('content', ''))[:200]
+            answer_text += f"{summary}...\n\n"
+
+            # Add specific details based on atom type
+            if atom.get('symptoms'):
+                symptoms = atom.get('symptoms', [])
+                if isinstance(symptoms, list) and symptoms:
+                    answer_text += f"**Symptoms:** {', '.join(symptoms[:3])}\n"
+
+            if atom.get('causes'):
+                causes = atom.get('causes', [])
+                if isinstance(causes, list) and causes:
+                    answer_text += f"**Likely Causes:** {', '.join(causes[:3])}\n"
+
+            if atom.get('fixes'):
+                fixes = atom.get('fixes', [])
+                if isinstance(fixes, list) and fixes:
+                    answer_text += f"**Solutions:** {', '.join(fixes[:3])}\n"
+
+            # Add steps if available
+            if atom.get('steps'):
+                steps = atom.get('steps', [])
+                if isinstance(steps, list) and len(steps) > 0:
+                    answer_text += f"\n**Steps:**\n"
+                    for j, step in enumerate(steps[:4], 1):
+                        answer_text += f"{j}. {step}\n"
+
+            answer_text += "\n"
+
+        # Citations
+        answer_text += "📚 **Sources:**\n"
+        cited_sources = set()
+        for atom in atoms[:3]:
+            source_url = atom.get('source_url', '')
+            source_pages = atom.get('source_pages', [])
+
+            if source_url and source_url not in cited_sources:
+                cited_sources.add(source_url)
+                page_info = f" (p.{source_pages[0]})" if source_pages else ""
+                # Truncate URL for readability
+                display_url = source_url if len(source_url) < 50 else source_url[:47] + "..."
+                answer_text += f"• {display_url}{page_info}\n"
+
+        # Follow-up suggestions
+        answer_text += "\n💬 **Follow-up:**\n"
+        if equipment_context:
+            answer_text += f"• \"Tell me more about {atom.get('title', 'this')}\"\n"
+        answer_text += "• \"What are the next steps?\"\n"
+        answer_text += "• \"Show me related issues\"\n"
 
         await update.message.reply_text(
             text=answer_text,
@@ -715,6 +829,53 @@ You've used all 5 free questions today.
             "/cancel - Cancel subscription"
         )
 
+    async def handle_vps_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Display VPS KB Factory health status"""
+        await update.message.reply_text("Checking VPS KB Factory status...")
+
+        try:
+            health = self.vps_client.health_check()
+
+            # Format status message
+            status_emoji = {
+                "healthy": "✅",
+                "degraded": "⚠️",
+                "down": "❌"
+            }.get(health.get("status", "unknown"), "❓")
+
+            db_status = "✅ Connected" if health.get("database_connected") else "❌ Down"
+            ollama_status = "✅ Available" if health.get("ollama_available") else "❌ Down"
+
+            atom_count = health.get("atom_count", 0)
+            last_ingestion = health.get("last_ingestion", "Unknown")
+            response_time = health.get("response_time_ms", 0)
+
+            status_text = (
+                f"{status_emoji} **VPS KB Factory Status**\n\n"
+                f"**Overall:** {health.get('status', 'unknown').title()}\n"
+                f"**Database:** {db_status}\n"
+                f"**Ollama:** {ollama_status}\n"
+                f"**Atoms:** {atom_count:,}\n"
+                f"**Last Ingestion:** {last_ingestion}\n"
+                f"**Response Time:** {response_time}ms\n"
+                f"**Checked At:** {health.get('checked_at', 'Unknown')}\n"
+            )
+
+            if health.get("status") == "healthy":
+                status_text += "\n✅ All systems operational"
+            elif health.get("status") == "degraded":
+                status_text += "\n⚠️ Systems operational but degraded"
+            else:
+                status_text += "\n❌ Systems experiencing issues"
+
+            await update.message.reply_text(status_text, parse_mode='Markdown')
+
+        except Exception as e:
+            await update.message.reply_text(
+                f"❌ Failed to check VPS status:\n{str(e)}",
+                parse_mode='Markdown'
+            )
+
 
 # Singleton instance
 rivet_pro_handlers = RIVETProHandlers()
@@ -743,3 +904,7 @@ async def handle_my_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def handle_pro_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await rivet_pro_handlers.handle_pro_stats(update, context)
+
+
+async def handle_vps_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await rivet_pro_handlers.handle_vps_status(update, context)
