@@ -104,9 +104,9 @@ class DatabaseProvider:
             from psycopg_pool import ConnectionPool
             self._pool = ConnectionPool(
                 self.connection_string,
-                min_size=1,
-                max_size=10,
-                timeout=5.0
+                min_size=2,        # Keep 2 connections warm
+                max_size=20,       # Allow up to 20 concurrent connections
+                timeout=15.0       # Wait up to 15 seconds for connection
             )
             logger.info(f"Created connection pool for {self.name}")
 
