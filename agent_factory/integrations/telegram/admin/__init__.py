@@ -17,10 +17,23 @@ Usage:
 """
 
 from .dashboard import AdminDashboard
-from .permissions import PermissionManager, require_admin
+from .permissions import PermissionManager, require_admin, require_access
+from .agent_manager import AgentManager
+from .content_reviewer import ContentReviewer
+from .github_actions import GitHubActions
+from .kb_manager import KBManager
+from .analytics import Analytics
+from .system_control import SystemControl
 
 __all__ = [
     "AdminDashboard",
     "PermissionManager",
     "require_admin",
+    "require_access",
+    "AgentManager",
+    "ContentReviewer",
+    "GitHubActions",
+    "KBManager",
+    "Analytics",
+    "SystemControl",
 ]

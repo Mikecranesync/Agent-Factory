@@ -58,6 +58,15 @@ from telegram.constants import ParseMode
 from agent_factory.memory.storage import SupabaseMemoryStorage
 from agent_factory.integrations.telegram.rivet_pro_handlers import RIVETProHandlers
 from agent_factory.integrations.telegram.langgraph_handlers import LangGraphHandlers
+from agent_factory.integrations.telegram.admin import (
+    AdminDashboard,
+    AgentManager,
+    ContentReviewer,
+    GitHubActions,
+    KBManager,
+    Analytics,
+    SystemControl,
+)
 
 # ============================================================================
 # Configuration
@@ -633,6 +642,15 @@ def main():
     # Initialize LangGraph handlers
     langgraph_handlers = LangGraphHandlers()
 
+    # Initialize Admin Panel
+    admin_dashboard = AdminDashboard()
+    agent_manager = AgentManager()
+    content_reviewer = ContentReviewer()
+    github_actions = GitHubActions()
+    kb_manager = KBManager()
+    analytics = Analytics()
+    system_control = SystemControl()
+
     # Register command handlers
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("help", cmd_help))
@@ -655,6 +673,42 @@ def main():
     application.add_handler(CommandHandler("research", langgraph_handlers.handle_research))
     application.add_handler(CommandHandler("consensus", langgraph_handlers.handle_consensus))
     application.add_handler(CommandHandler("analyze", langgraph_handlers.handle_analyze))
+
+    # Register Admin Panel handlers
+    application.add_handler(CommandHandler("admin", admin_dashboard.handle_admin))
+    application.add_handler(CallbackQueryHandler(admin_dashboard.handle_callback, pattern="^menu_"))
+
+    # Agent management
+    application.add_handler(CommandHandler("agents_admin", agent_manager.handle_agents))
+    application.add_handler(CommandHandler("agent", agent_manager.handle_agent_detail))
+    application.add_handler(CommandHandler("agent_logs", agent_manager.handle_agent_logs))
+
+    # Content review
+    application.add_handler(CommandHandler("content", content_reviewer.handle_content))
+
+    # GitHub Actions
+    application.add_handler(CommandHandler("deploy", github_actions.handle_deploy))
+    application.add_handler(CommandHandler("workflow", github_actions.handle_workflow))
+    application.add_handler(CommandHandler("workflows", github_actions.handle_workflows))
+    application.add_handler(CommandHandler("workflow_status", github_actions.handle_workflow_status))
+    application.add_handler(CallbackQueryHandler(github_actions.handle_deploy_confirm, pattern="^deploy_confirm$"))
+
+    # KB management
+    application.add_handler(CommandHandler("kb", kb_manager.handle_kb))
+    application.add_handler(CommandHandler("kb_ingest", kb_manager.handle_kb_ingest))
+    application.add_handler(CommandHandler("kb_search", kb_manager.handle_kb_search))
+    application.add_handler(CommandHandler("kb_queue", kb_manager.handle_kb_queue))
+
+    # Analytics
+    application.add_handler(CommandHandler("metrics_admin", analytics.handle_metrics))
+    application.add_handler(CommandHandler("costs", analytics.handle_costs))
+    application.add_handler(CommandHandler("revenue", analytics.handle_revenue))
+
+    # System control
+    application.add_handler(CommandHandler("health", system_control.handle_health))
+    application.add_handler(CommandHandler("db_health", system_control.handle_db_health))
+    application.add_handler(CommandHandler("vps_status_admin", system_control.handle_vps_status))
+    application.add_handler(CommandHandler("restart", system_control.handle_restart))
 
     # Add message handler for natural language troubleshooting (lower priority)
     application.add_handler(
@@ -684,6 +738,7 @@ def main():
     logger.info(f"Daily Standup: {STANDUP_HOUR:02d}:{STANDUP_MINUTE:02d}")
     logger.info("System Commands: /start, /help, /status, /agents, /metrics, /approve, /reject, /issue")
     logger.info("RIVET Pro: /troubleshoot, /upgrade, /book_expert, /my_sessions, /pro_stats")
+    logger.info("Admin Panel: /admin, /agents_admin, /content, /deploy, /kb, /metrics_admin, /health")
     logger.info("=" * 70)
 
     # Run polling
