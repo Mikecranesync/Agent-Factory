@@ -94,6 +94,9 @@ data/atoms/
 data/cache/
 data/extracted/
 data/videos/
+data/audio/
+data/scripts/
+data/thumbnails/
 
 # Archive (old/outdated files)
 archive/

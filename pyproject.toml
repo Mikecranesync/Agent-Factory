@@ -87,6 +87,7 @@ psycopg = {extras = ["binary"], version = "^3.3.2"}
 psycopg-pool = "^3.3.0"
 langchain-core = "^1.2.1"
 langgraph = "^1.0.5"
+langfuse = "^3.10.6"
 
 [tool.poetry.group.dev.dependencies]
 # Development tools

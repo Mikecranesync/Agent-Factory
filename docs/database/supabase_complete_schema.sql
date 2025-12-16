@@ -284,6 +284,81 @@ CREATE INDEX IF NOT EXISTS idx_settings_category ON settings(category);
 COMMENT ON TABLE settings IS 'Runtime configuration (Settings Service)';
 
 -- ============================================================================
+-- 8. AGENT SHARED MEMORY (Semantic Memory for Agent Collaboration)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS agent_shared_memory (
+    -- Primary key
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    -- Memory content
+    content TEXT NOT NULL,
+
+    -- Agent attribution
+    agent_name TEXT NOT NULL,
+
+    -- Vector embedding for semantic search (1536 dimensions for OpenAI)
+    embedding vector(1536) NOT NULL,
+
+    -- Metadata (JSON for flexibility)
+    metadata JSONB DEFAULT '{}',
+
+    -- Session tracking (optional grouping)
+    session_id TEXT,
+
+    -- Timestamps
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Indexes for agent_shared_memory
+CREATE INDEX IF NOT EXISTS idx_agent_memory_agent ON agent_shared_memory(agent_name);
+CREATE INDEX IF NOT EXISTS idx_agent_memory_session ON agent_shared_memory(session_id);
+CREATE INDEX IF NOT EXISTS idx_agent_memory_created ON agent_shared_memory(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_memory_embedding ON agent_shared_memory USING ivfflat (embedding vector_cosine_ops);
+
+-- RPC function for semantic search
+CREATE OR REPLACE FUNCTION match_agent_memories(
+    query_embedding vector(1536),
+    match_threshold float DEFAULT 0.5,
+    match_count int DEFAULT 5,
+    agent_name text DEFAULT NULL,
+    session_id text DEFAULT NULL
+)
+RETURNS TABLE (
+    id uuid,
+    content text,
+    agent_name text,
+    metadata jsonb,
+    session_id text,
+    created_at timestamptz,
+    similarity float
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        agent_shared_memory.id,
+        agent_shared_memory.content,
+        agent_shared_memory.agent_name,
+        agent_shared_memory.metadata,
+        agent_shared_memory.session_id,
+        agent_shared_memory.created_at,
+        1 - (agent_shared_memory.embedding <=> query_embedding) AS similarity
+    FROM agent_shared_memory
+    WHERE 1 - (agent_shared_memory.embedding <=> query_embedding) > match_threshold
+        AND (match_agent_memories.agent_name IS NULL OR agent_shared_memory.agent_name = match_agent_memories.agent_name)
+        AND (match_agent_memories.session_id IS NULL OR agent_shared_memory.session_id = match_agent_memories.session_id)
+    ORDER BY similarity DESC
+    LIMIT match_count;
+END;
+$$;
+
+COMMENT ON TABLE agent_shared_memory IS 'Semantic memory for multi-agent collaboration - agents can store and retrieve discoveries';
+COMMENT ON FUNCTION match_agent_memories IS 'Semantic search for agent memories using vector similarity';
+
+-- ============================================================================
 -- SAMPLE DATA (Optional - for testing)
 -- ============================================================================
 
@@ -307,7 +382,8 @@ FROM information_schema.tables
 WHERE table_schema = 'public'
   AND table_type = 'BASE TABLE'
   AND table_name IN ('knowledge_atoms', 'research_staging', 'video_scripts',
-                     'upload_jobs', 'agent_messages', 'session_memories', 'settings')
+                     'upload_jobs', 'agent_messages', 'session_memories', 'settings',
+                     'agent_shared_memory')
 ORDER BY table_name;
 
 -- 2. Check indexes
@@ -315,7 +391,8 @@ SELECT tablename, indexname
 FROM pg_indexes
 WHERE schemaname = 'public'
   AND tablename IN ('knowledge_atoms', 'research_staging', 'video_scripts',
-                    'upload_jobs', 'agent_messages', 'session_memories', 'settings')
+                    'upload_jobs', 'agent_messages', 'session_memories', 'settings',
+                    'agent_shared_memory')
 ORDER BY tablename, indexname;
 
 -- 3. Check extensions

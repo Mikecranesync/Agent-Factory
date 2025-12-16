@@ -8,7 +8,7 @@ Based on patterns from: https://github.com/Mikecranesync/langchain-crash-course
 """
 
 from typing import List, Dict, Optional, Any, Union, Type
-from langchain import hub
+import langchainhub as hub
 from langchain.agents import AgentExecutor, create_react_agent, create_structured_chat_agent
 from langchain.memory import ConversationBufferMemory
 from langchain_core.tools import BaseTool

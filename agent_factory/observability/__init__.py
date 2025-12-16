@@ -75,6 +75,9 @@ from .exporters import (
     Metric
 )
 
+# LangFuse integration for LangGraph workflows
+from .langfuse_tracker import LangFuseTracker, create_tracked_callback
+
 __all__ = [
     # Phase 3: Tracing
     "Tracer",
@@ -98,4 +101,7 @@ __all__ = [
     "ConsoleExporter",
     "MetricsExporter",
     "Metric",
+    # LangFuse observability
+    "LangFuseTracker",
+    "create_tracked_callback",
 ]

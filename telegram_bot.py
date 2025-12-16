@@ -57,6 +57,7 @@ from telegram.constants import ParseMode
 
 from agent_factory.memory.storage import SupabaseMemoryStorage
 from agent_factory.integrations.telegram.rivet_pro_handlers import RIVETProHandlers
+from agent_factory.integrations.telegram.langgraph_handlers import LangGraphHandlers
 
 # ============================================================================
 # Configuration
@@ -128,7 +129,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 *Agent Factory Bot*\n\n"
         "Control your autonomous agent system from Telegram.\n\n"
-        "*Commands:*\n"
+        "*Agent Workflows:*\n"
+        "/research <query> - Multi-agent research pipeline\n"
+        "/consensus <query> - 3 agents vote on best answer\n"
+        "/analyze <task> - Supervisor routes to specialists\n\n"
+        "*System Commands:*\n"
         "/status - Agent health dashboard\n"
         "/agents - List all agents + uptime\n"
         "/metrics - KPIs (subs, revenue, atoms)\n"
@@ -147,6 +152,26 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Detailed help for all commands"""
     await update.message.reply_text(
         "📖 *Command Reference*\n\n"
+
+        "*Agent Workflows (LangGraph):*\n\n"
+
+        "*/research <query>*\n"
+        "Run multi-agent research workflow with quality gates. "
+        "Planner → Researcher → Analyzer → Writer. "
+        "Retries if quality < 70%. Includes LangFuse trace link.\n"
+        "Example: `/research What is a PLC?`\n\n"
+
+        "*/consensus <query>*\n"
+        "Get consensus from 3 specialist agents. Technical expert, practical expert, "
+        "and teaching expert generate answers. Judge picks best one.\n"
+        "Example: `/consensus Best PLC for beginners?`\n\n"
+
+        "*/analyze <task>*\n"
+        "Supervisor analyzes task and delegates to specialist teams "
+        "(research, analysis, coding). Combines results.\n"
+        "Example: `/analyze Create PLC troubleshooting guide`\n\n"
+
+        "*System Commands:*\n\n"
 
         "*/status*\n"
         "Get real-time agent status dashboard. Shows running agents, pending jobs, "
@@ -605,6 +630,9 @@ def main():
     # Initialize RIVET Pro handlers
     rivet_handlers = RIVETProHandlers()
 
+    # Initialize LangGraph handlers
+    langgraph_handlers = LangGraphHandlers()
+
     # Register command handlers
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("help", cmd_help))
@@ -622,6 +650,11 @@ def main():
     application.add_handler(CommandHandler("my_sessions", rivet_handlers.handle_my_sessions))
     application.add_handler(CommandHandler("pro_stats", rivet_handlers.handle_pro_stats))
     application.add_handler(CommandHandler("vps_status", rivet_handlers.handle_vps_status))
+
+    # Register LangGraph workflow handlers
+    application.add_handler(CommandHandler("research", langgraph_handlers.handle_research))
+    application.add_handler(CommandHandler("consensus", langgraph_handlers.handle_consensus))
+    application.add_handler(CommandHandler("analyze", langgraph_handlers.handle_analyze))
 
     # Add message handler for natural language troubleshooting (lower priority)
     application.add_handler(

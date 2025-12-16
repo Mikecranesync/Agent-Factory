@@ -31,7 +31,7 @@ from urllib.parse import urlparse
 
 from langgraph.graph import StateGraph, END
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from agent_factory.memory.storage import SupabaseMemoryStorage
 from core.models import LearningObject, PLCAtom, EducationalLevel, Status
