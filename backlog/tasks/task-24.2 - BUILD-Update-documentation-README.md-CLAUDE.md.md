@@ -1,9 +1,10 @@
 ---
 id: task-24.2
 title: 'BUILD: Update documentation (README.md, CLAUDE.md)'
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-12-18 00:06'
+updated_date: '2025-12-18 00:34'
 labels:
   - build
   - docs

@@ -46,12 +46,6 @@ No manual tasks requiring user execution.
 **task-23.5:** BUILD: Safety & observability (AI Dev Loop 6/6)
 - View task details: `backlog task view task-23.5`
 
-**task-24:** BUILD: User Actions Feature
-- View task details: `backlog task view task-24`
-
-**task-24.2:** BUILD: Update documentation (README.md, CLAUDE.md)
-- View task details: `backlog task view task-24.2`
-
 ### Medium Priority
 
 **task-6:** BUILD: RIVET Pro Phase 6 - Logging
@@ -76,8 +70,6 @@ No manual tasks requiring user execution.
 
 **task-23.4:** BUILD: Simple dashboard (React/Telegram) (AI Dev Loop 5/6)
 
-**task-24.3:** BUILD: Add validation tests for user actions
-
 **task-1:** AUDIT: Inventory Agent Factory repo
 
 **task-22:** AI Dev Control Loop Dashboard
@@ -91,8 +83,6 @@ No manual tasks requiring user execution.
 **task-18:** CLEANUP: Audit Architecture Docs for Accuracy
 
 **task-20:** TEST: Agent Integration Tests
-
-**task-24.4:** BUILD: Create migration script for existing tasks
 
 <!-- BACKLOG_SYNC:BACKLOG:END -->
 
