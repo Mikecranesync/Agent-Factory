@@ -323,5 +323,185 @@ def test_acceptance_criteria_end_to_end(mock_fingerprint_exists, mock_search_all
     assert result.sources_queued >= 0
 
 
+# ============================================================
+# Test 7: PDF Scraper
+# ============================================================
+
+@patch('agent_factory.rivet_pro.research.pdf_scraper.requests.Session.get')
+@patch('agent_factory.rivet_pro.research.pdf_scraper.PyPDF2.PdfReader')
+def test_pdf_scraper(mock_pdf_reader, mock_get):
+    """Test PDF scraper with mocked response."""
+    from agent_factory.rivet_pro.research.pdf_scraper import PDFScraper
+
+    # Mock HTTP response
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.headers = {"Content-Type": "application/pdf"}
+    mock_response.content = b"fake pdf content"
+    mock_get.return_value = mock_response
+
+    # Mock PDF reader
+    mock_pdf_instance = Mock()
+    mock_pdf_instance.pages = [Mock(), Mock()]
+    mock_pdf_instance.pages[0].extract_text.return_value = "Page 1 text"
+    mock_pdf_instance.pages[1].extract_text.return_value = "Page 2 text"
+    mock_pdf_instance.metadata = {"/Title": "Test Manual", "/Author": "Test Author"}
+    mock_pdf_reader.return_value = mock_pdf_instance
+
+    scraper = PDFScraper()
+    result = scraper.scrape("https://example.com/manual.pdf")
+
+    assert result is not None
+    assert result.source_type == "manufacturer_pdf"
+    assert result.title == "Test Manual"
+    assert "Page 1 text" in result.content
+    assert result.metadata["pages"] == 2
+
+
+# ============================================================
+# Test 8: YouTube Scraper
+# ============================================================
+
+@patch('agent_factory.rivet_pro.research.youtube_scraper.YouTubeTranscriptApi.list_transcripts')
+def test_youtube_scraper(mock_list_transcripts):
+    """Test YouTube scraper with mocked transcript."""
+    from agent_factory.rivet_pro.research.youtube_scraper import YouTubeScraper
+
+    # Mock transcript
+    mock_transcript = Mock()
+    mock_transcript.fetch.return_value = [
+        {"text": "This is", "start": 0.0, "duration": 1.0},
+        {"text": "a test", "start": 1.0, "duration": 1.0},
+        {"text": "transcript", "start": 2.0, "duration": 1.0}
+    ]
+
+    mock_transcript_list = Mock()
+    mock_transcript_list.find_manually_created_transcript.return_value = mock_transcript
+    mock_list_transcripts.return_value = mock_transcript_list
+
+    scraper = YouTubeScraper()
+    result = scraper.scrape("https://www.youtube.com/watch?v=test123")
+
+    assert result is not None
+    assert result.source_type == "youtube"
+    assert "This is a test transcript" in result.content
+    assert result.metadata["video_id"] == "test123"
+
+
+# ============================================================
+# Test 9: Content Validator - Good Content
+# ============================================================
+
+def test_content_validator_good_content():
+    """Test content validator with good technical content."""
+    from agent_factory.rivet_pro.research.content_validator import ContentValidator, ValidationLevel
+
+    validator = ContentValidator(min_quality_score=0.5)
+
+    good_content = """
+    To troubleshoot a Siemens S7-1200 PLC ethernet connection:
+    1. Check physical cable (CAT5e or better)
+    2. Verify IP configuration in TIA Portal
+    3. Ensure same subnet as PC
+    4. Test with PING command
+    5. Check Windows firewall settings
+    """
+
+    result = validator.validate(
+        content=good_content,
+        source_url="https://stackoverflow.com/q/123",
+        source_type="stackoverflow"
+    )
+
+    assert result.level == ValidationLevel.PASS
+    assert result.score >= 0.5
+    assert len(result.issues) == 0
+
+
+# ============================================================
+# Test 10: Content Validator - Spam Detection
+# ============================================================
+
+def test_content_validator_spam():
+    """Test content validator detects spam."""
+    from agent_factory.rivet_pro.research.content_validator import ContentValidator, ValidationLevel
+
+    validator = ContentValidator(min_quality_score=0.5)
+
+    spam_content = "CLICK HERE BUY NOW!!! 100% GUARANTEED!!! Work from home earn money fast!!!"
+
+    result = validator.validate(
+        content=spam_content,
+        source_url="https://spam.com",
+        source_type="forum"
+    )
+
+    assert result.level == ValidationLevel.FAIL
+    assert result.score < 0.3
+    assert any("Spam" in issue for issue in result.issues)
+
+
+# ============================================================
+# Test 11: Content Validator - Safety Issues
+# ============================================================
+
+def test_content_validator_safety():
+    """Test content validator detects safety issues."""
+    from agent_factory.rivet_pro.research.content_validator import ContentValidator, ValidationLevel
+
+    validator = ContentValidator(min_quality_score=0.5)
+
+    unsafe_content = """
+    To fix the motor quickly, just bypass safety interlocks and
+    perform energized maintenance. This saves time.
+    """
+
+    result = validator.validate(
+        content=unsafe_content,
+        source_url="https://bad-advice.com",
+        source_type="forum"
+    )
+
+    assert result.level == ValidationLevel.FAIL
+    assert result.score < 0.5
+    assert any("Safety" in issue for issue in result.issues)
+
+
+# ============================================================
+# Test 12: End-to-End with New Components
+# ============================================================
+
+@patch('agent_factory.rivet_pro.research.research_pipeline.ForumScraper.search_all')
+@patch('agent_factory.rivet_pro.research.research_pipeline.ResearchPipeline._fingerprint_exists')
+def test_end_to_end_with_validation(mock_fingerprint_exists, mock_search_all):
+    """Test research pipeline with content validation."""
+    from agent_factory.rivet_pro.research.forum_scraper import ForumResult
+
+    # Mock forum results
+    mock_search_all.return_value = [
+        ForumResult(
+            source_type="stackoverflow",
+            url="https://stackoverflow.com/q/123",
+            title="Good Technical Content",
+            content="PLC troubleshooting with proper ethernet configuration",
+            metadata={"score": 10}
+        )
+    ]
+
+    mock_fingerprint_exists.return_value = False
+
+    intent = RivetIntent(
+        vendor="Siemens",
+        equipment_type="S7-1200",
+        symptom="ethernet issue"
+    )
+
+    pipeline = ResearchPipeline()
+    result = pipeline.run(intent)
+
+    assert result.status == "success"
+    assert len(result.sources_found) >= 1
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
