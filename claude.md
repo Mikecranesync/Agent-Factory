@@ -345,14 +345,50 @@ See `docs/PHASE1_SPEC.md` for implementation details.
 
 ## Execution Rules
 
-### Rule 0: Task Tracking (NEW)
+### Rule 0: Task Tracking (Backlog.md Integration)
 **Before starting ANY task:**
-1. **Check TASK.md** - See what's in progress and backlog
-2. **Update status** - Mark task as "In Progress" when you start
-3. **Mark complete** - Update status to "Completed" immediately after finishing
-4. **Add discovered work** - New tasks found during implementation go to "Discovered During Work" section
+1. **Check TASK.md** - See what's in progress and backlog (auto-synced from Backlog.md)
+   - **User Actions section:** Tasks requiring manual human execution (cloud signup, API keys, etc.)
+   - **Current Task section:** Task currently being worked on (status: "In Progress")
+   - **Backlog section:** All pending tasks (status: "To Do")
+2. **Check for blocking User Actions** - If user actions exist, notify the user before proceeding
+3. **View task details** - Use `backlog task view <task-id>` to see full acceptance criteria
+4. **Update status** - Mark task as "In Progress" when you start:
+   ```bash
+   backlog task edit <task-id> --status "In Progress"
+   poetry run python scripts/backlog/sync_tasks.py  # Sync to TASK.md
+   ```
+5. **Mark complete** - Update status to "Done" immediately after finishing:
+   ```bash
+   backlog task edit <task-id> --status "Done"
+   poetry run python scripts/backlog/sync_tasks.py  # Sync to TASK.md
+   ```
+6. **Add discovered work** - New tasks found during implementation:
+   ```bash
+   backlog task create --title "FIX: <description>" --priority medium
+   ```
+7. **Identify User Actions** - If a task requires manual human execution, add the `user-action` label:
+   ```bash
+   # Examples: Cloud signup, API keys, voice recording, payment setup
+   backlog task create --title "ACTION: Setup Railway Database" \
+     --labels user-action,database,setup \
+     --priority high
+   ```
 
-**Pattern from context-engineering-intro (11.8k⭐)**
+**Backlog.md Workflow:**
+- **Source of Truth:** `backlog/tasks/*.md` (structured YAML + Markdown)
+- **View Layer:** `TASK.md` (auto-generated, read-only sync zones)
+- **Full Guide:** `backlog/README.md`
+- **MCP Tools:** Use `backlog task <command>` for all task operations
+
+**Quick Reference:**
+- List tasks: `backlog task list --status "To Do"`
+- View task: `backlog task view task-4`
+- Edit task: `backlog task edit task-4 --status "In Progress"`
+- Create task: `backlog task create --title "BUILD: Feature" --priority high`
+- Sync to TASK.md: `poetry run python scripts/backlog/sync_tasks.py`
+
+**Pattern from context-engineering-intro (11.8k⭐) + Backlog.md integration**
 
 ### Rule 1: One Thing at a Time
 Check `TASK.md` for the current task. Complete it. Validate it. Move to next.
@@ -665,6 +701,75 @@ ssh root@72.60.175.144 "docker logs infra_rivet-worker_1 --tail 50"
 
 ---
 
+## Cloud Dev Box Setup
+
+**Remote development with Claude Code CLI on cloud VM**
+
+### Quick Start
+
+```bash
+# SSH into cloud VM
+ssh user@your-cloud-vm.com
+cd ~/agent-factory
+
+# One-time setup (first login)
+./scripts/cloud-dev-box/setup-from-scratch.sh
+
+# Launch Claude Code session
+./scripts/cloud-dev-box/launch-claude.sh
+```
+
+### Daily Workflow
+
+```bash
+# 1. SSH into VM
+ssh user@your-cloud-vm.com
+cd ~/agent-factory
+
+# 2. Check environment (optional)
+./scripts/cloud-dev-box/check-prerequisites.sh
+
+# 3. Launch Claude
+./scripts/cloud-dev-box/launch-claude.sh
+
+# 4. Work on tasks inside Claude session
+> Read TASK.md
+> What should I work on next?
+
+# 5. Exit when done (Ctrl+D)
+```
+
+### Session Management
+
+```bash
+# Resume previous session
+./scripts/cloud-dev-box/launch-claude.sh --resume
+
+# List saved sessions
+./scripts/cloud-dev-box/utils/session-manager.sh list
+
+# Load specific session
+./scripts/cloud-dev-box/utils/session-manager.sh resume feature-xyz
+```
+
+### Access from Mobile
+
+**Termux (Android):**
+```bash
+pkg install openssh
+ssh user@your-cloud-vm.com
+cd ~/agent-factory && ./scripts/cloud-dev-box/launch-claude.sh
+```
+
+**JuiceSSH (Android):**
+- Create connection: user@your-cloud-vm.com
+- Save snippet: `cd ~/agent-factory && ./scripts/cloud-dev-box/launch-claude.sh`
+- One-tap access!
+
+**See:** `Guides for Users/deployment/CLOUD_DEV_BOX_GUIDE.md` for complete setup guide
+
+---
+
 ## Red Flags - Stop and Report
 
 If you find yourself:
@@ -761,3 +866,32 @@ Agent-Factory/
     +-- PRODUCTION.md      # 4 levels of production readiness
     +-- PHASE1_SPEC.md     # Detailed Phase 1 implementation
     +-- PHASE2_SPEC.md     # (create when ready)
+
+<!-- BACKLOG.MD MCP GUIDELINES START -->
+
+<CRITICAL_INSTRUCTION>
+
+## BACKLOG WORKFLOW INSTRUCTIONS
+
+This project uses Backlog.md MCP for all task and project management activities.
+
+**CRITICAL GUIDANCE**
+
+- If your client supports MCP resources, read `backlog://workflow/overview` to understand when and how to use Backlog for this project.
+- If your client only supports tools or the above request fails, call `backlog.get_workflow_overview()` tool to load the tool-oriented overview (it lists the matching guide tools).
+
+- **First time working here?** Read the overview resource IMMEDIATELY to learn the workflow
+- **Already familiar?** You should have the overview cached ("## Backlog.md Overview (MCP)")
+- **When to read it**: BEFORE creating tasks, or when you're unsure whether to track work
+
+These guides cover:
+- Decision framework for when to create tasks
+- Search-first workflow to avoid duplicates
+- Links to detailed guides for task creation, execution, and completion
+- MCP tools reference
+
+You MUST read the overview resource to understand the complete workflow. The information is NOT summarized here.
+
+</CRITICAL_INSTRUCTION>
+
+<!-- BACKLOG.MD MCP GUIDELINES END -->

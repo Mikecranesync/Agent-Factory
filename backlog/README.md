@@ -441,6 +441,113 @@ The validation script checks that:
 poetry run python scripts/backlog/validate_tasks.py task-4
 ```
 
+### Special Labels
+
+#### user-action Label
+
+The `user-action` label identifies tasks that require **manual human execution** rather than automated agent work.
+
+**When to Use:**
+- Cloud service signup (Railway, Supabase, GitHub)
+- API key creation/configuration
+- Voice recording for ElevenLabs
+- Manual approvals or reviews
+- Physical device setup
+- Payment/subscription management
+- OAuth authorization flows
+
+**What It Does:**
+- Tasks with `user-action` label appear in TASK.md "User Actions" section
+- Formatted with `[ACTION REQUIRED]` prefix for visibility
+- Sorted by priority (high/medium/low), then by creation date
+- Shows inline acceptance criteria (max 3) for quick reference
+
+**Example Task:**
+```yaml
+---
+id: task-42
+title: 'ACTION: Create Railway Database Account'
+status: To Do
+priority: high
+labels:
+  - user-action
+  - database
+  - setup
+dependencies:
+  - task-41  # Complete database schema design first
+---
+
+## Description
+Sign up for Railway PostgreSQL service and configure connection string.
+
+## Acceptance Criteria
+- [ ] #1 Railway account created
+- [ ] #2 PostgreSQL database provisioned
+- [ ] #3 Connection string added to .env file
+- [ ] #4 Test connection successful
+```
+
+**Creating User Action Tasks:**
+
+Via MCP:
+```python
+mcp__backlog__task_create(
+    title="ACTION: Setup ElevenLabs Voice Clone",
+    description="Record 10-15 min voice samples and create voice clone",
+    priority="high",
+    labels=["user-action", "content", "voice"],
+    acceptance_criteria=[
+        "Voice samples recorded (10-15 min)",
+        "ElevenLabs account created",
+        "Voice clone generated and tested"
+    ]
+)
+```
+
+Via CLI:
+```bash
+backlog task create \
+  --title "ACTION: Configure GitHub OAuth" \
+  --labels user-action,auth,github \
+  --priority high \
+  --description "Set up GitHub OAuth app for bot authentication"
+```
+
+**Viewing User Actions:**
+
+Check TASK.md "User Actions" section:
+```markdown
+## User Actions
+
+**[ACTION REQUIRED] task-42:** Create Railway Database Account
+- Priority: high
+- Created: 2025-12-17
+- #1 Railway account created
+- #2 PostgreSQL database provisioned
+- #3 Connection string added to .env file
+```
+
+Sync backlog to TASK.md:
+```bash
+poetry run python scripts/backlog/sync_tasks.py
+```
+
+Filter in backlog CLI:
+```bash
+backlog task list --labels user-action --status "To Do"
+```
+
+**Migration Script:**
+
+Tag existing manual tasks automatically:
+```bash
+# Dry-run to preview candidates
+poetry run python scripts/backlog/migrate_user_actions.py --dry-run
+
+# Apply user-action labels
+poetry run python scripts/backlog/migrate_user_actions.py
+```
+
 ---
 
 ## MCP Tool Usage
