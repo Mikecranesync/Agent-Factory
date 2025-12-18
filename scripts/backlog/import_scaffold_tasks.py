@@ -96,11 +96,15 @@ class SemanticIDMapper:
         Map prompt ID to semantic ID.
 
         Args:
-            original_id: Original ID from SCAFFOLD prompt
+            original_id: Original ID from SCAFFOLD prompt or already-mapped semantic ID
 
         Returns:
             Semantic ID (task-scaffold-*)
         """
+        # If already a semantic ID, return as-is
+        if original_id.startswith("task-scaffold-"):
+            return original_id
+
         # Check Core Build map
         if original_id in SemanticIDMapper.CORE_BUILD_MAP:
             return SemanticIDMapper.CORE_BUILD_MAP[original_id]
