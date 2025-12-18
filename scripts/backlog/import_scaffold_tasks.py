@@ -687,6 +687,337 @@ This EPIC tracks all 144 SCAFFOLD tasks across 3 phases:
             domain="platform"
         )
 
+    @staticmethod
+    def get_phase2_tasks() -> List[TaskSpec]:
+        """
+        Get Phase 2 Validation tasks (9 tasks manually defined).
+
+        These tasks validate that SCAFFOLD subsystems work at production scale:
+        - Agent Factory orchestration (100+ tasks, 24 concurrent)
+        - Video extraction and metadata scraping (24 clips from 100 hours)
+        - API integrations (YouTube, Twitter)
+        - Knowledge base generation (24 blog posts)
+        - SEO validation (organic rankings)
+        - End-to-end pipeline (unattended execution)
+
+        Returns:
+            List of 9 TaskSpec objects
+        """
+        return [
+            # Task 1: Parser Scale Test
+            TaskSpec(
+                original_id="task-validate-agent-factory-1",
+                title="VALIDATE: Task Parsing at Scale (100+ tasks)",
+                description="""Verify that Agent Factory can handle large numbers of tasks without degradation.
+
+This validates the core orchestrator's ability to parse, organize, and manage a high volume of concurrent task specifications. The parser must handle 100+ tasks efficiently with minimal memory footprint and fast parse times.
+
+**Key Components Tested:**
+- Backlog.md Parser (MCP integration)
+- Task specification validation
+- Memory management at scale
+- Parse performance benchmarks
+
+**Success Indicators:**
+- All 100+ tasks parsed correctly
+- No data loss or corruption
+- Parse completes in <5 seconds
+- Memory stays under 100MB""",
+                acceptance_criteria=[
+                    "Parser processes 100+ tasks from Backlog.md without errors",
+                    "Zero data loss or task corruption during parsing",
+                    "Memory usage remains below 100MB during parsing",
+                    "Parse operation completes in under 5 seconds",
+                    "All task metadata (titles, descriptions, dependencies) extracted correctly"
+                ],
+                dependencies=["task-scaffold-backlog-parser"],
+                priority="high",
+                labels=["scaffold", "validate", "parser", "performance", "orchestration"],
+                action_prefix="VALIDATE",
+                domain="orchestration"
+            ),
+
+            # Task 2: Parallel Execution Test
+            TaskSpec(
+                original_id="task-validate-agent-factory-2",
+                title="VALIDATE: Parallel Execution (24 concurrent tasks)",
+                description="""Verify that the orchestrator can safely manage multiple tasks running in parallel without conflicts.
+
+This test ensures the git worktree manager can handle 24 concurrent tasks, each in its own worktree, without resource contention, state conflicts, or race conditions. All tasks must complete successfully and create valid PRs.
+
+**Key Components Tested:**
+- Git Worktree Manager (isolation)
+- Concurrent execution safety
+- Resource allocation and cleanup
+- PR creation at scale
+
+**Success Indicators:**
+- 24 tasks execute simultaneously
+- Zero conflicts between processes
+- All PRs created successfully
+- Clean worktree cleanup""",
+                acceptance_criteria=[
+                    "24 tasks launched in parallel without errors",
+                    "Zero conflicts detected between concurrent processes",
+                    "No race conditions in shared resources (logs, status files)",
+                    "All 24 tasks complete successfully with passing tests",
+                    "All 24 PRs created with valid metadata",
+                    "Resource isolation verified (each task uses own worktree)"
+                ],
+                dependencies=["task-scaffold-git-worktree-manager", "task-scaffold-backlog-sync"],
+                priority="critical",
+                labels=["scaffold", "validate", "concurrency", "orchestration", "parallel"],
+                action_prefix="VALIDATE",
+                domain="orchestration"
+            ),
+
+            # Task 3: Video Extraction Test
+            TaskSpec(
+                original_id="task-validate-scraper-1",
+                title="VALIDATE: Video Extraction (24 clips from 100 hours)",
+                description="""Validate the video scraper/extraction component by extracting 24 highlight clips from 100 hours of raw footage.
+
+Tests the full content extraction pipeline including scene detection, highlight identification, clip extraction, and video rendering. Each clip must be 30-60 seconds with professional transitions and normalized audio.
+
+**Key Components Tested:**
+- Video scene detection
+- Highlight identification (ML/heuristics)
+- Clip extraction and rendering
+- Audio normalization
+- Fade transitions
+
+**Success Indicators:**
+- 24 usable clips extracted
+- Professional quality output
+- Consistent audio levels
+- Fast extraction pipeline""",
+                acceptance_criteria=[
+                    "24 clips successfully extracted from 100 hours of footage",
+                    "Each clip is 30-60 seconds in duration",
+                    "Video quality is high (no artifacts, glitches, or corruption)",
+                    "Fade transitions applied to all clip boundaries (in/out)",
+                    "Audio levels normalized across all clips (no volume jumps)"
+                ],
+                dependencies=["task-scaffold-safety-rails"],
+                priority="high",
+                labels=["scaffold", "validate", "scraper", "video-extraction", "media"],
+                action_prefix="VALIDATE",
+                domain="media"
+            ),
+
+            # Task 4: Metadata Extraction Test
+            TaskSpec(
+                original_id="task-validate-scraper-2",
+                title="VALIDATE: Metadata Extraction (timestamps, topics, keywords)",
+                description="""Validate that structured metadata can be extracted from video clips with high accuracy.
+
+Tests automatic topic identification, keyword extraction, and timestamp accuracy for use in content distribution. Metadata must be accurate, well-structured (JSON), and production-ready for SEO and social media amplification.
+
+**Key Components Tested:**
+- AI-driven transcription
+- Topic classification
+- Keyword extraction
+- Timestamp accuracy
+
+**Success Indicators:**
+- 90%+ metadata accuracy
+- Valid JSON output
+- Relevant topics and keywords
+- Timestamps within 100ms accuracy""",
+                acceptance_criteria=[
+                    "All 24 clips transcribed with AI (speech-to-text)",
+                    "Metadata extraction quality score above 90%",
+                    "JSON output is valid and well-formed (passes schema validation)",
+                    "Timestamps accurate within 100 milliseconds of actual content",
+                    "Topics correctly identified from clip content (relevant and specific)"
+                ],
+                dependencies=["task-validate-scraper-1"],
+                priority="high",
+                labels=["scaffold", "validate", "scraper", "metadata", "ai", "media"],
+                action_prefix="VALIDATE",
+                domain="media"
+            ),
+
+            # Task 5: YouTube API Integration Test
+            TaskSpec(
+                original_id="task-validate-integration-youtube",
+                title="VALIDATE: YouTube API Integration (schedule 24 videos)",
+                description="""Validate YouTube API integration by scheduling 24 videos with complete metadata, thumbnails, and descriptions.
+
+Ensures the publishing pipeline can interact reliably with YouTube's systems including authentication, rate limits, metadata application, and scheduled publishing. All 24 videos must be queued successfully with correct release times.
+
+**Key Components Tested:**
+- YouTube Data API v3 integration
+- OAuth authentication flow
+- Rate limit handling
+- Metadata upload (titles, descriptions, tags)
+- Thumbnail upload
+- Scheduled publishing
+
+**Success Indicators:**
+- All 24 videos scheduled
+- Metadata correctly applied
+- No API errors or rate limits
+- Correct publish times set""",
+                acceptance_criteria=[
+                    "YouTube API authenticated and connected successfully",
+                    "All 24 videos successfully uploaded and scheduled",
+                    "Metadata correctly applied (titles, descriptions, tags match specifications)",
+                    "Thumbnails properly uploaded and linked to videos",
+                    "No API rate-limit errors encountered during upload batch"
+                ],
+                dependencies=["task-scaffold-documentation"],
+                priority="high",
+                labels=["scaffold", "validate", "integration", "youtube", "api", "distribution"],
+                action_prefix="VALIDATE",
+                domain="distribution"
+            ),
+
+            # Task 6: Twitter API Integration Test
+            TaskSpec(
+                original_id="task-validate-integration-twitter",
+                title="VALIDATE: Twitter API Integration (post 24 threads)",
+                description="""Validate Twitter/X API integration by creating and scheduling 24 Twitter threads.
+
+Tests the social media amplification component ensuring proper threading, formatting, rate limit handling, and optimal post timing. Each thread must have 6-10 tweets with correct linking and formatting.
+
+**Key Components Tested:**
+- Twitter API v2 integration
+- Thread creation and linking
+- Tweet formatting (280 char limit)
+- Rate limit handling
+- Scheduled posting
+- Optimal timing algorithm
+
+**Success Indicators:**
+- 24 threads created successfully
+- Proper tweet threading
+- No rate limit errors
+- Optimal posting times""",
+                acceptance_criteria=[
+                    "24 Twitter threads created successfully (each 6-10 tweets)",
+                    "Thread formatting is correct (proper linking between consecutive tweets)",
+                    "Each tweet respects 280-character limit (no truncation errors)",
+                    "No rate-limit errors encountered during thread creation",
+                    "Threads scheduled for optimal posting times (engagement algorithm)"
+                ],
+                dependencies=["task-scaffold-documentation"],
+                priority="medium",
+                labels=["scaffold", "validate", "integration", "twitter", "social-media", "distribution"],
+                action_prefix="VALIDATE",
+                domain="distribution"
+            ),
+
+            # Task 7: Blog Post Generation Test
+            TaskSpec(
+                original_id="task-validate-knowledge-base",
+                title="VALIDATE: Blog Post Generation (24 posts from transcripts)",
+                description="""Validate the knowledge base builder by generating 24 blog posts from video transcripts.
+
+Tests AI-driven content generation quality, SEO optimization, markdown formatting, and production readiness. Each post must be 2000+ words, professionally written, and require minimal editing before publication.
+
+**Key Components Tested:**
+- AI content generation (GPT-4)
+- SEO optimization (keywords, meta descriptions)
+- Markdown formatting
+- Citation and linking
+- Content quality assessment
+
+**Success Indicators:**
+- 24 blog posts generated
+- 2000+ words per post
+- Publishable quality
+- SEO metadata included""",
+                acceptance_criteria=[
+                    "24 blog posts generated successfully from video transcripts",
+                    "Each post is 2000+ words in length",
+                    "Content is publishable quality (minimal editing needed, coherent, professional)",
+                    "Markdown formatting is correct (headings, lists, code blocks, links)",
+                    "SEO metadata included (meta descriptions, target keywords, image alt text)"
+                ],
+                dependencies=["task-scaffold-logging"],
+                priority="high",
+                labels=["scaffold", "validate", "knowledge-base", "content-generation", "ai", "content"],
+                action_prefix="VALIDATE",
+                domain="content"
+            ),
+
+            # Task 8: SEO Ranking Validation Test
+            TaskSpec(
+                original_id="task-validate-seo",
+                title="VALIDATE: SEO Rankings (organic page 1 results)",
+                description="""Validate that generated blog posts rank organically in search results for target keywords.
+
+This is a long-running validation (4+ weeks) that confirms the knowledge base produces SEO-friendly, discoverable content. Posts must rank on page 1 of Google for target keywords with measurable organic traffic increases.
+
+**Key Components Tested:**
+- SEO optimization effectiveness
+- Keyword targeting accuracy
+- Organic ranking progression
+- Traffic analytics
+
+**Success Indicators:**
+- 50%+ posts rank page 1
+- Organic traffic increases
+- Average ranking improves
+- Target keywords have search volume""",
+                acceptance_criteria=[
+                    "50% or more of generated posts rank on page 1 of Google for target keywords",
+                    "Organic traffic to blog increases measurably (baseline vs 4-week measurement)",
+                    "Average ranking position improves over 4-week period (tracked weekly)",
+                    "Target keywords have monthly search volume above 100 searches"
+                ],
+                dependencies=["task-validate-knowledge-base"],
+                priority="medium",
+                labels=["scaffold", "validate", "seo", "organic-traffic", "long-running", "content"],
+                action_prefix="VALIDATE",
+                domain="content"
+            ),
+
+            # Task 9: End-to-End Pipeline Test
+            TaskSpec(
+                original_id="task-validate-video-automation-e2e",
+                title="VALIDATE: End-to-End Pipeline (recording to publishing)",
+                description="""Validate the complete video automation pipeline from raw recording through final publication.
+
+Ensures all components work together seamlessly: extraction, editing, metadata generation, scheduling, and publishing without manual intervention. This is the comprehensive system validation test.
+
+**Key Components Tested:**
+- Full pipeline integration
+- Unattended execution
+- Error recovery
+- Quality gates
+- Multi-platform publishing
+
+**Success Indicators:**
+- Full pipeline executes end-to-end
+- Zero manual interventions needed
+- Professional quality output
+- All platforms published successfully""",
+                acceptance_criteria=[
+                    "Full pipeline executes end-to-end without errors (recording to final publication)",
+                    "Zero manual edits or interventions required during execution",
+                    "Output video is professional quality (meets quality gates for resolution, audio, transitions)",
+                    "All metadata applied correctly (titles, descriptions, tags, thumbnails)",
+                    "Video published successfully to all scheduled platforms (YouTube, Twitter, blog)"
+                ],
+                dependencies=[
+                    "task-validate-agent-factory-1",
+                    "task-validate-agent-factory-2",
+                    "task-validate-scraper-1",
+                    "task-validate-scraper-2",
+                    "task-validate-integration-youtube",
+                    "task-validate-integration-twitter",
+                    "task-validate-knowledge-base",
+                    "task-validate-seo"
+                ],
+                priority="critical",
+                labels=["scaffold", "validate", "e2e", "video-automation", "pipeline", "platform"],
+                action_prefix="VALIDATE",
+                domain="platform"
+            ),
+        ]
+
 
 # ============================================================================
 # Component 5: CLI Interface & Main Logic
@@ -718,6 +1049,29 @@ def print_dry_run_phase1(tasks: List[TaskSpec], epic: TaskSpec):
         print(f'    Title: "{task.title}"')
         print(f"    Dependencies: {remapped_deps}")
         print(f"    Labels: ['scaffold', '{task.action_prefix.lower()}', '{task.domain}']")
+        print()
+
+    print("No conflicts detected.")
+    print("No files created (dry-run mode).\n")
+
+
+def print_dry_run_phase2(tasks: List[TaskSpec]):
+    """Print dry-run output for Phase 2."""
+    print("\n" + "=" * 60)
+    print("SCAFFOLD PHASE 2 DRY RUN")
+    print("=" * 60)
+    print(f"\n9 files would be created:\n")
+
+    # Validation tasks
+    print("Validation Tasks (9 tasks):")
+    for task in tasks:
+        semantic_id = SemanticIDMapper.map_id(task.original_id)
+        remapped_deps = SemanticIDMapper.remap_dependencies(task.dependencies)
+
+        print(f"  - {semantic_id}.md")
+        print(f'    Title: "{task.title}"')
+        print(f"    Dependencies: {remapped_deps}")
+        print(f"    Labels: {task.labels}")
         print()
 
     print("No conflicts detected.")
@@ -816,6 +1170,95 @@ def import_phase1(backlog_dir: Path, dry_run: bool = False, approve: bool = Fals
     print("2. Run: poetry run python scripts/backlog/sync_tasks.py")
     print("3. Commit: git add backlog/tasks/task-scaffold-*.md TASK.md")
     print("4. Commit: git commit -m 'feat(scaffold): Import Phase 1 Core Build (12 tasks)'")
+    print()
+
+    return True
+
+
+def import_phase2(backlog_dir: Path, dry_run: bool = False, approve: bool = False, yes: bool = False) -> bool:
+    """
+    Import Phase 2: 9 Validation tasks.
+
+    Args:
+        backlog_dir: Path to backlog/tasks/ directory
+        dry_run: If True, preview without creating files
+        approve: If True, actually create files (requires user confirmation)
+        yes: If True, skip confirmation prompt (auto-confirm)
+
+    Returns:
+        True if successful, False otherwise
+    """
+    # Get tasks
+    tasks = ScaffoldTaskParser.get_phase2_tasks()
+
+    # Collect all IDs
+    all_ids = [SemanticIDMapper.map_id(task.original_id) for task in tasks]
+
+    # Dry-run mode
+    if dry_run:
+        print_dry_run_phase2(tasks)
+        return True
+
+    # Approval mode
+    if not approve:
+        print("\n[ERROR] Missing --approve flag.")
+        print("Phase 2 import requires explicit approval.")
+        print("\nUsage: python import_scaffold_tasks.py --phase 2 --approve [--yes]\n")
+        return False
+
+    # Interactive confirmation (skip if --yes flag)
+    if not yes:
+        print("\n" + "=" * 60)
+        print("SCAFFOLD PHASE 2 VALIDATION IMPORT")
+        print("=" * 60)
+        print(f"\nThis will create 9 task files in:")
+        print(f"  {backlog_dir}")
+        print(f"\nTask IDs:")
+        for task_id in all_ids:
+            print(f"  - {task_id}")
+        print("\nAll tasks labeled with: ['scaffold', 'validate', ...]")
+        print("All tasks have parent: task-scaffold-master")
+        print()
+
+        response = input("Proceed with import? [y/N]: ")
+        if response.lower() != 'y':
+            print("\n[CANCELLED] Phase 2 import cancelled by user.\n")
+            return False
+    else:
+        print("\n" + "=" * 60)
+        print("SCAFFOLD PHASE 2 VALIDATION IMPORT (AUTO-CONFIRMED)")
+        print("=" * 60)
+
+    # Validate backlog directory exists
+    if not backlog_dir.exists():
+        print(f"\n[ERROR] Backlog directory not found: {backlog_dir}")
+        print("Please create it first: mkdir -p backlog/tasks\n")
+        return False
+
+    # Create validation tasks
+    print(f"\nCreating 9 validation tasks...")
+    created_count = 0
+
+    for task in tasks:
+        try:
+            semantic_id = SemanticIDMapper.map_id(task.original_id)
+            content, filename = TaskFileGenerator.generate_task_file(
+                task, semantic_id, parent_id="task-scaffold-master"
+            )
+            file_path = backlog_dir / filename
+            file_path.write_text(content, encoding='utf-8')
+            print(f"  [OK] Created {filename}")
+            created_count += 1
+        except Exception as e:
+            print(f"  [FAILED] Failed to create {task.original_id}: {e}")
+            # Continue with remaining tasks
+
+    print(f"\n[SUCCESS] Phase 2 import complete: {created_count}/9 files created")
+    print("\nNext steps:")
+    print("1. Run: poetry run python scripts/backlog/validate_tasks.py")
+    print("2. Run: poetry run python scripts/backlog/sync_tasks.py")
+    print("3. Commit: git add backlog/tasks/task-scaffold-validate-*.md TASK.md")
+    print("4. Commit: git commit -m 'feat(scaffold): Import Phase 2 Validation (9 tasks)'")
     print()
 
     return True
@@ -935,9 +1378,14 @@ Examples:
         success = import_phase1(backlog_dir, dry_run=args.dry_run, approve=args.approve, yes=args.yes)
         sys.exit(0 if success else 1)
 
-    # Phase 2 and 3 not yet implemented
+    # Phase 2 import
+    if args.phase == "2":
+        success = import_phase2(backlog_dir, dry_run=args.dry_run, approve=args.approve, yes=args.yes)
+        sys.exit(0 if success else 1)
+
+    # Phase 3 not yet implemented
     print(f"\nERROR: Phase {args.phase} import not yet implemented.")
-    print("Currently only Phase 1 (Core Build) is available.")
+    print("Currently only Phase 1 (Core Build) and Phase 2 (Validation) are available.")
     sys.exit(1)
 
 
