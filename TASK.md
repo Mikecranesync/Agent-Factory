@@ -8,11 +8,7 @@
 <!-- BACKLOG_SYNC:CURRENT:BEGIN -->
 ## Current Task
 
-### task-5: BUILD: RIVET Pro Phase 5 - Research Pipeline
-
-**Priority:** Medium
-
-View task details: `backlog task view task-5`
+No tasks currently in progress.
 
 <!-- BACKLOG_SYNC:CURRENT:END -->
 
@@ -28,6 +24,15 @@ No manual tasks requiring user execution.
 
 ### High Priority
 
+**task-scaffold-context-assembler:** BUILD: Context Assembler (CLAUDE.md + Repo Snapshot)
+- View task details: `backlog task view task-scaffold-context-assembler`
+
+**task-scaffold-git-worktree-manager:** BUILD: Git Worktree Manager
+- View task details: `backlog task view task-scaffold-git-worktree-manager`
+
+**task-scaffold-pr-creation:** BUILD: PR Creation & Auto-Approval Request
+- View task details: `backlog task view task-scaffold-pr-creation`
+
 **task-High.1:** AI Dev Control Loop Dashboard
 - View task details: `backlog task view task-High.1`
 
@@ -37,16 +42,13 @@ No manual tasks requiring user execution.
 **task-10:** BUILD: YouTube Automation Pipeline
 - View task details: `backlog task view task-10`
 
-**task-23:** BUILD: AI Dev Control Loop Dashboard
-- View task details: `backlog task view task-23`
-
-**task-23.2:** BUILD: Headless Claude runner (AI Dev Loop 3/6)
-- View task details: `backlog task view task-23.2`
-
-**task-23.5:** BUILD: Safety & observability (AI Dev Loop 6/6)
-- View task details: `backlog task view task-23.5`
-
 ### Medium Priority
+
+**task-scaffold-backlog-sync:** BUILD: Backlog Status Sync (PR to Backlog.md)
+
+**task-scaffold-documentation:** BUILD: SCAFFOLD User Documentation
+
+**task-scaffold-logging:** BUILD: Structured Logging & Session History
 
 **task-6:** BUILD: RIVET Pro Phase 6 - Logging
 
@@ -69,6 +71,18 @@ No manual tasks requiring user execution.
 **task-21:** TEST: Autonomous System Tests
 
 **task-23.4:** BUILD: Simple dashboard (React/Telegram) (AI Dev Loop 5/6)
+
+**task-scaffold-backlog-parser:** BUILD: Backlog Parser with MCP Integration
+
+**task-scaffold-claude-integration:** BUILD: Claude Code CLI Integration
+
+**task-scaffold-cost-tracking:** BUILD: Cost & Time Tracking (Safety Monitor)
+
+**task-scaffold-master:** EPIC: SCAFFOLD Platform Build (Strategic Priority #1)
+
+**task-scaffold-orchestrator:** BUILD: Headless Orchestrator Skeleton
+
+**task-scaffold-safety-rails:** BUILD: Safety Rails & Circuit Breakers
 
 **task-1:** AUDIT: Inventory Agent Factory repo
 
