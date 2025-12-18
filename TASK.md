@@ -33,21 +33,6 @@ No manual tasks requiring user execution.
 **task-scaffold-pr-creation:** BUILD: PR Creation & Auto-Approval Request
 - View task details: `backlog task view task-scaffold-pr-creation`
 
-**task-scaffold-validate-knowledge-base:** VALIDATE: Blog Post Generation (24 posts from transcripts)
-- View task details: `backlog task view task-scaffold-validate-knowledge-base`
-
-**task-scaffold-validate-parser-scale:** VALIDATE: Task Parsing at Scale (100+ tasks)
-- View task details: `backlog task view task-scaffold-validate-parser-scale`
-
-**task-scaffold-validate-scraper-clips:** VALIDATE: Video Extraction (24 clips from 100 hours)
-- View task details: `backlog task view task-scaffold-validate-scraper-clips`
-
-**task-scaffold-validate-scraper-metadata:** VALIDATE: Metadata Extraction (timestamps, topics, keywords)
-- View task details: `backlog task view task-scaffold-validate-scraper-metadata`
-
-**task-scaffold-validate-youtube-api:** VALIDATE: YouTube API Integration (schedule 24 videos)
-- View task details: `backlog task view task-scaffold-validate-youtube-api`
-
 **task-High.1:** AI Dev Control Loop Dashboard
 - View task details: `backlog task view task-High.1`
 
@@ -64,10 +49,6 @@ No manual tasks requiring user execution.
 **task-scaffold-documentation:** BUILD: SCAFFOLD User Documentation
 
 **task-scaffold-logging:** BUILD: Structured Logging & Session History
-
-**task-scaffold-validate-seo-rankings:** VALIDATE: SEO Rankings (organic page 1 results)
-
-**task-scaffold-validate-twitter-api:** VALIDATE: Twitter API Integration (post 24 threads)
 
 **task-6:** BUILD: RIVET Pro Phase 6 - Logging
 
@@ -102,10 +83,6 @@ No manual tasks requiring user execution.
 **task-scaffold-orchestrator:** BUILD: Headless Orchestrator Skeleton
 
 **task-scaffold-safety-rails:** BUILD: Safety Rails & Circuit Breakers
-
-**task-scaffold-validate-e2e-pipeline:** VALIDATE: End-to-End Pipeline (recording to publishing)
-
-**task-scaffold-validate-parallel-execution:** VALIDATE: Parallel Execution (24 concurrent tasks)
 
 **task-1:** AUDIT: Inventory Agent Factory repo
 
