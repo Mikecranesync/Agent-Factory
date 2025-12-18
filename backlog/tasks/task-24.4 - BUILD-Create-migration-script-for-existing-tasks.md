@@ -1,9 +1,10 @@
 ---
 id: task-24.4
 title: 'BUILD: Create migration script for existing tasks'
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-12-18 00:07'
+updated_date: '2025-12-18 00:38'
 labels:
   - build
   - backlog
