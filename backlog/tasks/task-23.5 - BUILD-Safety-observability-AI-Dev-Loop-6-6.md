@@ -1,9 +1,10 @@
 ---
 id: task-23.5
 title: 'BUILD: Safety & observability (AI Dev Loop 6/6)'
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-12-17 22:17'
+updated_date: '2025-12-18 00:41'
 labels:
   - build
   - ai-loop
@@ -41,3 +42,21 @@ Prevent runaway loops and make debugging failures easy.
 - [ ] #2 Logs exist for successes and failures in logs/ai-dev-loop/
 - [ ] #3 A human (or another agent) can read logs and understand why run failed
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Safety & observability integrated into headless_runner.py (2025-12-18)
+
+Time limits: 30 min default (AI_DEV_LOOP_TIME_LIMIT env var), signal-based enforcement
+
+Cost limits: $5 default (AI_DEV_LOOP_COST_LIMIT env var), configurable per run
+
+Logging: JSON Lines in logs/ai-dev-loop/, events tracked (start, task_loaded, timeout, error, complete)
+
+Metadata: Duration, cost, success metrics saved to {task_id}_{timestamp}_metadata.json
+
+Human-readable: Task notes updated with summaries on completion/failure
+
+All 3 acceptance criteria satisfied: clean stops on limits, comprehensive logs, debuggable failures
+<!-- SECTION:NOTES:END -->
