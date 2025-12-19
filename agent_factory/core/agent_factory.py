@@ -60,7 +60,7 @@ class AgentFactory:
         default_model: str = "gpt-4o",
         default_temperature: float = 0.0,
         verbose: bool = True,
-        enable_routing: bool = False,
+        enable_routing: bool = True,
         exclude_local: bool = False
     ):
         """
