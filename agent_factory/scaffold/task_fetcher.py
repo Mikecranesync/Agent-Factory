@@ -13,6 +13,8 @@ import time
 import logging
 from typing import List, Dict, Optional
 
+from agent_factory.scaffold.backlog_parser import BacklogParser, TaskSpec
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,6 +42,7 @@ class TaskFetcher:
         self._cache: Optional[List[Dict]] = None
         self._cache_time: Optional[float] = None
         self._cache_ttl = cache_ttl_sec
+        self._parser = BacklogParser()
 
     def fetch_eligible_tasks(
         self,
@@ -63,70 +66,35 @@ class TaskFetcher:
                 filtered = [t for t in filtered if any(l in t.get("labels", []) for l in labels)]
             return filtered[:max_tasks]
 
-        # Import MCP tools here to avoid circular imports
         try:
-            from mcp import mcp__backlog__task_list, mcp__backlog__task_view
-        except ImportError:
-            logger.error("MCP backlog tools not available - using placeholder")
-            return self._get_placeholder_tasks(max_tasks)
-
-        try:
-            # Query Backlog.md (fetch extra to filter locally)
+            # Query Backlog.md via BacklogParser (fetch extra to filter locally)
             logger.info(f"Fetching tasks from Backlog.md (limit={max_tasks * 2})")
-            tasks = mcp__backlog__task_list(status="To Do", limit=max_tasks * 2)
 
-            # Filter for eligible (dependencies satisfied)
-            eligible = []
-            for task in tasks:
-                if self._dependencies_satisfied(task, mcp__backlog__task_view):
-                    eligible.append(task)
+            # Use BacklogParser to fetch tasks with dependencies satisfied
+            task_specs = self._parser.list_tasks(
+                status="To Do",
+                labels=labels,
+                dependencies_satisfied=True,
+                limit=max_tasks * 2
+            )
+
+            # Convert TaskSpec objects to dicts for backward compatibility
+            tasks = [spec.to_dict() for spec in task_specs]
 
             # Sort by priority score
-            eligible.sort(key=lambda t: self._priority_score(t), reverse=True)
+            tasks.sort(key=lambda t: self._priority_score(t), reverse=True)
 
             # Update cache
-            self._cache = eligible
+            self._cache = tasks
             self._cache_time = time.time()
 
-            logger.info(f"Found {len(eligible)} eligible tasks (from {len(tasks)} total)")
+            logger.info(f"Found {len(tasks)} eligible tasks")
 
-            # Apply label filter if provided
-            if labels:
-                eligible = [t for t in eligible if any(l in t.get("labels", []) for l in labels)]
-                logger.info(f"After label filter: {len(eligible)} tasks")
-
-            return eligible[:max_tasks]
+            return tasks[:max_tasks]
 
         except Exception as e:
             logger.error(f"Error fetching tasks: {e}")
             return []
-
-    def _dependencies_satisfied(self, task: Dict, task_view_func) -> bool:
-        """Check if all dependencies are Done.
-
-        Args:
-            task: Task dict
-            task_view_func: Function to view task details
-
-        Returns:
-            True if all dependencies satisfied, False otherwise
-        """
-        dependencies = task.get("dependencies", [])
-
-        if not dependencies:
-            return True
-
-        for dep_id in dependencies:
-            try:
-                dep = task_view_func(id=dep_id)
-                if dep.get("status") != "Done":
-                    logger.debug(f"Task {task['id']} blocked by {dep_id} (status={dep.get('status')})")
-                    return False
-            except Exception as e:
-                logger.warning(f"Could not check dependency {dep_id}: {e}")
-                return False
-
-        return True
 
     def _priority_score(self, task: Dict) -> float:
         """Calculate priority score for sorting (0-100).
