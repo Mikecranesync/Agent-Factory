@@ -67,6 +67,7 @@ from agent_factory.integrations.telegram.admin import (
     Analytics,
     SystemControl,
 )
+from agent_factory.integrations.telegram.scaffold_handlers import ScaffoldHandlers
 
 # ============================================================================
 # Configuration
@@ -651,6 +652,15 @@ def main():
     analytics = Analytics()
     system_control = SystemControl()
 
+    # Initialize SCAFFOLD handlers
+    scaffold_handlers = ScaffoldHandlers(
+        repo_root=project_root,
+        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
+        max_cost=float(os.getenv("SCAFFOLD_MAX_COST", "5.0")),
+        max_time_hours=float(os.getenv("SCAFFOLD_MAX_TIME_HOURS", "2.0")),
+        dry_run=os.getenv("SCAFFOLD_DRY_RUN", "false").lower() == "true"
+    )
+
     # Register command handlers
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("help", cmd_help))
@@ -673,6 +683,11 @@ def main():
     application.add_handler(CommandHandler("research", langgraph_handlers.handle_research))
     application.add_handler(CommandHandler("consensus", langgraph_handlers.handle_consensus))
     application.add_handler(CommandHandler("analyze", langgraph_handlers.handle_analyze))
+
+    # Register SCAFFOLD handlers
+    application.add_handler(CommandHandler("scaffold", scaffold_handlers.handle_scaffold_create))
+    application.add_handler(CommandHandler("scaffold_status", scaffold_handlers.handle_scaffold_status))
+    application.add_handler(CommandHandler("scaffold_history", scaffold_handlers.handle_scaffold_history))
 
     # Register Admin Panel handlers
     application.add_handler(CommandHandler("admin", admin_dashboard.handle_admin))
@@ -738,6 +753,7 @@ def main():
     logger.info(f"Daily Standup: {STANDUP_HOUR:02d}:{STANDUP_MINUTE:02d}")
     logger.info("System Commands: /start, /help, /status, /agents, /metrics, /approve, /reject, /issue")
     logger.info("RIVET Pro: /troubleshoot, /upgrade, /book_expert, /my_sessions, /pro_stats")
+    logger.info("SCAFFOLD: /scaffold, /scaffold_status, /scaffold_history")
     logger.info("Admin Panel: /admin, /agents_admin, /content, /deploy, /kb, /metrics_admin, /health")
     logger.info("=" * 70)
 
