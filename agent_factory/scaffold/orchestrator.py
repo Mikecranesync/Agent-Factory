@@ -295,6 +295,7 @@ class ScaffoldOrchestrator:
                 worktree_path=worktree_path
             )
 
+
         except Exception as e:
             self.logger.error(f"Unexpected error executing task {task_id}: {e}", exc_info=True)
 

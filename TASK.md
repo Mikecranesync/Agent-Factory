@@ -8,7 +8,19 @@
 <!-- BACKLOG_SYNC:CURRENT:BEGIN -->
 ## Current Task
 
-No tasks currently in progress.
+### task-30: BUILD: Enable Phase 2 Routing Globally
+
+**Priority:** High
+
+View task details: `backlog task view task-30`
+
+---
+
+### task-5: BUILD: RIVET Pro Phase 5 - Research Pipeline
+
+**Priority:** Medium
+
+View task details: `backlog task view task-5`
 
 <!-- BACKLOG_SYNC:CURRENT:END -->
 
@@ -57,13 +69,67 @@ No manual tasks requiring user execution.
 **task-10:** BUILD: YouTube Automation Pipeline
 - View task details: `backlog task view task-10`
 
+**task-38.5:** BUILD: Telegram Bot Foundation
+- View task details: `backlog task view task-38.5`
+
+**task-38.6:** BUILD: Intent Decoder - Ollama Mistral
+- View task details: `backlog task view task-38.6`
+
+**task-38.7:** BUILD: Orchestrator Core
+- View task details: `backlog task view task-38.7`
+
+**task-38.8:** BUILD: Agent Registration System
+- View task details: `backlog task view task-38.8`
+
+**task-38.9:** BUILD: 7 Specialized Team Lead Agents
+- View task details: `backlog task view task-38.9`
+
+**task-38.10:** BUILD: Status Reporting Pipeline
+- View task details: `backlog task view task-38.10`
+
+**task-38.11:** BUILD: Error Handling & Fallbacks
+- View task details: `backlog task view task-38.11`
+
+**task-38.12:** BUILD: TIER 0 Testing & Validation Suite
+- View task details: `backlog task view task-38.12`
+
+**task-39.1:** BUILD: Explorer 1 - Agentic Frameworks
+- View task details: `backlog task view task-39.1`
+
+**task-39.2:** BUILD: Explorer 2 - CI/CD Automation
+- View task details: `backlog task view task-39.2`
+
+**task-39.3:** BUILD: Explorer 3 - Local LLM Inference
+- View task details: `backlog task view task-39.3`
+
+**task-39.4:** BUILD: Explorer 4 - PLC & Industrial Automation
+- View task details: `backlog task view task-39.4`
+
+**task-39.5:** BUILD: Explorer 5 - Telegram & Remote Orchestration
+- View task details: `backlog task view task-39.5`
+
+**task-39.6:** BUILD: Source Verification Pipeline
+- View task details: `backlog task view task-39.6`
+
+**task-39.7:** BUILD: Research Manager Core
+- View task details: `backlog task view task-39.7`
+
+**task-40.3:** BUILD: Skunk Works Experiment Runner & Benchmarking
+- View task details: `backlog task view task-40.3`
+
+**task-40.4:** BUILD: Skunk Works Validator Quality Gates
+- View task details: `backlog task view task-40.4`
+
+**task-40.5:** BUILD: Skunk Works CEO Reporting Pipeline
+- View task details: `backlog task view task-40.5`
+
+**task-40.6:** BUILD: Skunk Works Scraper Infrastructure
+- View task details: `backlog task view task-40.6`
+
+**task-40.7:** BUILD: Skunk Works Sandbox Docker Environment
+- View task details: `backlog task view task-40.7`
+
 ### Medium Priority
-
-**task-scaffold-backlog-sync:** BUILD: Backlog Status Sync (PR to Backlog.md)
-
-**task-scaffold-documentation:** BUILD: SCAFFOLD User Documentation
-
-**task-scaffold-logging:** BUILD: Structured Logging & Session History
 
 **task-scaffold-backlog-sync:** BUILD: Backlog Status Sync (PR to Backlog.md)
 
