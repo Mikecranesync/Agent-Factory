@@ -570,7 +570,9 @@ settings.reload()
 | `docs/database/00_database_schema.md` | Schema documentation | Database work |
 | `docs/database/supabase_complete_schema.sql` | Full schema SQL | Deploying schema |
 | `docs/database/DATABASE_TOOLS_GUIDE.md` | Database utilities | Using DB scripts |
+
 | **PATTERNS & STANDARDS** |
+
 | `docs/patterns/cole_medin_patterns.md` | Production patterns from Archon | Building RAG/memory features |
 | `docs/patterns/GIT_WORKTREE_GUIDE.md` | Git worktree setup | Before starting work |
 | `docs/patterns/SECURITY_STANDARDS.md` | Compliance patterns | Building features |

@@ -148,7 +148,7 @@ def main():
     # Parse labels
     labels = None
     if args.labels:
-        labels = [l.strip() for l in args.labels.split(",")]
+        labels = [label.strip() for label in args.labels.split(",")]
 
     # Log configuration
     logger.info("="*60)
