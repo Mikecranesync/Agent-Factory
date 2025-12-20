@@ -6,338 +6,19 @@ Agent Factory - a framework for building multi-agent AI systems. Part of a large
 
 **You are building the engine that turns blueprints into working agents.**
 
-**But it's bigger than that:** This engine powers RIVET (industrial maintenance platform) → which generates knowledge → which becomes the standard → which robots license → which creates perpetual income. See `MASTER_ROADMAP.md` for the full vision (Weeks → Years → Decades).
+This engine powers **RIVET** (industrial maintenance platform) and **PLC Tutor** (PLC programming education) → which generate knowledge → which becomes the standard → which robots license → which creates perpetual income.
 
----
-
-## The Meta Structure: Agent Factory → RIVET
-
-Agent Factory is the engine. **RIVET** is the product it powers.
-
-### The Full System (3 Layers)
-
-**Layer 1: Knowledge Factory**
-- Scrapers that harvest industrial maintenance data (Reddit, Stack Overflow, PDFs, forums, YouTube)
-- Validators that verify accuracy against official documentation
-- Vector database (Pinecone) storing validated "Knowledge Atoms"
-- Ensures data integrity via 6-stage validation pipeline
-
-**Layer 2: Agent Orchestration (← YOU ARE HERE)**
-- Agent Factory builds and manages these agents
-- Agents route queries, generate responses, publish content, flag for human help
-- This is what you're building right now
-
-**Layer 3: Distribution & Monetization**
-- Social media distribution (YouTube, TikTok, Reddit, Twitter/X, LinkedIn)
-- Premium troubleshooting calls ($50-100/hour)
-- B2B integrations (CMMS vendors like ServiceTitan, MaintainX)
-- Data licensing (clean industrial datasets)
-
-### What is RIVET?
-
-RIVET is an industrial maintenance AI platform that:
-- Answers technician questions with validated, sourced solutions
-- Distributes knowledge via social media (YouTube, Reddit, TikTok)
-- Escalates complex issues to human experts
-- Integrates into CMMS platforms for B2B revenue
-
-**The Core Insight:** Build a brand + community + distribution network that technicians discover organically, trust immediately, and evangelize to peers.
-
-### Agents Agent Factory Must Build for RIVET
-
-These are the production agents you're building the framework to support:
-
-1. **RedditMonitor-v1.0** - Finds unanswered technical questions (runs every 2 hours)
-2. **KnowledgeAnswerer-v1.0** - Generates confidence-ranked answers with citations
-3. **RedditResponder-v1.0** - Posts comments to Reddit (with human approval)
-4. **YouTubePublisher-v1.0** - Creates 3-5 minute faceless videos from solved problems
-5. **SocialAmplifier-v1.0** - Distributes content across TikTok, Instagram, Twitter, LinkedIn
-6. **HumanFlagger-v1.0** - Escalates to human expert when needed (10min SLA)
-
-### Why This Matters for Your Work
-
-**Phase 1 (Orchestration)** enables these agents to work together:
-- One agent monitors Reddit → routes to answerer → routes to responder
-- Answerer queries Knowledge Factory → generates response → flags human if confidence <0.9
-- YouTubePublisher receives solved problem → generates video → triggers SocialAmplifier
-
-**The Knowledge Atom Standard** is the data contract:
-- Every scraper outputs atoms in same format (JSON-LD 1.1 + JSON Schema + Schema.org)
-- Every atom passes validation pipeline
-- Agents consume/produce Knowledge Atoms
-- See: `knowledge-atom-standard-v1.0.md` for full spec
-
-### RIVET Timeline
-
-- **Month 1:** Knowledge Factory foundation (1k atoms indexed)
-- **Month 2:** First agent channel (Reddit monitoring + manual approval)
-- **Month 3:** Content generation (YouTube channel launch)
-- **Month 4:** Multi-platform distribution
-- **Month 5:** Human-in-the-loop escalation (premium calls)
-- **Month 6:** B2B outreach (CMMS integrations)
-
-**Year 1 Target:** $80k revenue, proof of concept
-**Year 3 Target:** $2.5M revenue, sustainable business
-**Year 5 Vision:** $10-50M ARR, 1M+ users, community of 50+ technician experts
-
-### The Data is the Moat
-
-RIVET's competitive advantage isn't the code—it's the validated knowledge base.
-- Competitors can copy tools
-- They can't replicate 100k+ validated Knowledge Atoms
-- You own the knowledge, the distribution, and the community
-
-**Your role:** Build the agent orchestration layer that turns this knowledge into automated responses at scale.
-
----
-
-## The PLC Vertical (Parallel Track)
-
-Agent Factory powers **TWO verticals** simultaneously:
-1. **RIVET** - Industrial Maintenance (described above)
-2. **PLC Tutor** - PLC Programming Education + Automation (NEW)
-
-### What is PLC Tutor?
-
-PLC Tutor is an AI-powered platform that teaches PLC programming AND evolves into an autonomous PLC coding assistant.
-
-**For Learners:**
-- Interactive AI tutor for Allen-Bradley & Siemens PLC programming
-- Works with real hardware (or simulation)
-- Backed by PLC knowledge atoms (no hallucinations)
-- Progresses from basics → advanced → autonomous coding
-
-**For Professionals:**
-- Autonomous PLC programmer (spec → verified code)
-- Uses computer-use to drive Studio 5000 / TIA Portal / CODESYS
-- Proposes ladder/ST code, runs verification loops
-- Human-in-loop for production deployments
-
-**For Organizations:**
-- White-label PLC tutor for trade schools, OEMs
-- Pre-built curriculum with exercises
-- B2B training programs
-
-### Why PLC Tutor Matters
-
-**1. Validates Multi-Vertical Platform:**
-- Proves Agent Factory works across domains
-- Same Knowledge Atom Standard, different vertical
-- Same DAAS monetization pattern
-
-**2. Faster Monetization:**
-- Month 4: First paid subscribers ($29-$99/mo)
-- Month 6: B2B training contracts ($10K-$20K/org)
-- Year 1: ~$35K ARR (proof of concept)
-- Year 3: ~$2.5M ARR (same as RIVET target)
-
-**3. Different GTM Strategy:**
-- RIVET = community-driven (Reddit, forums)
-- PLC Tutor = education-driven (YouTube courses)
-- Validates multiple acquisition channels
-
-**4. Cross-Selling:**
-- PLC programmers ALSO do industrial maintenance
-- RIVET users may need PLC training
-- Bundle pricing potential
-
-### PLC Agents Agent Factory Must Build (18 Total)
-
-**Executive Team (2 agents):**
-1. **AICEOAgent** - Strategy, metrics, KPIs, resource allocation
-2. **AIChiefOfStaffAgent** - Project management, issue tracking, orchestration
-
-**Research & Knowledge Base Team (4 agents):**
-3. **ResearchAgent** - Web scraping, YouTube transcripts, PDF processing (Issue #47)
-4. **AtomBuilderAgent** - Convert raw data → structured atoms (Pydantic models)
-5. **AtomLibrarianAgent** - Organize atoms, build prerequisite chains, detect gaps
-6. **QualityCheckerAgent** - Validate accuracy, safety compliance, citation integrity
-
-**Content Production Team (5 agents):**
-7. **MasterCurriculumAgent** - A-to-Z roadmap, learning paths, sequencing
-8. **ContentStrategyAgent** - Keyword research, topic selection, SEO optimization
-9. **ScriptwriterAgent** - Transform atoms → engaging video scripts (Issue #48)
-10. **SEOAgent** - Optimize metadata (titles, descriptions, tags)
-11. **ThumbnailAgent** - Generate eye-catching thumbnails, A/B testing
-
-**Media & Publishing Team (4 agents):**
-12. **VoiceProductionAgent** - ElevenLabs voice clone, narration generation
-13. **VideoAssemblyAgent** - Sync audio + visuals, render final video
-14. **PublishingStrategyAgent** - Schedule uploads, optimal timing, playlists
-15. **YouTubeUploaderAgent** - Execute uploads, set metadata, handle errors
-
-**Engagement & Analytics Team (3 agents):**
-16. **CommunityAgent** - Respond to comments, moderate, engage viewers
-17. **AnalyticsAgent** - Track metrics, detect trends, generate insights
-18. **SocialAmplifierAgent** - Extract clips, post to TikTok/Instagram/LinkedIn
-
-**See:** `docs/AGENT_ORGANIZATION.md` for complete specifications (responsibilities, tools, success metrics)
-
-### The PLC Knowledge Atom Standard
-
-**PLC Atom Types:**
-- `concept`: What is a PLC, digital I/O, scan cycle
-- `pattern`: Start/stop/seal-in motor, timer patterns
-- `fault`: Common error codes, diagnostic procedures
-- `procedure`: Step-by-step troubleshooting, setup wizards
-
-**Example PLC Pattern Atom:**
-```json
-{
-  "atom_id": "plc:ab:motor-start-stop-seal",
-  "type": "pattern",
-  "vendor": "allen_bradley",
-  "platform": "control_logix",
-  "title": "3-Wire Motor Start/Stop/Seal-In",
-  "summary": "Basic motor control with maintained contact seal-in",
-  "inputs": [
-    {"tag": "Start_PB", "type": "NO_contact", "address": "I:0/0"},
-    {"tag": "Stop_PB", "type": "NC_contact", "address": "I:0/1"},
-    {"tag": "Motor_Run", "type": "auxiliary_contact", "address": "O:0/0"}
-  ],
-  "outputs": [
-    {"tag": "Motor_Contactor", "type": "coil", "address": "O:0/0"}
-  ],
-  "logic_description": "Parallel seal-in circuit with stop button in series",
-  "steps": [
-    "Press Start_PB → Motor_Contactor energizes",
-    "Motor_Run auxiliary contact seals in",
-    "Release Start_PB → Motor stays running (sealed)",
-    "Press Stop_PB → Motor_Contactor de-energizes"
-  ],
-  "constraints": [
-    "Stop button must be NC for fail-safe operation",
-    "Seal-in contact must be sized for coil current",
-    "Requires overload protection (not shown in logic)"
-  ],
-  "difficulty": "beginner",
-  "prereqs": ["plc:generic:io-basics", "plc:generic:ladder-fundamentals"],
-  "source": "AB ControlLogix Programming Manual Chapter 3",
-  "last_reviewed_at": "2025-12-09",
-  "safety_level": "info"
-}
-```
-
-### PLC Tutor Timeline
-
-**Month 2:** Knowledge base ingestion (50-100 atoms from manuals + YouTube)
-**Month 3:** PLC Tutor v0.1 (Lessons 1-5 functional)
-**Month 4:** YouTube series launch + first paid subscribers
-**Month 6:** Autonomous PLC coder prototype
-**Month 12:** Full multi-platform tutor (Siemens + Allen-Bradley)
-
-**Year 1 Target:** $35K ARR (50 subscribers + courses)
-**Year 3 Target:** $2.5M ARR (sustainable business)
-
-### Strategy: Same Infrastructure, Different Domain
-
-```
-Layer 1: Agent Factory (powers both)
-    ↓
-Layer 2: Knowledge Atom Standard
-    ├── Industrial Maintenance Atoms (RIVET)
-    └── PLC Programming Atoms (PLC Tutor)
-    ↓
-Layer 3: Multi-Vertical Products
-    ├── RIVET ($2.5M ARR)
-    └── PLC Tutor ($2.5M ARR)
-    ↓
-Layer 4: DAAS (sell both knowledge bases)
-    ↓
-Layer 5: Robot Licensing (both are robot-ready)
-```
-
----
-
-## The YouTube-Wiki Strategy (CRITICAL)
-
-**"YouTube IS the knowledge base"**
-
-Instead of scraping first then creating content, we **build the knowledge base BY creating original educational content**.
-
-### Why This Changes Everything
-
-1. **Zero Copyright Issues** - Original content = you own 100% of rights, immediate monetization
-2. **Learning-by-Teaching** - You retain 90% of what you teach vs 10% of what you read
-3. **Voice Clone = 24/7 Production** - ElevenLabs voice clone enables autonomous content creation
-4. **Multi-Use Content** - One video → knowledge atom → blog post → social clips → course module
-
-### The YouTube-Wiki Pipeline
-
-```
-YOU learn concept → Research Agent compiles sources
-    ↓
-Scriptwriter Agent drafts teaching script
-    ↓
-Voice Production Agent generates narration (your voice clone)
-    ↓
-Video Assembly Agent combines audio + visuals
-    ↓
-YouTube Uploader Agent publishes
-    ↓
-Atom Builder Agent extracts knowledge atom from video
-    ↓
-Social Amplifier Agent creates clips for TikTok/Instagram
-```
-
-### Key Principles
-
-- **Videos 1-20:** YOU approve every one (set quality standard)
-- **Videos 21-50:** YOU sample every 3rd (quality gates)
-- **Videos 51+:** Agents autonomous (exception flagging only)
-- **Content Roadmap:** 100+ videos pre-planned (A-to-Z curriculum)
-- **Voice Training:** 10-15 min samples → ElevenLabs Pro → natural-sounding narration
-- **SEO-First:** Every video targets low-competition, high-volume keywords
-
-### Success Metrics
-
-- **Week 4:** 3 videos live, voice clone validated
-- **Week 12:** 30 videos, 1K subs, $500 revenue, agents 80% autonomous
-- **Month 12:** 100 videos, 20K subs, $5K/mo revenue, fully autonomous
-
-**See:** `docs/implementation/YOUTUBE_WIKI_STRATEGY.md` for complete details.
-
----
-
-### PLC Implementation References
-
-**Complete Strategy Suite (Updated Dec 2025):**
-- **Master Strategy:** `docs/architecture/TRIUNE_STRATEGY.md` - Complete integration (RIVET + PLC Tutor + Agent Factory), 18-agent system, revenue models
-- **YouTube-Wiki Approach:** `docs/implementation/YOUTUBE_WIKI_STRATEGY.md` - Build knowledge BY teaching (original content, voice clone, 24/7 production)
-- **18-Agent System:** `docs/architecture/AGENT_ORGANIZATION.md` - Complete specs for all autonomous agents (Executive, Research, Content, Media, Engagement)
-- **Implementation Plan:** `docs/implementation/IMPLEMENTATION_ROADMAP.md` - Week-by-week roadmap (Week 1-12, then Month 4-12)
-- **Content A-to-Z:** `plc/content/CONTENT_ROADMAP_AtoZ.md` - 100+ video topics sequenced (electricity → AI automation)
-- **Universal Atom Spec:** `docs/architecture/ATOM_SPEC_UNIVERSAL.md` - IEEE LOM-based schema for all verticals
-- **Pydantic Models:** `core/models.py` - Production-ready schemas (LearningObject, PLCAtom, RIVETAtom, VideoScript, etc.)
-
-**Legacy/Research:** (Moved to `archive/legacy-docs/`)
-- `MASTER_ROADMAP.md` - Original 5-layer vision
-- `PLan_fullauto_plc.md` - Initial PLC implementation plan
-- `Computers, programming PLCs..md` - Market research + business insights
-
-### PLC Validation Commands
-
-```bash
-# Verify PLC atom schema
-poetry run python -c "from plc.atoms.pydantic_models import PLCAtom; print('PLC schema OK')"
-
-# Test PLC tutor agent
-poetry run python -c "from plc.agents.plc_tutor_agent import PLCTutorAgent; print('Tutor OK')"
-
-# Run PLC atom builder
-poetry run python plc/agents/plc_atom_builder_agent.py --source plc/sources/siemens/s7-1200/
-
-# Test with real hardware
-poetry run python examples/plc_tutor_demo.py --platform siemens --lesson 1
-```
+**For complete strategy:** See `docs/architecture/TRIUNE_STRATEGY.md` (RIVET + PLC Tutor integration, 18-agent system, revenue models)
 
 ---
 
 ## Current Focus
 
 > **PHASE 1: ORCHESTRATION**
-> 
+>
 > Build multi-agent routing. One agent receives query, routes to specialist.
+
+**Check TASK.md** for active task, backlog, and user actions.
 
 See `docs/PHASE1_SPEC.md` for implementation details.
 
@@ -518,6 +199,43 @@ For full architecture, see `docs/architecture/00_architecture_platform.md`.
 
 ---
 
+<!-- END OF FIRST 200 LINES - ContextAssembler reads up to here -->
+<!-- Lines below provide strategic context and detailed references -->
+
+---
+
+## Full System Context
+
+### The Meta Structure: Agent Factory → RIVET → PLC Tutor
+
+Agent Factory is the engine that powers two verticals:
+1. **RIVET** - Industrial Maintenance AI platform
+2. **PLC Tutor** - PLC Programming Education + Automation
+
+**For complete details:**
+- **RIVET agents & strategy:** `docs/architecture/TRIUNE_STRATEGY.md`
+- **PLC Tutor overview:** `docs/verticals/PLC_TUTOR_OVERVIEW.md`
+- **18-agent system specs:** `docs/architecture/AGENT_ORGANIZATION.md`
+- **YouTube-Wiki strategy:** `docs/implementation/YOUTUBE_WIKI_STRATEGY.md`
+
+**RIVET Timeline:**
+- **Month 1:** Knowledge Factory foundation (1k atoms indexed)
+- **Month 3:** Content generation (YouTube channel launch)
+- **Month 6:** B2B outreach (CMMS integrations)
+- **Year 3 Target:** $2.5M ARR (sustainable business)
+
+**PLC Tutor Timeline:**
+- **Month 4:** YouTube series launch + first paid subscribers
+- **Month 6:** Autonomous PLC coder prototype
+- **Year 3 Target:** $2.5M ARR (same as RIVET)
+
+**The Data is the Moat:**
+- Competitors can copy tools
+- They can't replicate 100k+ validated Knowledge Atoms
+- You own the knowledge, the distribution, and the community
+
+---
+
 ## Settings Service (Production Pattern from Archon 13.4k⭐)
 
 **Database-backed configuration with environment fallback**
@@ -581,62 +299,12 @@ Routing selects the cheapest capable model per task, reducing costs 30-40% immed
 
 **Expected Savings:** $200-400/month (50+ autonomous agents)
 
-### Usage Examples
+---
 
-#### Default Routing (Recommended)
-```python
-from agent_factory.core.agent_factory import AgentFactory
+## VPS & Cloud Development
 
-# Routing enabled by default
-factory = AgentFactory()
-
-# Agent automatically selects cheapest capable model
-agent = factory.create_agent(
-    role="classifier",
-    tools_list=[search_tool]
-)
-
-# Uses gpt-3.5-turbo (SIMPLE capable, cheapest)
-response = agent.invoke("Classify this email")
-print(f"Model: {agent.last_model_used}, Cost: ${agent.last_cost:.6f}")
-```
-
-#### Explicit Capability
-```python
-from agent_factory.llm.types import ModelCapability
-
-# Force premium models for complex tasks
-agent = factory.create_agent(
-    role="researcher",
-    capability=ModelCapability.COMPLEX,
-    tools_list=[semantic_search]
-)
-```
-
-#### Cost Tracking
-```python
-from agent_factory.llm.tracker import get_global_tracker
-
-tracker = get_global_tracker()
-stats = tracker.aggregate_stats()
-print(f"Total cost: ${stats['total_cost_usd']:.2f}")
-```
-
-### Architecture
-- **Layer 1:** LLMRouter (400 lines) - Unified interface, retries, fallback
-- **Layer 2:** RoutedChatModel (250 lines) - LangChain adapter
-- **Layer 3:** Model Registry (330 lines) - 12 models, pricing, capabilities
-
-### Performance
-- **Latency:** <10ms overhead (99.9% is API call time)
-- **Cost Reduction:** 73% in live testing ($750/mo → $198/mo)
-- **Accuracy:** No degradation (capability-aware selection)
-
-### Validation
-```bash
-# Test routing
-poetry run python -c "from agent_factory.llm.langchain_adapter import create_routed_chat_model; print('OK')"
-```
+**For complete VPS and Cloud Dev Box setup:**
+- See: `docs/ops/VPS_CLOUD_SETUP.md` (Hostinger VPS management, Cloud VM workflows, mobile access)
 
 ---
 
@@ -662,12 +330,15 @@ poetry run python -c "from agent_factory.llm.langchain_adapter import create_rou
 | `docs/database/00_database_schema.md` | Schema documentation | Database work |
 | `docs/database/supabase_complete_schema.sql` | Full schema SQL | Deploying schema |
 | `docs/database/DATABASE_TOOLS_GUIDE.md` | Database utilities | Using DB scripts |
-
 | **PATTERNS & STANDARDS** |
-
 | `docs/patterns/cole_medin_patterns.md` | Production patterns from Archon | Building RAG/memory features |
 | `docs/patterns/GIT_WORKTREE_GUIDE.md` | Git worktree setup | Before starting work |
 | `docs/patterns/SECURITY_STANDARDS.md` | Compliance patterns | Building features |
+| **VERTICALS** |
+| `docs/verticals/PLC_TUTOR_OVERVIEW.md` | PLC Tutor platform details | Understanding PLC vertical |
+| **OPERATIONS** |
+| `docs/ops/VPS_CLOUD_SETUP.md` | VPS & Cloud Dev Box | Remote development |
+| `docs/ops/MCP_SESSION_OPTIMIZATION.md` | MCP server toggling | Context optimization |
 | **USER GUIDES** |
 | `Guides for Users/README.md` | User guide index | Finding user documentation |
 | `Guides for Users/quickstart/QUICKSTART.md` | First-time setup | New users |
@@ -719,148 +390,6 @@ poetry run python -c "from agent_factory.memory.storage import PostgresMemorySto
 # 9. Database Failover Tests (Dec 2025)
 poetry run pytest tests/test_database_failover.py -v
 ```
-
----
-
-## VPS KB Factory (Hostinger)
-
-24/7 knowledge base ingestion pipeline running on Hostinger VPS.
-
-**VPS:** `72.60.175.144`
-
-**Services (Docker Compose):**
-- `postgres` - PostgreSQL 16 + pgvector for semantic search
-- `redis` - Job queue for ingestion URLs
-- `ollama` - Local LLM (deepseek-r1:1.5b) + embeddings (nomic-embed-text)
-- `rivet-worker` - LangGraph ingestion pipeline
-- `rivet-scheduler` - Hourly job scheduling
-
-**Query VPS from ScriptwriterAgent:**
-```python
-from agents.content.scriptwriter_agent import ScriptwriterAgent
-
-agent = ScriptwriterAgent()
-
-# Keyword search
-atoms = agent.query_vps_atoms("ControlLogix", limit=5)
-
-# Semantic search (uses Ollama embeddings)
-atoms = agent.query_vps_atoms_semantic("How to troubleshoot motor faults", limit=5)
-
-# Generate script from atoms
-script = agent.generate_script("PLC Motor Control", atoms)
-```
-
-**VPS Management Commands:**
-```bash
-# SSH into VPS
-ssh root@72.60.175.144
-
-# Check services
-cd /opt/rivet/infra && docker-compose ps
-
-# View worker logs
-docker logs infra_rivet-worker_1 --tail 50
-
-# Add URL to ingest
-docker exec infra_redis_1 redis-cli RPUSH kb_ingest_jobs "https://example.com/manual.pdf"
-
-# Check atom count
-docker exec infra_postgres_1 psql -U rivet -d rivet -c "SELECT COUNT(*) FROM knowledge_atoms;"
-```
-
-**Environment Variables (in .env):**
-```
-VPS_KB_HOST=72.60.175.144
-VPS_KB_PORT=5432
-VPS_KB_USER=rivet
-VPS_KB_PASSWORD=rivet_factory_2025!
-VPS_KB_DATABASE=rivet
-```
-
-**KB Ingestion Scripts:**
-```powershell
-# Push industrial PDFs to VPS (from PowerShell)
-.\push_urls_to_vps.ps1
-
-# Monitor ingestion progress
-ssh root@72.60.175.144 "docker logs infra_rivet-worker_1 --tail 50"
-```
-
-**Source Files:**
-- `scripts/kb_seed_urls.py` - 17 curated industrial PDF URLs (Rockwell, Siemens, Mitsubishi, Omron, Schneider)
-- `scripts/push_urls_to_vps.py` - Python push script
-- `scripts/monitor_vps_ingestion.py` - Python monitor script
-- `push_urls_to_vps.ps1` - PowerShell push script (Windows)
-
----
-
-## Cloud Dev Box Setup
-
-**Remote development with Claude Code CLI on cloud VM**
-
-### Quick Start
-
-```bash
-# SSH into cloud VM
-ssh user@your-cloud-vm.com
-cd ~/agent-factory
-
-# One-time setup (first login)
-./scripts/cloud-dev-box/setup-from-scratch.sh
-
-# Launch Claude Code session
-./scripts/cloud-dev-box/launch-claude.sh
-```
-
-### Daily Workflow
-
-```bash
-# 1. SSH into VM
-ssh user@your-cloud-vm.com
-cd ~/agent-factory
-
-# 2. Check environment (optional)
-./scripts/cloud-dev-box/check-prerequisites.sh
-
-# 3. Launch Claude
-./scripts/cloud-dev-box/launch-claude.sh
-
-# 4. Work on tasks inside Claude session
-> Read TASK.md
-> What should I work on next?
-
-# 5. Exit when done (Ctrl+D)
-```
-
-### Session Management
-
-```bash
-# Resume previous session
-./scripts/cloud-dev-box/launch-claude.sh --resume
-
-# List saved sessions
-./scripts/cloud-dev-box/utils/session-manager.sh list
-
-# Load specific session
-./scripts/cloud-dev-box/utils/session-manager.sh resume feature-xyz
-```
-
-### Access from Mobile
-
-**Termux (Android):**
-```bash
-pkg install openssh
-ssh user@your-cloud-vm.com
-cd ~/agent-factory && ./scripts/cloud-dev-box/launch-claude.sh
-```
-
-**JuiceSSH (Android):**
-- Create connection: user@your-cloud-vm.com
-- Save snippet: `cd ~/agent-factory && ./scripts/cloud-dev-box/launch-claude.sh`
-- One-tap access!
-
-**See:** `Guides for Users/deployment/CLOUD_DEV_BOX_GUIDE.md` for complete setup guide
 
 ---
 
@@ -928,38 +457,15 @@ All three rely on Agent Factory as their agent orchestration engine.
 
 ## When in Doubt
 
-1. Check `PROGRESS.md` for what to do next
+1. Check `TASK.md` for what to do next
 2. Check the relevant spec doc for how to do it
 3. Validate that it works
 4. Commit checkpoint
 5. Move to next item
 
 Keep it simple. Keep it working. Keep moving forward.
-```
 
 ---
-
-Now you need the supporting docs. Here's the file structure:
-```
-Agent-Factory/
-+-- CLAUDE.md              # Meta doc (above) - Claude CLI reads this
-+-- PROGRESS.md            # Checklist - tracks what's done
-+-- CLAUDE_CODEBASE.md     # Existing - your current code docs
-+-- Guides for Users/      # User-facing setup/deployment guides
-    +-- README.md          # Complete guide index
-    +-- QUICKSTART.md      # First-time setup (15 min)
-    +-- PRODUCTION_DEPLOYMENT.md  # Cloud deployment
-    +-- BOT_DEPLOYMENT_GUIDE.md   # Telegram bot deployment
-    +-- TELEGRAM_KB_INTEGRATION.md  # Knowledge base integration
-    +-- POETRY_GUIDE.md    # Dependency management
-    +-- OLLAMA_SETUP_COMPLETE.md  # FREE LLM setup
-    +-- *.md               # Other user guides
-+-- docs/
-    +-- ARCHITECTURE.md    # Full architecture + pipeline diagram
-    +-- PATTERNS.md        # 8 Google ADK patterns with examples
-    +-- PRODUCTION.md      # 4 levels of production readiness
-    +-- PHASE1_SPEC.md     # Detailed Phase 1 implementation
-    +-- PHASE2_SPEC.md     # (create when ready)
 
 <!-- BACKLOG.MD MCP GUIDELINES START -->
 
