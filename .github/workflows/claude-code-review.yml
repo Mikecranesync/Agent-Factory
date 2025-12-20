@@ -1,0 +1,72 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_review_comment:
+    types: [created]
+  issue_comment:
+    types: [created]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+
+    # Only run on PRs or when @claude is mentioned
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event.comment.body && contains(github.event.comment.body, '@claude'))
+
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better context
+
+      - name: Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review this PR using the CLAUDE.md standards from the repository.
+
+            Check for:
+            1. **Code Quality Issues**
+               - Reward hacking (code that "hacks" tests to pass without solving the real problem)
+               - Non-idiomatic patterns (not following Python/project conventions)
+               - Missing error handling (no try/except where needed)
+               - Security vulnerabilities (see CLAUDE.md Rule 8)
+
+            2. **Agent Factory Specific**
+               - Cross-agent dependencies broken (check imports)
+               - Git worktree violations (Rule 4.5 - never work directly in main)
+               - Security compliance (Rule 8 - 5 questions before writing code)
+               - Missing validation after changes (Rule 2)
+
+            3. **Documentation & Tests**
+               - Missing type hints (Rule: Type hints on all functions)
+               - Missing docstrings for complex functions
+               - No tests for new functionality
+               - Breaking changes without migration notes
+
+            4. **Commit Quality**
+               - Commits follow pattern (CHECKPOINT, BUILD, FIX, etc.)
+               - Commit messages explain "why" not "what"
+               - No massive commits (>500 lines changed)
+
+            Provide:
+            - ✅ What's good about this PR
+            - ⚠️ Issues that should be fixed before merge
+            - 💡 Suggestions for improvement (optional)
+            - 🔒 Security concerns (if any)
+
+            Be concise but thorough. Focus on actionable feedback.
+
+          claude_args: |
+            --max-turns 5
+            --model claude-opus-4-5-20251101
