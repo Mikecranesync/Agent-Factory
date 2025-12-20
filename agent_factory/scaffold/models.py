@@ -3,7 +3,7 @@
 Data models for SCAFFOLD autonomous development system.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import List, Optional
 
 
@@ -157,4 +157,50 @@ class SessionState:
             tasks_failed=data["tasks_failed"],
             total_cost=data.get("total_cost", 0.0),
             total_duration_sec=data.get("total_duration_sec", 0.0)
+        )
+
+
+@dataclass
+class ExecutionResult:
+    """Result of Claude Code CLI execution.
+
+    Contains detailed execution information including success status,
+    files changed, output, errors, cost, duration, and enhanced success
+    indicators (git commit created, tests passed).
+
+    Attributes:
+        success: Whether execution completed successfully
+        files_changed: List of file paths modified during execution
+        output: stdout from Claude Code CLI
+        error: stderr or error message if execution failed
+        cost: Estimated API cost in USD
+        duration_sec: Execution time in seconds
+        commit_created: Whether a git commit was created (detected via git log)
+        tests_passed: Test result status (True=passed, False=failed, None=not run)
+    """
+    success: bool
+    files_changed: List[str]
+    output: str
+    error: Optional[str] = None
+    cost: float = 0.0
+    duration_sec: float = 0.0
+    commit_created: bool = False
+    tests_passed: Optional[bool] = None
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization and backwards compatibility."""
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ExecutionResult":
+        """Create from dictionary (JSON deserialization)."""
+        return cls(
+            success=data["success"],
+            files_changed=data["files_changed"],
+            output=data["output"],
+            error=data.get("error"),
+            cost=data.get("cost", 0.0),
+            duration_sec=data.get("duration_sec", 0.0),
+            commit_created=data.get("commit_created", False),
+            tests_passed=data.get("tests_passed")
         )
