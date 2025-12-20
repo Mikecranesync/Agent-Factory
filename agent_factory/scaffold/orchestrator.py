@@ -145,6 +145,27 @@ class ScaffoldOrchestrator:
                     self.logger.error("Stopping session early")
                     break
 
+                # SafetyRails validation (NEW)
+                valid, reason, estimate = self.session_mgr.validate_and_estimate_task(task["id"])
+                if not valid:
+                    self.logger.warning(f"Task {task['id']} validation failed: {reason}")
+
+                    # Check retry state
+                    retry_state = self.session_mgr.safety_rails.get_retry_state(task["id"])
+                    if retry_state and retry_state.should_retry():
+                        self.logger.info(
+                            f"Task {task['id']} will retry in {retry_state.backoff_sec:.0f}s "
+                            f"(attempt {retry_state.attempt_count + 1})"
+                        )
+                    continue
+
+                # Log cost estimate
+                if estimate:
+                    self.logger.info(
+                        f"Task {task['id']} estimated cost: ${estimate.estimated_cost_usd:.2f} "
+                        f"(confidence={estimate.confidence:.1%})"
+                    )
+
                 # Dry-run mode
                 if self.dry_run:
                     self.logger.info(f"[DRY RUN] Would execute {task['id']}: {task.get('title', 'Untitled')}")

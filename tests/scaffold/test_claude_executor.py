@@ -341,10 +341,10 @@ class TestExecuteTask:
 
         assert isinstance(result, ExecutionResult)
         assert result.success is True
-        assert result.task_id == "task-test-1"
-        assert result.exit_code == 0
         assert len(result.files_changed) >= 0
         assert result.error is None
+        assert result.cost >= 0.0
+        assert result.duration_sec >= 0.0
 
     def test_execute_task_failure(self, executor, sample_task, temp_repo):
         """Test failed task execution."""
@@ -361,8 +361,8 @@ class TestExecuteTask:
                 result = executor.execute_task(sample_task, str(temp_repo))
 
         assert result.success is False
-        assert result.exit_code == 1
         assert result.error is not None
+        assert result.cost >= 0.0
 
     def test_execute_task_timeout(self, executor, sample_task, temp_repo):
         """Test task execution timeout."""
@@ -375,8 +375,8 @@ class TestExecuteTask:
                 result = executor.execute_task(sample_task, str(temp_repo))
 
         assert result.success is False
-        assert result.exit_code == -1
         assert "timeout" in result.error.lower()
+        assert result.cost == 0.0
 
     def test_execute_task_exception(self, executor, sample_task, temp_repo):
         """Test task execution with exception."""
@@ -386,8 +386,8 @@ class TestExecuteTask:
             result = executor.execute_task(sample_task, str(temp_repo))
 
         assert result.success is False
-        assert result.exit_code == -1
         assert "failed" in result.error.lower()
+        assert result.cost == 0.0
 
 
 class TestIntegration:
@@ -423,11 +423,9 @@ class TestIntegration:
 
         # Verify result
         assert result.success is True
-        assert result.task_id == "task-test-1"
-        assert result.exit_code == 0
         assert len(result.files_changed) >= 0
         assert result.duration_sec >= 0  # Can be 0 in fast tests
-        assert result.cost_usd >= 0
+        assert result.cost >= 0.0
 
     def test_execution_result_serialization(self, executor, sample_task, temp_repo):
         """Test ExecutionResult can be serialized to dict."""
@@ -446,10 +444,11 @@ class TestIntegration:
 
         assert isinstance(result_dict, dict)
         assert "success" in result_dict
-        assert "task_id" in result_dict
         assert "files_changed" in result_dict
+        assert "output" in result_dict
+        assert "cost" in result_dict
 
         # Deserialize from dict
         result_restored = ExecutionResult.from_dict(result_dict)
         assert result_restored.success == result.success
-        assert result_restored.task_id == result.task_id
+        assert result_restored.files_changed == result.files_changed

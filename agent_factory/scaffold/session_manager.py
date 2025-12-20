@@ -17,6 +17,8 @@ from typing import Optional, Tuple
 
 from agent_factory.scaffold.worktree_manager import WorktreeManager
 from agent_factory.scaffold.models import SessionState
+from agent_factory.scaffold.backlog_parser import BacklogParser
+from agent_factory.scaffold.safety_rails import SafetyRails, SafetyRailsConfig, CostEstimate
 
 # Import SafetyMonitor from scripts (absolute import)
 import sys
@@ -85,6 +87,11 @@ class SessionManager:
             max_cost=max_cost,
             max_time_hours=max_time_hours,
             max_consecutive_failures=3
+        )
+        self.safety_rails = SafetyRails(
+            repo_root=repo_root,
+            backlog_parser=BacklogParser(),
+            config=SafetyRailsConfig()
         )
 
         # Session state
@@ -221,6 +228,40 @@ class SessionManager:
 
         return self.safety.check_limits()
 
+    def validate_and_estimate_task(
+        self,
+        task_id: str
+    ) -> Tuple[bool, Optional[str], Optional[CostEstimate]]:
+        """Validate task and estimate cost before execution.
+
+        Runs SafetyRails validation checks and cost estimation.
+
+        Args:
+            task_id: Task to validate
+
+        Returns:
+            Tuple of (valid, reason, estimate):
+                - valid: True if all validation checks passed
+                - reason: Failure reason (if valid=False), None otherwise
+                - estimate: Cost estimate (if valid=True), None otherwise
+        """
+        # Validate task
+        valid, reason = self.safety_rails.validate_task(task_id)
+        if not valid:
+            return (False, reason, None)
+
+        # Estimate cost
+        estimate = self.safety_rails.estimate_cost(task_id)
+
+        # Warn if cost exceeds threshold
+        if estimate.estimated_cost_usd > self.safety_rails.config.cost_threshold_usd:
+            logger.warning(
+                f"Task {task_id} estimated cost ${estimate.estimated_cost_usd:.2f} "
+                f"exceeds threshold ${self.safety_rails.config.cost_threshold_usd:.2f}"
+            )
+
+        return (True, None, estimate)
+
     def record_task_success(
         self,
         task_id: str,
@@ -243,6 +284,9 @@ class SessionManager:
             cost=cost,
             duration_sec=duration_sec
         )
+
+        # Clear retry state in SafetyRails
+        self.safety_rails.record_success(task_id)
 
         # Update session totals
         self.state.total_cost += cost
@@ -274,6 +318,9 @@ class SessionManager:
             error=error,
             cost=cost
         )
+
+        # Update retry state in SafetyRails
+        self.safety_rails.record_failure(task_id, error)
 
         # Update session totals
         if cost > 0:

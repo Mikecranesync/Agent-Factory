@@ -27,6 +27,14 @@ from agent_factory.scaffold.claude_executor import (
     ClaudeExecutorError,
     create_claude_executor
 )
+from agent_factory.scaffold.safety_rails import (
+    SafetyRails,
+    SafetyRailsConfig,
+    SafetyRailsError,
+    RetryState,
+    CostEstimate,
+    ValidationFailureReason,
+)
 
 __all__ = [
     # Models
@@ -43,6 +51,13 @@ __all__ = [
     "ClaudeExecutor",
     "ClaudeExecutorError",
     "create_claude_executor",
+    # SafetyRails
+    "SafetyRails",
+    "SafetyRailsConfig",
+    "SafetyRailsError",
+    "RetryState",
+    "CostEstimate",
+    "ValidationFailureReason",
 ]
 
 __version__ = "0.1.0"

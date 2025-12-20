@@ -100,13 +100,13 @@ class ClaudeExecutor:
 
             result = ExecutionResult(
                 success=success,
-                task_id=task_id,
                 files_changed=files_changed,
                 output=output,
                 error=error,
-                exit_code=exit_code,
+                cost=cost_usd,
                 duration_sec=duration_sec,
-                cost_usd=cost_usd
+                commit_created=False,
+                tests_passed=None
             )
 
             logger.info(
@@ -124,11 +124,13 @@ class ClaudeExecutor:
 
             return ExecutionResult(
                 success=False,
-                task_id=task_id,
+                files_changed=[],
                 output="",
                 error=error,
-                exit_code=-1,
-                duration_sec=duration_sec
+                cost=0.0,
+                duration_sec=duration_sec,
+                commit_created=False,
+                tests_passed=None
             )
 
         except Exception as e:
@@ -138,11 +140,13 @@ class ClaudeExecutor:
 
             return ExecutionResult(
                 success=False,
-                task_id=task_id,
+                files_changed=[],
                 output="",
                 error=error,
-                exit_code=-1,
-                duration_sec=duration_sec
+                cost=0.0,
+                duration_sec=duration_sec,
+                commit_created=False,
+                tests_passed=None
             )
 
     def _invoke_claude_cli(

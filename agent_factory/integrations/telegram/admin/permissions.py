@@ -148,13 +148,20 @@ def require_admin(func: Callable) -> Callable:
             role = pm.get_role(user_id)
             pm.log_access_attempt(user_id, func.__name__, allowed=False)
 
-            await update.message.reply_text(
-                "❌ *Access Denied*\n\n"
-                "This command requires admin privileges.\n"
-                f"Your role: {role.value}\n\n"
-                "Contact the system administrator if you need access.",
-                parse_mode="Markdown"
-            )
+            # Handle both message and callback query types
+            if update.message:
+                await update.message.reply_text(
+                    "❌ *Access Denied*\n\n"
+                    "This command requires admin privileges.\n"
+                    f"Your role: {role.value}\n\n"
+                    "Contact the system administrator if you need access.",
+                    parse_mode="Markdown"
+                )
+            elif update.callback_query:
+                await update.callback_query.answer(
+                    "❌ Access Denied - Admin privileges required",
+                    show_alert=True
+                )
             return
 
         pm.log_access_attempt(user_id, func.__name__, allowed=True)
@@ -181,12 +188,19 @@ def require_access(func: Callable) -> Callable:
         if not pm.has_access(user_id):
             pm.log_access_attempt(user_id, func.__name__, allowed=False)
 
-            await update.message.reply_text(
-                "❌ *Access Denied*\n\n"
-                "You are not authorized to use this bot.\n\n"
-                "Contact the system administrator if you need access.",
-                parse_mode="Markdown"
-            )
+            # Handle both message and callback query types
+            if update.message:
+                await update.message.reply_text(
+                    "❌ *Access Denied*\n\n"
+                    "You are not authorized to use this bot.\n\n"
+                    "Contact the system administrator if you need access.",
+                    parse_mode="Markdown"
+                )
+            elif update.callback_query:
+                await update.callback_query.answer(
+                    "❌ Access Denied - Not authorized",
+                    show_alert=True
+                )
             return
 
         pm.log_access_attempt(user_id, func.__name__, allowed=True)
