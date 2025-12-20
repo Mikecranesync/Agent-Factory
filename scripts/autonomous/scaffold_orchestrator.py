@@ -1,222 +1,226 @@
 #!/usr/bin/env python3
 """
-SCAFFOLD Orchestrator - Main CLI Entry Point
+SCAFFOLD Orchestrator - Autonomous Task Execution Loop
 
-Autonomous task execution system for Agent Factory.
+Main orchestration loop that:
+1. Fetches eligible tasks from Backlog.md via MCP
+2. Routes tasks to appropriate agents (Claude Code CLI, custom agents)
+3. Executes in isolated git worktrees with resource tracking
+4. Updates task status and creates PRs on completion
 
-Workflow:
-1. Fetch eligible tasks from Backlog.md
-2. Route to handlers (Claude Code CLI, manual, etc.)
-3. Execute in isolated git worktrees
-4. Create draft PRs
-5. Update Backlog.md status
+Week 1 Scope: Core skeleton with dry-run mode
+Week 2-5: Execution, PR creation, monitoring, safety
 
 Usage:
-    # Basic usage
-    python scripts/autonomous/scaffold_orchestrator.py
+    # Dry-run mode (preview eligible tasks)
+    poetry run python scripts/autonomous/scaffold_orchestrator.py --dry-run
 
-    # Dry run (no execution, just logging)
-    DRY_RUN=true python scripts/autonomous/scaffold_orchestrator.py
+    # Execute up to 5 tasks
+    poetry run python scripts/autonomous/scaffold_orchestrator.py --max-tasks 5
 
-    # Custom limits
-    MAX_TASKS=5 MAX_COST=3.0 python scripts/autonomous/scaffold_orchestrator.py
-
-    # Filter by labels
-    python scripts/autonomous/scaffold_orchestrator.py --labels build,rivet-pro
-
-Environment Variables:
-    MAX_TASKS: Maximum tasks to process (default: 10)
-    MAX_CONCURRENT: Maximum concurrent worktrees (default: 3)
-    MAX_COST: Maximum API cost in USD (default: 5.0)
-    MAX_TIME_HOURS: Maximum wall-clock time in hours (default: 4.0)
-    DRY_RUN: Dry run mode (default: false)
+    # Filter by custom labels
+    poetry run python scripts/autonomous/scaffold_orchestrator.py --labels build test
 """
 
-import os
-import sys
-import logging
 import argparse
+import sys
 from pathlib import Path
-from datetime import datetime
+from typing import List, Dict
 
-# Add project root to path
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
 
-from dotenv import load_dotenv
-load_dotenv()
-
-from agent_factory.scaffold.orchestrator import ScaffoldOrchestrator
-
-# Configuration from environment
-MAX_TASKS = int(os.getenv("MAX_TASKS", "10"))
-MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "3"))
-MAX_COST = float(os.getenv("MAX_COST", "5.0"))
-MAX_TIME_HOURS = float(os.getenv("MAX_TIME_HOURS", "4.0"))
-DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true"
-
-# Logging configuration
-LOG_DIR = Path("logs")
-LOG_DIR.mkdir(exist_ok=True)
-
-log_file = LOG_DIR / f"scaffold_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-    handlers=[
-        logging.FileHandler(log_file),
-        logging.StreamHandler()
-    ]
-)
-
-logger = logging.getLogger("scaffold_cli")
+from components.task_fetcher import TaskFetcher
+from components.agent_router import AgentRouter
+from components.session_manager import SessionManager
+from components.result_processor import ResultProcessor
 
 
-def parse_args():
-    """Parse command-line arguments.
+class ScaffoldOrchestrator:
+    """Main orchestration loop for autonomous task execution."""
 
-    Returns:
-        Namespace with parsed arguments
-    """
+    def __init__(self, repo_root: Path, dry_run: bool = False):
+        """
+        Initialize SCAFFOLD Orchestrator.
+
+        Args:
+            repo_root: Path to repository root
+            dry_run: If True, preview tasks without executing
+        """
+        self.repo_root = repo_root
+        self.dry_run = dry_run
+
+        # Initialize components
+        self.task_fetcher = TaskFetcher(mcp_client=None)  # TODO: Wrap MCP
+        self.agent_router = AgentRouter()
+        self.session_manager = SessionManager(repo_root)
+        self.result_processor = ResultProcessor(mcp_client=None)
+
+    def run(self, max_tasks: int = 1, labels: List[str] = None):
+        """
+        Main execution loop.
+
+        Args:
+            max_tasks: Maximum number of tasks to execute
+            labels: Task labels to filter by
+        """
+        if labels is None:
+            labels = ["scaffold"]
+
+        print("=" * 60)
+        print("SCAFFOLD Orchestrator Starting")
+        print("=" * 60)
+        print(f"Mode:      {'DRY-RUN' if self.dry_run else 'LIVE EXECUTION'}")
+        print(f"Max tasks: {max_tasks}")
+        print(f"Labels:    {', '.join(labels)}")
+        print(f"Repo root: {self.repo_root}")
+        print("=" * 60)
+        print()
+
+        # Step 1: Fetch eligible tasks
+        print("Fetching eligible tasks from Backlog.md...")
+        tasks = self.task_fetcher.get_eligible_tasks(labels=labels, max_tasks=max_tasks)
+
+        if not tasks:
+            print("No eligible tasks found.")
+            print()
+            print("Eligibility Rules:")
+            print("  - Status = 'To Do'")
+            print("  - Labels do NOT include 'user-action'")
+            print("  - All dependencies satisfied")
+            print("  - Matches requested labels")
+            return
+
+        print(f"Found {len(tasks)} eligible task(s):")
+        print()
+        for i, task in enumerate(tasks, 1):
+            priority = task.get("priority", "none")
+            deps = task.get("dependencies", [])
+            dep_count = len(deps)
+            print(f"  {i}. {task['id']}")
+            print(f"     Title:    {task.get('title', 'No title')}")
+            print(f"     Priority: {priority}")
+            print(f"     Deps:     {dep_count} ({', '.join(deps) if deps else 'none'})")
+            print()
+
+        if self.dry_run:
+            print("=" * 60)
+            print("DRY-RUN MODE: Stopping before execution")
+            print("=" * 60)
+            print()
+            print("To execute tasks, run without --dry-run flag:")
+            print(f"  poetry run python {Path(__file__).name} --max-tasks {max_tasks}")
+            return
+
+        # Step 2: Execute each task
+        print("=" * 60)
+        print("Starting Task Execution")
+        print("=" * 60)
+        print()
+
+        for task in tasks[:max_tasks]:
+            self._execute_task(task)
+
+        # Step 3: Summary
+        print("=" * 60)
+        print("Execution Complete")
+        print("=" * 60)
+        print(f"Tasks processed: {len(tasks[:max_tasks])}")
+        print(f"Active sessions: {self.session_manager.get_active_count()}")
+        print()
+
+    def _execute_task(self, task: Dict):
+        """
+        Execute a single task.
+
+        Week 1: Simulated execution (dry-run internally)
+        Week 3: Actually invoke Claude Code
+
+        Args:
+            task: Task dictionary from Backlog.md
+        """
+        task_id = task["id"]
+        print(f"Executing: {task_id}")
+        print(f"  Title: {task.get('title', 'No title')}")
+
+        # Route to agent
+        agent_type = self.agent_router.route_task(task)
+        print(f"  Agent: {agent_type}")
+
+        # Create session
+        if not self.session_manager.can_create_session():
+            print(f"  SKIPPED: Max concurrent sessions reached")
+            print(f"  Active: {self.session_manager.get_active_count()}")
+            print()
+            return
+
+        session = self.session_manager.create_session(task_id, agent_type)
+        print(f"  Session:  {session.session_id}")
+        print(f"  Worktree: {session.worktree_path}")
+
+        # Week 1: Don't actually execute yet
+        print(f"  [WEEK 1 STUB] Would execute {agent_type} here")
+        print(f"  [WEEK 3] Will invoke Claude Code CLI with task prompt")
+
+        # Close session
+        self.session_manager.close_session(session.session_id, success=True)
+        print(f"  Status: SUCCESS (simulated)")
+        print()
+
+
+def main():
+    """Main entry point."""
     parser = argparse.ArgumentParser(
         description="SCAFFOLD Orchestrator - Autonomous Task Execution",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Dry run with 3 tasks
-  DRY_RUN=true MAX_TASKS=3 python scripts/autonomous/scaffold_orchestrator.py
+  # Preview eligible tasks
+  %(prog)s --dry-run
+
+  # Execute next task
+  %(prog)s
+
+  # Execute up to 5 tasks
+  %(prog)s --max-tasks 5
 
   # Filter by labels
-  python scripts/autonomous/scaffold_orchestrator.py --labels build,rivet-pro
-
-  # Custom limits
-  python scripts/autonomous/scaffold_orchestrator.py --max-cost 3.0 --max-time 2.0
+  %(prog)s --labels build test --dry-run
         """
     )
 
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        default=DRY_RUN,
-        help="Dry run mode (no execution, just logging)"
+        help="Preview eligible tasks without executing"
     )
-
     parser.add_argument(
         "--max-tasks",
         type=int,
-        default=MAX_TASKS,
-        help=f"Maximum tasks to process (default: {MAX_TASKS})"
+        default=1,
+        help="Maximum number of tasks to execute (default: 1)"
     )
-
-    parser.add_argument(
-        "--max-concurrent",
-        type=int,
-        default=MAX_CONCURRENT,
-        help=f"Maximum concurrent worktrees (default: {MAX_CONCURRENT})"
-    )
-
-    parser.add_argument(
-        "--max-cost",
-        type=float,
-        default=MAX_COST,
-        help=f"Maximum API cost in USD (default: {MAX_COST})"
-    )
-
-    parser.add_argument(
-        "--max-time",
-        type=float,
-        default=MAX_TIME_HOURS,
-        help=f"Maximum wall-clock time in hours (default: {MAX_TIME_HOURS})"
-    )
-
     parser.add_argument(
         "--labels",
-        type=str,
+        nargs="+",
         default=None,
-        help="Filter tasks by labels (comma-separated, e.g., 'build,rivet-pro')"
+        help="Task labels to filter by (default: scaffold)"
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
 
+    # Find repo root (parent of scripts/)
+    repo_root = Path(__file__).parent.parent.parent
 
-def main():
-    """Main entry point."""
-
-    args = parse_args()
-
-    # Parse labels
-    labels = None
-    if args.labels:
-        labels = [label.strip() for label in args.labels.split(",")]
-
-    # Log configuration
-    logger.info("="*60)
-    logger.info("SCAFFOLD Orchestrator Starting")
-    logger.info("="*60)
-    logger.info(f"Dry Run: {args.dry_run}")
-    logger.info(f"Max Tasks: {args.max_tasks}")
-    logger.info(f"Max Concurrent: {args.max_concurrent}")
-    logger.info(f"Max Cost: ${args.max_cost:.2f}")
-    logger.info(f"Max Time: {args.max_time}h")
-    if labels:
-        logger.info(f"Label Filter: {labels}")
-    logger.info(f"Log File: {log_file}")
-    logger.info("="*60)
-
-    # Create orchestrator
+    # Run orchestrator
     try:
-        orchestrator = ScaffoldOrchestrator(
-            repo_root=Path.cwd(),
-            dry_run=args.dry_run,
-            max_tasks=args.max_tasks,
-            max_concurrent=args.max_concurrent,
-            max_cost=args.max_cost,
-            max_time_hours=args.max_time,
-            labels=labels
-        )
-
-        # Run
-        summary = orchestrator.run()
-
-        # Print summary
-        print("\n" + "="*60)
-        print("SCAFFOLD Session Summary")
-        print("="*60)
-        print(f"Session ID: {summary.get('session_id', 'unknown')}")
-        print(f"Dry Run: {summary.get('dry_run', False)}")
-        print(f"Tasks Queued: {summary.get('tasks_queued', 0)}")
-        print(f"Tasks In Progress: {summary.get('tasks_in_progress', 0)}")
-        print(f"Tasks Completed: {summary.get('tasks_completed', 0)}")
-        print(f"Tasks Failed: {summary.get('tasks_failed', 0)}")
-        print(f"Total Cost: ${summary.get('total_cost', 0.0):.2f}")
-        print(f"Total Duration: {summary.get('total_duration_sec', 0.0):.1f}s")
-        print("="*60)
-        print(f"\nLog file: {log_file}")
-
-        # Exit code
-        if summary.get("dry_run"):
-            # Dry run: exit 0 (success)
-            sys.exit(0)
-        elif summary.get("tasks_completed", 0) > 0:
-            # At least one task completed: exit 0 (success)
-            sys.exit(0)
-        elif summary.get("tasks_failed", 0) > 0:
-            # All tasks failed: exit 1 (failure)
-            sys.exit(1)
-        else:
-            # No tasks processed: exit 2 (no work)
-            sys.exit(2)
-
+        orchestrator = ScaffoldOrchestrator(repo_root, dry_run=args.dry_run)
+        orchestrator.run(max_tasks=args.max_tasks, labels=args.labels)
     except KeyboardInterrupt:
-        logger.warning("\nSession interrupted by user (Ctrl+C)")
-        print("\n\nSession interrupted.")
-        sys.exit(130)
-
+        print("\n\nInterrupted by user")
+        sys.exit(1)
     except Exception as e:
-        logger.error(f"Fatal error: {e}", exc_info=True)
-        print(f"\n\nFatal error: {e}")
-        print(f"See log file for details: {log_file}")
+        print(f"\n\nERROR: {e}")
         sys.exit(1)
 
 
