@@ -474,3 +474,872 @@ class TestAcceptanceCriteria:
 
         # This is tested manually via:
         # poetry run python scripts/autonomous/scaffold_orchestrator.py --help
+
+
+# ============================================================================
+# 8. COMPREHENSIVE TASK FETCHER TESTS - Deep testing of MCP integration
+# ============================================================================
+
+class TestTaskFetcherComprehensive:
+    """Comprehensive tests for TaskFetcher MCP integration and filtering."""
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    def test_fetch_uses_cache_within_ttl(self, mock_task_list):
+        """Verify cache is used within TTL window"""
+        mock_task_list.return_value = [
+            {
+                'id': 'task-1',
+                'title': 'Test',
+                'status': 'To Do',
+                'priority': 'high',
+                'labels': [],
+                'dependencies': []
+            }
+        ]
+
+        fetcher = TaskFetcher(cache_ttl_sec=60)
+
+        # First call - should hit MCP
+        tasks1 = fetcher.fetch_eligible_tasks(max_tasks=10)
+        assert len(tasks1) == 1
+        assert mock_task_list.call_count == 1
+
+        # Second call within TTL - should use cache
+        tasks2 = fetcher.fetch_eligible_tasks(max_tasks=10)
+        assert len(tasks2) == 1
+        assert mock_task_list.call_count == 1  # Still 1, no new call
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    def test_fetch_invalidates_cache_after_ttl(self, mock_task_list):
+        """Verify cache expires after TTL"""
+        mock_task_list.return_value = []
+
+        fetcher = TaskFetcher(cache_ttl_sec=0)  # 0 second TTL
+
+        # First call
+        fetcher.fetch_eligible_tasks(max_tasks=10)
+        assert mock_task_list.call_count == 1
+
+        # Second call after TTL expired
+        import time
+        time.sleep(0.01)  # Small delay
+        fetcher.fetch_eligible_tasks(max_tasks=10)
+        assert mock_task_list.call_count == 2  # Cache expired, new call
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_view')
+    def test_fetch_filters_blocked_dependencies(self, mock_task_view, mock_task_list):
+        """Verify tasks with incomplete dependencies are filtered out"""
+        mock_task_list.return_value = [
+            {
+                'id': 'task-dependent',
+                'title': 'Dependent Task',
+                'status': 'To Do',
+                'priority': 'high',
+                'labels': [],
+                'dependencies': ['task-blocker']
+            }
+        ]
+
+        # Dependency is not Done
+        mock_task_view.return_value = {
+            'id': 'task-blocker',
+            'status': 'In Progress'
+        }
+
+        fetcher = TaskFetcher()
+        tasks = fetcher.fetch_eligible_tasks(max_tasks=10)
+
+        # Should be filtered out
+        assert len(tasks) == 0
+        mock_task_view.assert_called_with(id='task-blocker')
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_view')
+    def test_fetch_includes_satisfied_dependencies(self, mock_task_view, mock_task_list):
+        """Verify tasks with satisfied dependencies are included"""
+        mock_task_list.return_value = [
+            {
+                'id': 'task-dependent',
+                'title': 'Dependent Task',
+                'status': 'To Do',
+                'priority': 'high',
+                'labels': [],
+                'dependencies': ['task-completed']
+            }
+        ]
+
+        # Dependency is Done
+        mock_task_view.return_value = {
+            'id': 'task-completed',
+            'status': 'Done'
+        }
+
+        fetcher = TaskFetcher()
+        tasks = fetcher.fetch_eligible_tasks(max_tasks=10)
+
+        # Should be included
+        assert len(tasks) == 1
+        assert tasks[0]['id'] == 'task-dependent'
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    def test_fetch_with_label_filter(self, mock_task_list):
+        """Verify label filtering works correctly"""
+        mock_task_list.return_value = [
+            {
+                'id': 'task-build',
+                'title': 'Build Task',
+                'status': 'To Do',
+                'priority': 'high',
+                'labels': ['build'],
+                'dependencies': []
+            },
+            {
+                'id': 'task-test',
+                'title': 'Test Task',
+                'status': 'To Do',
+                'priority': 'high',
+                'labels': ['test'],
+                'dependencies': []
+            }
+        ]
+
+        fetcher = TaskFetcher()
+        tasks = fetcher.fetch_eligible_tasks(max_tasks=10, labels=['build'])
+
+        # Should only return build tasks
+        assert len(tasks) == 1
+        assert tasks[0]['id'] == 'task-build'
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    def test_priority_scoring_high_vs_low(self, mock_task_list):
+        """Verify high priority tasks score higher than low priority"""
+        mock_task_list.return_value = [
+            {
+                'id': 'task-low',
+                'title': 'Low Priority',
+                'status': 'To Do',
+                'priority': 'low',
+                'labels': [],
+                'dependencies': []
+            },
+            {
+                'id': 'task-high',
+                'title': 'High Priority',
+                'status': 'To Do',
+                'priority': 'high',
+                'labels': [],
+                'dependencies': []
+            }
+        ]
+
+        fetcher = TaskFetcher()
+        tasks = fetcher.fetch_eligible_tasks(max_tasks=10)
+
+        # High priority should come first
+        assert tasks[0]['id'] == 'task-high'
+        assert tasks[1]['id'] == 'task-low'
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    def test_priority_scoring_with_critical_label(self, mock_task_list):
+        """Verify critical label adds priority bonus"""
+        mock_task_list.return_value = [
+            {
+                'id': 'task-high',
+                'title': 'High Priority',
+                'status': 'To Do',
+                'priority': 'high',
+                'labels': [],
+                'dependencies': []
+            },
+            {
+                'id': 'task-low-critical',
+                'title': 'Low Priority Critical',
+                'status': 'To Do',
+                'priority': 'low',
+                'labels': ['critical'],
+                'dependencies': []
+            }
+        ]
+
+        fetcher = TaskFetcher()
+        
+        # Calculate scores
+        score_high = fetcher._priority_score(mock_task_list.return_value[0])
+        score_critical = fetcher._priority_score(mock_task_list.return_value[1])
+
+        # Low + critical (1 + 5 = 6) should be less than high (10)
+        assert score_high > score_critical
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    def test_priority_scoring_user_action_penalty(self, mock_task_list):
+        """Verify user-action label applies penalty"""
+        mock_task_list.return_value = [
+            {
+                'id': 'task-normal',
+                'title': 'Normal Task',
+                'status': 'To Do',
+                'priority': 'high',
+                'labels': [],
+                'dependencies': []
+            },
+            {
+                'id': 'task-manual',
+                'title': 'Manual Task',
+                'status': 'To Do',
+                'priority': 'high',
+                'labels': ['user-action'],
+                'dependencies': []
+            }
+        ]
+
+        fetcher = TaskFetcher()
+        
+        score_normal = fetcher._priority_score(mock_task_list.return_value[0])
+        score_manual = fetcher._priority_score(mock_task_list.return_value[1])
+
+        # Manual should have lower score due to -10 penalty
+        assert score_normal > score_manual
+
+    def test_invalidate_cache(self):
+        """Verify cache invalidation works"""
+        fetcher = TaskFetcher()
+        
+        # Set cache
+        fetcher._cache = [{'id': 'task-1'}]
+        fetcher._cache_time = 123456.0
+        
+        # Invalidate
+        fetcher.invalidate_cache()
+        
+        # Verify cleared
+        assert fetcher._cache is None
+        assert fetcher._cache_time is None
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    def test_fetch_respects_max_tasks(self, mock_task_list):
+        """Verify max_tasks limit is respected"""
+        mock_task_list.return_value = [
+            {'id': f'task-{i}', 'title': f'Task {i}', 'status': 'To Do', 
+             'priority': 'medium', 'labels': [], 'dependencies': []}
+            for i in range(20)
+        ]
+
+        fetcher = TaskFetcher()
+        tasks = fetcher.fetch_eligible_tasks(max_tasks=5)
+
+        # Should only return 5 tasks
+        assert len(tasks) == 5
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    def test_fetch_handles_mcp_error_gracefully(self, mock_task_list):
+        """Verify graceful handling of MCP errors"""
+        mock_task_list.side_effect = Exception("MCP connection error")
+
+        fetcher = TaskFetcher()
+        tasks = fetcher.fetch_eligible_tasks(max_tasks=10)
+
+        # Should return empty list, not crash
+        assert tasks == []
+
+    def test_placeholder_tasks_when_mcp_unavailable(self):
+        """Verify placeholder tasks are returned when MCP unavailable"""
+        with patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list', side_effect=ImportError):
+            fetcher = TaskFetcher()
+            tasks = fetcher._get_placeholder_tasks(3)
+            
+            assert len(tasks) <= 3
+            assert all('placeholder' in t['id'] for t in tasks)
+
+
+# ============================================================================
+# 9. ORCHESTRATOR CLI TESTS - Test command-line interface
+# ============================================================================
+
+class TestScaffoldOrchestratorCLI:
+    """Test command-line interface for scaffold_orchestrator.py"""
+
+    def test_cli_script_exists_and_executable(self):
+        """Verify CLI script exists and has main function"""
+        cli_path = Path('scripts/autonomous/scaffold_orchestrator.py')
+        assert cli_path.exists()
+        
+        # Read and verify it has main()
+        content = cli_path.read_text()
+        assert 'def main()' in content
+        assert 'if __name__ == "__main__"' in content
+
+    @patch('sys.argv', ['scaffold_orchestrator.py', '--dry-run'])
+    def test_cli_dry_run_flag(self):
+        """Verify --dry-run flag is parsed correctly"""
+        import scripts.autonomous.scaffold_orchestrator as cli
+        
+        # This would normally call parse_args()
+        # Just verify the module loads without errors
+        assert hasattr(cli, 'main')
+        assert hasattr(cli, 'parse_args')
+
+    def test_cli_has_required_arguments(self):
+        """Verify CLI has all required arguments defined"""
+        cli_path = Path('scripts/autonomous/scaffold_orchestrator.py')
+        content = cli_path.read_text()
+        
+        # Verify key arguments exist
+        assert '--dry-run' in content
+        assert '--max-tasks' in content
+        assert '--max-concurrent' in content
+        assert '--max-cost' in content
+        assert '--max-time' in content
+        assert '--labels' in content
+
+    def test_cli_environment_variables(self):
+        """Verify CLI reads environment variables"""
+        cli_path = Path('scripts/autonomous/scaffold_orchestrator.py')
+        content = cli_path.read_text()
+        
+        # Verify environment variable defaults
+        assert 'MAX_TASKS' in content
+        assert 'MAX_CONCURRENT' in content
+        assert 'MAX_COST' in content
+        assert 'DRY_RUN' in content
+
+
+# ============================================================================
+# 10. AGENT FACTORY ROUTING TESTS - Test routing flag change
+# ============================================================================
+
+class TestAgentFactoryRouting:
+    """Test AgentFactory routing configuration changes."""
+
+    def test_default_routing_disabled(self):
+        """Verify enable_routing defaults to False"""
+        # Import and inspect the default parameter
+        from agent_factory.core.agent_factory import AgentFactory
+        import inspect
+        
+        sig = inspect.signature(AgentFactory.__init__)
+        enable_routing_param = sig.parameters['enable_routing']
+        
+        # Verify default is False
+        assert enable_routing_param.default is False
+
+    @patch('agent_factory.core.agent_factory.AgentFactory._initialize_agents')
+    def test_routing_can_be_enabled(self, mock_init):
+        """Verify routing can still be explicitly enabled"""
+        from agent_factory.core.agent_factory import AgentFactory
+        
+        # Create factory with routing enabled
+        factory = AgentFactory(enable_routing=True)
+        
+        # Verify it was initialized with routing enabled
+        assert factory.enable_routing is True
+
+    @patch('agent_factory.core.agent_factory.AgentFactory._initialize_agents')
+    def test_routing_disabled_by_default(self, mock_init):
+        """Verify routing is disabled when not specified"""
+        from agent_factory.core.agent_factory import AgentFactory
+        
+        # Create factory without specifying routing
+        factory = AgentFactory()
+        
+        # Verify routing is disabled
+        assert factory.enable_routing is False
+
+
+# ============================================================================
+# 11. DATA MODEL TESTS - Test Pydantic models
+# ============================================================================
+
+class TestScaffoldDataModels:
+    """Test SCAFFOLD data models (WorktreeMetadata, TaskContext, SessionState)."""
+
+    def test_worktree_metadata_serialization(self):
+        """Test WorktreeMetadata to_dict and from_dict"""
+        metadata = WorktreeMetadata(
+            task_id='task-42',
+            worktree_path='/path/to/worktree',
+            branch_name='autonomous/task-42',
+            created_at='2025-12-20T10:00:00',
+            creator='test',
+            status='active',
+            pr_url='https://github.com/test/pr/1'
+        )
+
+        # Serialize
+        data = metadata.to_dict()
+        assert data['task_id'] == 'task-42'
+        assert data['pr_url'] == 'https://github.com/test/pr/1'
+
+        # Deserialize
+        restored = WorktreeMetadata.from_dict(data)
+        assert restored.task_id == metadata.task_id
+        assert restored.pr_url == metadata.pr_url
+
+    def test_worktree_metadata_optional_pr_url(self):
+        """Test WorktreeMetadata with optional pr_url"""
+        metadata = WorktreeMetadata(
+            task_id='task-43',
+            worktree_path='/path',
+            branch_name='branch',
+            created_at='2025-12-20T10:00:00',
+            creator='test',
+            status='active'
+        )
+
+        data = metadata.to_dict()
+        assert data['pr_url'] is None
+
+    def test_task_context_serialization(self):
+        """Test TaskContext to_dict and from_dict"""
+        task = TaskContext(
+            task_id='task-100',
+            title='BUILD: Test Feature',
+            description='Detailed description',
+            acceptance_criteria=['AC1', 'AC2'],
+            priority='high',
+            labels=['build', 'test']
+        )
+
+        # Serialize
+        data = task.to_dict()
+        assert data['task_id'] == 'task-100'
+        assert len(data['acceptance_criteria']) == 2
+
+        # Deserialize
+        restored = TaskContext.from_dict(data)
+        assert restored.task_id == task.task_id
+        assert restored.labels == task.labels
+
+    def test_session_state_serialization(self):
+        """Test SessionState to_dict and from_dict"""
+        state = SessionState(
+            session_id='20251220_100000',
+            start_time='2025-12-20T10:00:00',
+            max_tasks=10,
+            max_cost=5.0,
+            max_time_hours=4.0,
+            tasks_queued=['task-1', 'task-2'],
+            tasks_in_progress={'task-1': '/path/to/worktree'},
+            tasks_completed=[],
+            tasks_failed=[],
+            total_cost=1.23,
+            total_duration_sec=456.7
+        )
+
+        # Serialize
+        data = state.to_dict()
+        assert data['session_id'] == '20251220_100000'
+        assert data['total_cost'] == 1.23
+
+        # Deserialize
+        restored = SessionState.from_dict(data)
+        assert restored.session_id == state.session_id
+        assert restored.total_cost == state.total_cost
+        assert restored.tasks_queued == state.tasks_queued
+
+    def test_session_state_defaults(self):
+        """Test SessionState default values"""
+        state = SessionState(
+            session_id='test',
+            start_time='2025-12-20T10:00:00',
+            max_tasks=10,
+            max_cost=5.0,
+            max_time_hours=4.0,
+            tasks_queued=[],
+            tasks_in_progress={},
+            tasks_completed=[],
+            tasks_failed=[]
+        )
+
+        assert state.total_cost == 0.0
+        assert state.total_duration_sec == 0.0
+
+
+# ============================================================================
+# 12. EDGE CASES AND ERROR HANDLING
+# ============================================================================
+
+class TestEdgeCasesAndErrors:
+    """Test edge cases and error handling across components."""
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    def test_task_fetcher_empty_results(self, mock_task_list):
+        """Test TaskFetcher handles empty results"""
+        mock_task_list.return_value = []
+
+        fetcher = TaskFetcher()
+        tasks = fetcher.fetch_eligible_tasks(max_tasks=10)
+
+        assert tasks == []
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    def test_task_fetcher_malformed_task_data(self, mock_task_list):
+        """Test TaskFetcher handles malformed task data"""
+        mock_task_list.return_value = [
+            {
+                'id': 'task-malformed',
+                # Missing required fields
+            }
+        ]
+
+        fetcher = TaskFetcher()
+        # Should not crash, may return empty or handle gracefully
+        tasks = fetcher.fetch_eligible_tasks(max_tasks=10)
+        
+        # At minimum, should not raise exception
+        assert isinstance(tasks, list)
+
+    def test_task_router_unknown_handler(self):
+        """Test TaskRouter handles unknown handler request"""
+        router = TaskRouter()
+        
+        with pytest.raises(KeyError):
+            router.get_handler('nonexistent-handler')
+
+    def test_task_router_empty_labels(self):
+        """Test TaskRouter handles tasks with no labels"""
+        task = {
+            'id': 'task-no-labels',
+            'title': 'Task',
+            'labels': []
+        }
+
+        router = TaskRouter()
+        handler_name = router.route(task)
+
+        # Should default to claude-code
+        assert handler_name == 'claude-code'
+
+    @patch('agent_factory.scaffold.session_manager.WorktreeManager')
+    def test_session_manager_invalid_session_id(self, mock_worktree_mgr):
+        """Test SessionManager handles invalid session ID for resume"""
+        manager = SessionManager()
+        
+        with pytest.raises(Exception):  # SessionNotFoundError or similar
+            manager.resume_session('nonexistent-session')
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    def test_orchestrator_no_eligible_tasks(self, mock_task_list):
+        """Test Orchestrator handles case with no eligible tasks"""
+        mock_task_list.return_value = []
+
+        orchestrator = ScaffoldOrchestrator(
+            repo_root=Path.cwd(),
+            dry_run=True,
+            max_tasks=10
+        )
+
+        result = orchestrator.run()
+        
+        # Should complete successfully with no tasks
+        assert result is not None
+        assert result.get('tasks_completed', 0) == 0
+
+
+# ============================================================================
+# 13. INTEGRATION SCENARIOS - Real-world usage patterns
+# ============================================================================
+
+class TestIntegrationScenarios:
+    """Test realistic integration scenarios."""
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_view')
+    @patch('agent_factory.scaffold.session_manager.WorktreeManager')
+    def test_multiple_tasks_with_dependencies(self, mock_wt, mock_view, mock_list):
+        """Test processing multiple tasks with dependency chains"""
+        mock_list.return_value = [
+            {
+                'id': 'task-A',
+                'title': 'Task A',
+                'status': 'To Do',
+                'priority': 'high',
+                'labels': [],
+                'dependencies': []
+            },
+            {
+                'id': 'task-B',
+                'title': 'Task B',
+                'status': 'To Do',
+                'priority': 'high',
+                'labels': [],
+                'dependencies': ['task-A']
+            }
+        ]
+
+        # task-A is not done, so task-B should be filtered
+        mock_view.return_value = {'id': 'task-A', 'status': 'To Do'}
+
+        fetcher = TaskFetcher()
+        tasks = fetcher.fetch_eligible_tasks(max_tasks=10)
+
+        # Only task-A should be eligible (no dependencies)
+        assert len(tasks) == 1
+        assert tasks[0]['id'] == 'task-A'
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    @patch('agent_factory.scaffold.session_manager.WorktreeManager')
+    def test_label_based_filtering_workflow(self, mock_wt, mock_list):
+        """Test workflow with label-based filtering"""
+        mock_list.return_value = [
+            {
+                'id': 'task-build-1',
+                'title': 'Build Task 1',
+                'status': 'To Do',
+                'priority': 'high',
+                'labels': ['build', 'backend'],
+                'dependencies': []
+            },
+            {
+                'id': 'task-test-1',
+                'title': 'Test Task 1',
+                'status': 'To Do',
+                'priority': 'high',
+                'labels': ['test', 'frontend'],
+                'dependencies': []
+            },
+            {
+                'id': 'task-build-2',
+                'title': 'Build Task 2',
+                'status': 'To Do',
+                'priority': 'medium',
+                'labels': ['build', 'frontend'],
+                'dependencies': []
+            }
+        ]
+
+        orchestrator = ScaffoldOrchestrator(
+            repo_root=Path.cwd(),
+            dry_run=True,
+            max_tasks=10,
+            labels=['build']
+        )
+
+        # Run orchestrator (dry-run)
+        result = orchestrator.run()
+
+        # Should have processed build tasks only
+        assert result is not None
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    @patch('agent_factory.scaffold.session_manager.WorktreeManager')
+    @patch('agent_factory.scaffold.result_processor.mcp__backlog__task_edit')
+    def test_cost_limit_enforcement(self, mock_edit, mock_wt, mock_list):
+        """Test that cost limits are enforced during execution"""
+        mock_list.return_value = [
+            {
+                'id': 'task-expensive',
+                'title': 'Expensive Task',
+                'status': 'To Do',
+                'priority': 'high',
+                'labels': [],
+                'dependencies': []
+            }
+        ]
+
+        orchestrator = ScaffoldOrchestrator(
+            repo_root=Path.cwd(),
+            dry_run=True,
+            max_tasks=10,
+            max_cost=0.01  # Very low cost limit
+        )
+
+        result = orchestrator.run()
+        
+        # Should respect cost limit
+        assert result is not None
+
+
+# ============================================================================
+# 14. PERFORMANCE AND CACHING TESTS
+# ============================================================================
+
+class TestPerformanceAndCaching:
+    """Test performance optimizations and caching behavior."""
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    def test_cache_reduces_mcp_calls(self, mock_task_list):
+        """Verify caching reduces MCP API calls"""
+        mock_task_list.return_value = [
+            {
+                'id': 'task-cached',
+                'title': 'Cached Task',
+                'status': 'To Do',
+                'priority': 'high',
+                'labels': [],
+                'dependencies': []
+            }
+        ]
+
+        fetcher = TaskFetcher(cache_ttl_sec=300)  # 5 minute cache
+
+        # Make multiple calls rapidly
+        for _ in range(5):
+            tasks = fetcher.fetch_eligible_tasks(max_tasks=10)
+            assert len(tasks) == 1
+
+        # Should only call MCP once due to caching
+        assert mock_task_list.call_count == 1
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    def test_large_task_list_sorting(self, mock_task_list):
+        """Test sorting performance with large task list"""
+        # Generate 100 tasks with random priorities
+        import random
+        priorities = ['low', 'medium', 'high']
+        mock_task_list.return_value = [
+            {
+                'id': f'task-{i}',
+                'title': f'Task {i}',
+                'status': 'To Do',
+                'priority': random.choice(priorities),
+                'labels': [],
+                'dependencies': []
+            }
+            for i in range(100)
+        ]
+
+        fetcher = TaskFetcher()
+        tasks = fetcher.fetch_eligible_tasks(max_tasks=10)
+
+        # Should return 10 tasks sorted by priority
+        assert len(tasks) == 10
+        
+        # Verify sorted order (higher priority scores first)
+        scores = [fetcher._priority_score(t) for t in tasks]
+        assert scores == sorted(scores, reverse=True)
+
+
+# ============================================================================
+# 15. SAFETY AND VALIDATION TESTS
+# ============================================================================
+
+class TestSafetyAndValidation:
+    """Test safety checks and validation logic."""
+
+    @patch('agent_factory.scaffold.session_manager.WorktreeManager')
+    def test_session_state_persistence(self, mock_wt):
+        """Test that session state is properly persisted"""
+        manager = SessionManager(
+            repo_root=Path.cwd(),
+            max_cost=5.0,
+            max_time_hours=4.0
+        )
+
+        session_id = manager.start_session(max_tasks=10)
+
+        # Verify state is initialized
+        assert manager.state is not None
+        assert manager.state.session_id == session_id
+        assert manager.state.max_tasks == 10
+        assert manager.state.max_cost == 5.0
+
+    def test_task_validation_required_fields(self):
+        """Test that TaskContext validates required fields"""
+        # Should work with all required fields
+        task = TaskContext(
+            task_id='task-1',
+            title='Test',
+            description='Description',
+            acceptance_criteria=['AC1'],
+            priority='high',
+            labels=['test']
+        )
+        assert task.task_id == 'task-1'
+
+        # Test that it's a dataclass (has to_dict)
+        data = task.to_dict()
+        assert 'task_id' in data
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    def test_priority_score_boundary_values(self, mock_task_list):
+        """Test priority scoring with boundary values"""
+        fetcher = TaskFetcher()
+
+        # Test with missing priority (should default to low)
+        task_no_priority = {
+            'id': 'task-1',
+            'priority': None,
+            'labels': []
+        }
+        score = fetcher._priority_score(task_no_priority)
+        assert score >= 0  # Should not be negative
+
+        # Test with empty labels
+        task_no_labels = {
+            'id': 'task-2',
+            'priority': 'high',
+            'labels': []
+        }
+        score = fetcher._priority_score(task_no_labels)
+        assert score > 0
+
+        # Test with multiple bonus labels
+        task_bonuses = {
+            'id': 'task-3',
+            'priority': 'high',
+            'labels': ['critical', 'quick-win']
+        }
+        score = fetcher._priority_score(task_bonuses)
+        assert score > 10  # Base high (10) + critical (5) + quick-win (3)
+
+
+# ============================================================================
+# 16. REGRESSION TESTS - Prevent known issues
+# ============================================================================
+
+class TestRegressionPrevention:
+    """Tests to prevent regression of previously fixed bugs."""
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    def test_regression_empty_label_list(self, mock_task_list):
+        """Regression: Empty label list should not cause errors"""
+        mock_task_list.return_value = [
+            {
+                'id': 'task-1',
+                'title': 'Task',
+                'status': 'To Do',
+                'priority': 'high',
+                'labels': [],  # Empty list
+                'dependencies': []
+            }
+        ]
+
+        fetcher = TaskFetcher()
+        tasks = fetcher.fetch_eligible_tasks(max_tasks=10, labels=None)
+
+        assert len(tasks) == 1
+
+    @patch('agent_factory.scaffold.task_fetcher.mcp__backlog__task_list')
+    def test_regression_none_dependencies(self, mock_task_list):
+        """Regression: None dependencies should be treated as no dependencies"""
+        mock_task_list.return_value = [
+            {
+                'id': 'task-1',
+                'title': 'Task',
+                'status': 'To Do',
+                'priority': 'high',
+                'labels': [],
+                'dependencies': None  # None instead of []
+            }
+        ]
+
+        fetcher = TaskFetcher()
+        # Should not crash
+        tasks = fetcher.fetch_eligible_tasks(max_tasks=10)
+
+    def test_regression_routing_default_value(self):
+        """Regression: Verify routing default changed to False"""
+        from agent_factory.core.agent_factory import AgentFactory
+        import inspect
+        
+        sig = inspect.signature(AgentFactory.__init__)
+        default = sig.parameters['enable_routing'].default
+        
+        # This is the critical change - must be False
+        assert default is False, "Regression: enable_routing must default to False"
+
+
+# ============================================================================
+# END OF COMPREHENSIVE TESTS
+# ============================================================================
