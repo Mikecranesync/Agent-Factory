@@ -1,0 +1,74 @@
+language: "en-US"
+tone_instructions: "Be concise and technical. Focus on code quality, security, and maintainability. Provide specific suggestions with code examples when possible."
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  collapse_walkthrough: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+      - master
+
+  path_filters:
+    - "!**/*.md"
+    - "!**/tests/**"
+    - "!**/*.json"
+    - "!**/*.yaml"
+    - "!**/*.yml"
+    - "!docs/**"
+
+early_access: false
+
+chat:
+  auto_reply: false
+
+checks:
+  # Security issues (ALWAYS escalate - NEVER auto-fix)
+  - name: "security"
+    enabled: true
+    severity: "error"
+    description: "Security vulnerabilities and unsafe patterns"
+
+  # Linting errors (auto-fixable with ruff --fix, black)
+  - name: "lint"
+    enabled: true
+    severity: "error"
+    description: "Code style and linting violations"
+
+  # Test failures (auto-fixable with Claude debugging)
+  - name: "tests"
+    enabled: true
+    severity: "error"
+    description: "Test failures and coverage issues"
+
+  # Missing documentation (auto-fixable with Claude generation)
+  - name: "documentation"
+    enabled: true
+    severity: "warning"
+    description: "Missing docstrings and comments"
+
+  # Type safety issues (auto-fixable with type hints)
+  - name: "type_safety"
+    enabled: true
+    severity: "warning"
+    description: "Type annotation and mypy issues"
+
+# Custom rules for Agent Factory
+custom_rules:
+  - name: "agent_patterns"
+    description: "Ensure agents follow factory patterns from docs/patterns/"
+    severity: "warning"
+
+  - name: "security_no_hardcoded_secrets"
+    description: "No hardcoded secrets, API keys, or credentials"
+    severity: "error"
+
+  - name: "architecture_alignment"
+    description: "Code structure matches Mermaid diagrams in docs/"
+    severity: "error"
