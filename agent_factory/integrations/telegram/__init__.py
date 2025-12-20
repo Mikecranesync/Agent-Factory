@@ -18,10 +18,14 @@ from .bot import TelegramBot
 from .config import TelegramConfig
 from .session_manager import TelegramSessionManager
 from .formatters import ResponseFormatter
+from .scaffold_handlers import ScaffoldHandlers
+from .nl_task_parser import NLTaskParser
 
 __all__ = [
     "TelegramBot",
     "TelegramConfig",
     "TelegramSessionManager",
-    "ResponseFormatter"
+    "ResponseFormatter",
+    "ScaffoldHandlers",
+    "NLTaskParser"
 ]

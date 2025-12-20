@@ -67,6 +67,8 @@ from agent_factory.integrations.telegram.admin import (
     Analytics,
     SystemControl,
 )
+from agent_factory.integrations.telegram.scaffold_handlers import ScaffoldHandlers
+from agent_factory.integrations.telegram.tier0_handlers import TIER0Handlers
 
 # ============================================================================
 # Configuration
@@ -651,6 +653,21 @@ def main():
     analytics = Analytics()
     system_control = SystemControl()
 
+    # Initialize SCAFFOLD handlers
+    scaffold_handlers = ScaffoldHandlers(
+        repo_root=project_root,
+        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
+        max_cost=float(os.getenv("SCAFFOLD_MAX_COST", "5.0")),
+        max_time_hours=float(os.getenv("SCAFFOLD_MAX_TIME_HOURS", "2.0")),
+        dry_run=os.getenv("SCAFFOLD_DRY_RUN", "false").lower() == "true"
+    )
+
+    # Initialize TIER 0.1 handlers (CEO Command & Control)
+    tier0_handlers = TIER0Handlers(
+        storage=storage,
+        openai_api_key=os.getenv("OPENAI_API_KEY")
+    )
+
     # Register command handlers
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("help", cmd_help))
@@ -673,6 +690,11 @@ def main():
     application.add_handler(CommandHandler("research", langgraph_handlers.handle_research))
     application.add_handler(CommandHandler("consensus", langgraph_handlers.handle_consensus))
     application.add_handler(CommandHandler("analyze", langgraph_handlers.handle_analyze))
+
+    # Register SCAFFOLD handlers
+    application.add_handler(CommandHandler("scaffold", scaffold_handlers.handle_scaffold_create))
+    application.add_handler(CommandHandler("scaffold_status", scaffold_handlers.handle_scaffold_status))
+    application.add_handler(CommandHandler("scaffold_history", scaffold_handlers.handle_scaffold_history))
 
     # Register Admin Panel handlers
     application.add_handler(CommandHandler("admin", admin_dashboard.handle_admin))
@@ -710,6 +732,22 @@ def main():
     application.add_handler(CommandHandler("vps_status_admin", system_control.handle_vps_status))
     application.add_handler(CommandHandler("restart", system_control.handle_restart))
 
+    # TIER 0.1: Voice and image message handlers (high priority)
+    application.add_handler(
+        MessageHandler(
+            filters.VOICE,
+            tier0_handlers.handle_voice_message
+        ),
+        group=0  # High priority
+    )
+    application.add_handler(
+        MessageHandler(
+            filters.PHOTO,
+            tier0_handlers.handle_image_message
+        ),
+        group=0  # High priority
+    )
+
     # Add message handler for natural language troubleshooting (lower priority)
     application.add_handler(
         MessageHandler(
@@ -738,7 +776,9 @@ def main():
     logger.info(f"Daily Standup: {STANDUP_HOUR:02d}:{STANDUP_MINUTE:02d}")
     logger.info("System Commands: /start, /help, /status, /agents, /metrics, /approve, /reject, /issue")
     logger.info("RIVET Pro: /troubleshoot, /upgrade, /book_expert, /my_sessions, /pro_stats")
+    logger.info("SCAFFOLD: /scaffold, /scaffold_status, /scaffold_history")
     logger.info("Admin Panel: /admin, /agents_admin, /content, /deploy, /kb, /metrics_admin, /health")
+    logger.info("TIER 0.1 (CEO Command & Control): Voice messages, Image OCR, Session management")
     logger.info("=" * 70)
 
     # Run polling
