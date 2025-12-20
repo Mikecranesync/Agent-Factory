@@ -95,3 +95,66 @@ class TaskContext:
             priority=data["priority"],
             labels=data["labels"]
         )
+
+
+@dataclass
+class SessionState:
+    """Persistent session state for SCAFFOLD orchestrator.
+
+    Attributes:
+        session_id: Unique session identifier (e.g., "20251218_140000")
+        start_time: ISO 8601 timestamp of session start
+        max_tasks: Maximum tasks to process in this session
+        max_cost: Maximum API cost in USD
+        max_time_hours: Maximum wall-clock time in hours
+        tasks_queued: List of task IDs queued for execution
+        tasks_in_progress: Dict mapping task_id -> worktree_path
+        tasks_completed: List of task IDs successfully completed
+        tasks_failed: List of task IDs that failed
+        total_cost: Total API cost incurred (USD)
+        total_duration_sec: Total execution time (seconds)
+    """
+    session_id: str
+    start_time: str  # ISO 8601
+    max_tasks: int
+    max_cost: float
+    max_time_hours: float
+    tasks_queued: List[str]
+    tasks_in_progress: dict  # task_id -> worktree_path
+    tasks_completed: List[str]
+    tasks_failed: List[str]
+    total_cost: float = 0.0
+    total_duration_sec: float = 0.0
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "session_id": self.session_id,
+            "start_time": self.start_time,
+            "max_tasks": self.max_tasks,
+            "max_cost": self.max_cost,
+            "max_time_hours": self.max_time_hours,
+            "tasks_queued": self.tasks_queued,
+            "tasks_in_progress": self.tasks_in_progress,
+            "tasks_completed": self.tasks_completed,
+            "tasks_failed": self.tasks_failed,
+            "total_cost": self.total_cost,
+            "total_duration_sec": self.total_duration_sec
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SessionState":
+        """Create from dictionary (JSON deserialization)."""
+        return cls(
+            session_id=data["session_id"],
+            start_time=data["start_time"],
+            max_tasks=data["max_tasks"],
+            max_cost=data["max_cost"],
+            max_time_hours=data["max_time_hours"],
+            tasks_queued=data["tasks_queued"],
+            tasks_in_progress=data["tasks_in_progress"],
+            tasks_completed=data["tasks_completed"],
+            tasks_failed=data["tasks_failed"],
+            total_cost=data.get("total_cost", 0.0),
+            total_duration_sec=data.get("total_duration_sec", 0.0)
+        )
