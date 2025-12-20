@@ -55,20 +55,8 @@ from telegram.ext import (
 )
 from telegram.constants import ParseMode
 
+# Handler imports moved inside main() to allow graceful error handling
 from agent_factory.memory.storage import SupabaseMemoryStorage
-from agent_factory.integrations.telegram.rivet_pro_handlers import RIVETProHandlers
-from agent_factory.integrations.telegram.langgraph_handlers import LangGraphHandlers
-from agent_factory.integrations.telegram.admin import (
-    AdminDashboard,
-    AgentManager,
-    ContentReviewer,
-    GitHubActions,
-    KBManager,
-    Analytics,
-    SystemControl,
-)
-from agent_factory.integrations.telegram.scaffold_handlers import ScaffoldHandlers
-from agent_factory.integrations.telegram.tier0_handlers import TIER0Handlers
 
 # ============================================================================
 # Configuration
@@ -77,7 +65,7 @@ from agent_factory.integrations.telegram.tier0_handlers import TIER0Handlers
 # Telegram Bot Token
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 if not TELEGRAM_BOT_TOKEN:
-    print("❌ TELEGRAM_BOT_TOKEN not set in .env")
+    print("[ERROR] TELEGRAM_BOT_TOKEN not set in .env")
     print("Get token from @BotFather on Telegram")
     exit(1)
 
@@ -618,6 +606,25 @@ async def send_daily_standup(context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Failed to send daily standup: {e}")
 
 
+@authorized_only
+async def cmd_service_unavailable(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler for disabled features"""
+    command = update.message.text.split()[0].lstrip('/')
+    await update.message.reply_text(
+        f"❌ *Service Temporarily Unavailable*\n\n"
+        f"The `/{command}` feature is currently disabled.\n\n"
+        f"Possible reasons:\n"
+        f"• Database connection issue\n"
+        f"• Missing API key\n"
+        f"• Service initialization failed\n\n"
+        f"Check status: /health_diagnostic",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
+# Note: health_diagnostic command defined in main() to access handler variables
+
+
 # ============================================================================
 # Main Application
 # ============================================================================
@@ -639,34 +646,132 @@ def main():
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
     # Initialize RIVET Pro handlers
-    rivet_handlers = RIVETProHandlers()
+    rivet_handlers = None
+    try:
+        from agent_factory.integrations.telegram.rivet_pro_handlers import RIVETProHandlers
+        rivet_handlers = RIVETProHandlers()
+        logger.info("✅ RIVET Pro handlers initialized")
+    except Exception as e:
+        logger.error(f"❌ RIVET Pro handlers FAILED: {e}", exc_info=True)
 
     # Initialize LangGraph handlers
-    langgraph_handlers = LangGraphHandlers()
+    langgraph_handlers = None
+    try:
+        from agent_factory.integrations.telegram.langgraph_handlers import LangGraphHandlers
+        langgraph_handlers = LangGraphHandlers()
+        logger.info("✅ LangGraph handlers initialized")
+    except Exception as e:
+        logger.error(f"❌ LangGraph handlers FAILED: {e}", exc_info=True)
 
     # Initialize Admin Panel
-    admin_dashboard = AdminDashboard()
-    agent_manager = AgentManager()
-    content_reviewer = ContentReviewer()
-    github_actions = GitHubActions()
-    kb_manager = KBManager()
-    analytics = Analytics()
-    system_control = SystemControl()
+    admin_dashboard = None
+    agent_manager = None
+    content_reviewer = None
+    github_actions = None
+    kb_manager = None
+    analytics = None
+    system_control = None
+
+    try:
+        from agent_factory.integrations.telegram.admin import (
+            AdminDashboard,
+            AgentManager,
+            ContentReviewer,
+            GitHubActions,
+            KBManager,
+            Analytics,
+            SystemControl,
+        )
+        admin_dashboard = AdminDashboard()
+        agent_manager = AgentManager()
+        content_reviewer = ContentReviewer()
+        github_actions = GitHubActions()
+        kb_manager = KBManager()
+        analytics = Analytics()
+        system_control = SystemControl()
+        logger.info("✅ Admin handlers initialized")
+    except Exception as e:
+        logger.error(f"❌ Admin handlers FAILED: {e}", exc_info=True)
 
     # Initialize SCAFFOLD handlers
-    scaffold_handlers = ScaffoldHandlers(
-        repo_root=project_root,
-        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
-        max_cost=float(os.getenv("SCAFFOLD_MAX_COST", "5.0")),
-        max_time_hours=float(os.getenv("SCAFFOLD_MAX_TIME_HOURS", "2.0")),
-        dry_run=os.getenv("SCAFFOLD_DRY_RUN", "false").lower() == "true"
-    )
+    scaffold_handlers = None
+    try:
+        from agent_factory.integrations.telegram.scaffold_handlers import ScaffoldHandlers
+        scaffold_handlers = ScaffoldHandlers(
+            repo_root=project_root,
+            anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
+            max_cost=float(os.getenv("SCAFFOLD_MAX_COST", "5.0")),
+            max_time_hours=float(os.getenv("SCAFFOLD_MAX_TIME_HOURS", "2.0")),
+            dry_run=os.getenv("SCAFFOLD_DRY_RUN", "false").lower() == "true"
+        )
+        logger.info("✅ SCAFFOLD handlers initialized")
+    except Exception as e:
+        logger.error(f"❌ SCAFFOLD handlers FAILED: {e}", exc_info=True)
 
     # Initialize TIER 0.1 handlers (CEO Command & Control)
-    tier0_handlers = TIER0Handlers(
-        storage=storage,
-        openai_api_key=os.getenv("OPENAI_API_KEY")
-    )
+    tier0_handlers = None
+    try:
+        from agent_factory.integrations.telegram.tier0_handlers import TIER0Handlers
+        tier0_handlers = TIER0Handlers(
+            storage=storage,
+            openai_api_key=os.getenv("OPENAI_API_KEY")
+        )
+        logger.info("✅ TIER 0.1 handlers initialized")
+    except Exception as e:
+        logger.error(f"❌ TIER 0.1 handlers FAILED: {e}", exc_info=True)
+
+    # Define health diagnostic command (needs access to handler variables)
+    @authorized_only
+    async def cmd_health_diagnostic(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show detailed system health status"""
+
+        status_lines = ["🏥 *System Health Diagnostic*\n"]
+
+        # Check handler initialization
+        handlers_status = {
+            "RIVET Pro": rivet_handlers is not None,
+            "LangGraph": langgraph_handlers is not None,
+            "SCAFFOLD": scaffold_handlers is not None,
+            "Admin Panel": admin_dashboard is not None,
+            "Agent Manager": agent_manager is not None,
+            "Content Reviewer": content_reviewer is not None,
+            "GitHub Actions": github_actions is not None,
+            "KB Manager": kb_manager is not None,
+            "Analytics": analytics is not None,
+            "System Control": system_control is not None,
+            "TIER 0.1": tier0_handlers is not None,
+        }
+
+        status_lines.append("*Handlers:*")
+        for name, status in handlers_status.items():
+            icon = "✅" if status else "❌"
+            status_lines.append(f"{icon} {name}")
+
+        # Check environment variables
+        status_lines.append("\n*Environment:*")
+        env_vars = {
+            "TELEGRAM_BOT_TOKEN": bool(os.getenv("TELEGRAM_BOT_TOKEN")),
+            "NEON_DB_URL": bool(os.getenv("NEON_DB_URL")),
+            "ANTHROPIC_API_KEY": bool(os.getenv("ANTHROPIC_API_KEY")),
+            "OPENAI_API_KEY": bool(os.getenv("OPENAI_API_KEY")),
+        }
+        for var, exists in env_vars.items():
+            icon = "✅" if exists else "❌"
+            status_lines.append(f"{icon} {var}")
+
+        # Database connection test
+        if rivet_handlers:
+            status_lines.append("\n*Database:* ✅ Connected")
+        else:
+            status_lines.append("\n*Database:* ❌ Unavailable")
+
+        status_lines.append(f"\n*Bot Version:* telegram_bot.py (monolithic)")
+        status_lines.append(f"*Uptime:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+        await update.message.reply_text(
+            "\n".join(status_lines),
+            parse_mode=ParseMode.MARKDOWN
+        )
 
     # Register command handlers
     application.add_handler(CommandHandler("start", cmd_start))
@@ -674,88 +779,162 @@ def main():
     application.add_handler(CommandHandler("status", cmd_status))
     application.add_handler(CommandHandler("agents", cmd_agents))
     application.add_handler(CommandHandler("metrics", cmd_metrics))
+    application.add_handler(CommandHandler("health_diagnostic", cmd_health_diagnostic))
     application.add_handler(CommandHandler("approve", cmd_approve))
     application.add_handler(CommandHandler("reject", cmd_reject))
     application.add_handler(CommandHandler("issue", cmd_issue))
 
     # Register RIVET Pro handlers
-    application.add_handler(CommandHandler("troubleshoot", rivet_handlers.handle_troubleshoot))
-    application.add_handler(CommandHandler("upgrade", rivet_handlers.handle_upgrade))
-    application.add_handler(CommandHandler("book_expert", rivet_handlers.handle_book_expert))
-    application.add_handler(CommandHandler("my_sessions", rivet_handlers.handle_my_sessions))
-    application.add_handler(CommandHandler("pro_stats", rivet_handlers.handle_pro_stats))
-    application.add_handler(CommandHandler("vps_status", rivet_handlers.handle_vps_status))
+    if rivet_handlers:
+        application.add_handler(CommandHandler("troubleshoot", rivet_handlers.handle_troubleshoot))
+        application.add_handler(CommandHandler("upgrade", rivet_handlers.handle_upgrade))
+        application.add_handler(CommandHandler("book_expert", rivet_handlers.handle_book_expert))
+        application.add_handler(CommandHandler("my_sessions", rivet_handlers.handle_my_sessions))
+        application.add_handler(CommandHandler("pro_stats", rivet_handlers.handle_pro_stats))
+        application.add_handler(CommandHandler("vps_status", rivet_handlers.handle_vps_status))
+    else:
+        logger.warning("⚠️ RIVET Pro commands DISABLED (initialization failed)")
 
     # Register LangGraph workflow handlers
-    application.add_handler(CommandHandler("research", langgraph_handlers.handle_research))
-    application.add_handler(CommandHandler("consensus", langgraph_handlers.handle_consensus))
-    application.add_handler(CommandHandler("analyze", langgraph_handlers.handle_analyze))
+    if langgraph_handlers:
+        application.add_handler(CommandHandler("research", langgraph_handlers.handle_research))
+        application.add_handler(CommandHandler("consensus", langgraph_handlers.handle_consensus))
+        application.add_handler(CommandHandler("analyze", langgraph_handlers.handle_analyze))
+    else:
+        logger.warning("⚠️ LangGraph commands DISABLED (initialization failed)")
 
     # Register SCAFFOLD handlers
-    application.add_handler(CommandHandler("scaffold", scaffold_handlers.handle_scaffold_create))
-    application.add_handler(CommandHandler("scaffold_status", scaffold_handlers.handle_scaffold_status))
-    application.add_handler(CommandHandler("scaffold_history", scaffold_handlers.handle_scaffold_history))
+    if scaffold_handlers:
+        application.add_handler(CommandHandler("scaffold", scaffold_handlers.handle_scaffold_create))
+        application.add_handler(CommandHandler("scaffold_status", scaffold_handlers.handle_scaffold_status))
+        application.add_handler(CommandHandler("scaffold_history", scaffold_handlers.handle_scaffold_history))
+    else:
+        logger.warning("⚠️ SCAFFOLD commands DISABLED (initialization failed)")
 
     # Register Admin Panel handlers
-    application.add_handler(CommandHandler("admin", admin_dashboard.handle_admin))
-    application.add_handler(CallbackQueryHandler(admin_dashboard.handle_callback, pattern="^menu_"))
+    if admin_dashboard:
+        application.add_handler(CommandHandler("admin", admin_dashboard.handle_admin))
+        application.add_handler(CallbackQueryHandler(admin_dashboard.handle_callback, pattern="^menu_"))
+    else:
+        logger.warning("⚠️ Admin dashboard commands DISABLED (initialization failed)")
 
     # Agent management
-    application.add_handler(CommandHandler("agents_admin", agent_manager.handle_agents))
-    application.add_handler(CommandHandler("agent", agent_manager.handle_agent_detail))
-    application.add_handler(CommandHandler("agent_logs", agent_manager.handle_agent_logs))
+    if agent_manager:
+        application.add_handler(CommandHandler("agents_admin", agent_manager.handle_agents))
+        application.add_handler(CommandHandler("agent", agent_manager.handle_agent_detail))
+        application.add_handler(CommandHandler("agent_logs", agent_manager.handle_agent_logs))
+    else:
+        logger.warning("⚠️ Agent management commands DISABLED (initialization failed)")
 
     # Content review
-    application.add_handler(CommandHandler("content", content_reviewer.handle_content))
+    if content_reviewer:
+        application.add_handler(CommandHandler("content", content_reviewer.handle_content))
+    else:
+        logger.warning("⚠️ Content review commands DISABLED (initialization failed)")
 
     # GitHub Actions
-    application.add_handler(CommandHandler("deploy", github_actions.handle_deploy))
-    application.add_handler(CommandHandler("workflow", github_actions.handle_workflow))
-    application.add_handler(CommandHandler("workflows", github_actions.handle_workflows))
-    application.add_handler(CommandHandler("workflow_status", github_actions.handle_workflow_status))
-    application.add_handler(CallbackQueryHandler(github_actions.handle_deploy_confirm, pattern="^deploy_confirm$"))
+    if github_actions:
+        application.add_handler(CommandHandler("deploy", github_actions.handle_deploy))
+        application.add_handler(CommandHandler("workflow", github_actions.handle_workflow))
+        application.add_handler(CommandHandler("workflows", github_actions.handle_workflows))
+        application.add_handler(CommandHandler("workflow_status", github_actions.handle_workflow_status))
+        application.add_handler(CallbackQueryHandler(github_actions.handle_deploy_confirm, pattern="^deploy_confirm$"))
+    else:
+        logger.warning("⚠️ GitHub Actions commands DISABLED (initialization failed)")
 
     # KB management
-    application.add_handler(CommandHandler("kb", kb_manager.handle_kb))
-    application.add_handler(CommandHandler("kb_ingest", kb_manager.handle_kb_ingest))
-    application.add_handler(CommandHandler("kb_search", kb_manager.handle_kb_search))
-    application.add_handler(CommandHandler("kb_queue", kb_manager.handle_kb_queue))
+    if kb_manager:
+        application.add_handler(CommandHandler("kb", kb_manager.handle_kb))
+        application.add_handler(CommandHandler("kb_ingest", kb_manager.handle_kb_ingest))
+        application.add_handler(CommandHandler("kb_search", kb_manager.handle_kb_search))
+        application.add_handler(CommandHandler("kb_queue", kb_manager.handle_kb_queue))
+    else:
+        logger.warning("⚠️ KB management commands DISABLED (initialization failed)")
 
     # Analytics
-    application.add_handler(CommandHandler("metrics_admin", analytics.handle_metrics))
-    application.add_handler(CommandHandler("costs", analytics.handle_costs))
-    application.add_handler(CommandHandler("revenue", analytics.handle_revenue))
+    if analytics:
+        application.add_handler(CommandHandler("metrics_admin", analytics.handle_metrics))
+        application.add_handler(CommandHandler("costs", analytics.handle_costs))
+        application.add_handler(CommandHandler("revenue", analytics.handle_revenue))
+    else:
+        logger.warning("⚠️ Analytics commands DISABLED (initialization failed)")
 
     # System control
-    application.add_handler(CommandHandler("health", system_control.handle_health))
-    application.add_handler(CommandHandler("db_health", system_control.handle_db_health))
-    application.add_handler(CommandHandler("vps_status_admin", system_control.handle_vps_status))
-    application.add_handler(CommandHandler("restart", system_control.handle_restart))
+    if system_control:
+        application.add_handler(CommandHandler("health", system_control.handle_health))
+        application.add_handler(CommandHandler("db_health", system_control.handle_db_health))
+        application.add_handler(CommandHandler("vps_status_admin", system_control.handle_vps_status))
+        application.add_handler(CommandHandler("restart", system_control.handle_restart))
+    else:
+        logger.warning("⚠️ System control commands DISABLED (initialization failed)")
 
     # TIER 0.1: Voice and image message handlers (high priority)
-    application.add_handler(
-        MessageHandler(
-            filters.VOICE,
-            tier0_handlers.handle_voice_message
-        ),
-        group=0  # High priority
-    )
-    application.add_handler(
-        MessageHandler(
-            filters.PHOTO,
-            tier0_handlers.handle_image_message
-        ),
-        group=0  # High priority
-    )
+    if tier0_handlers:
+        application.add_handler(
+            MessageHandler(
+                filters.VOICE,
+                tier0_handlers.handle_voice_message
+            ),
+            group=0  # High priority
+        )
+        application.add_handler(
+            MessageHandler(
+                filters.PHOTO,
+                tier0_handlers.handle_image_message
+            ),
+            group=0  # High priority
+        )
+    else:
+        logger.warning("⚠️ TIER 0.1 message handlers DISABLED (initialization failed)")
 
     # Add message handler for natural language troubleshooting (lower priority)
-    application.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            rivet_handlers.handle_troubleshoot
-        ),
-        group=1  # Lower priority than command handlers
-    )
+    if rivet_handlers:
+        application.add_handler(
+            MessageHandler(
+                filters.TEXT & ~filters.COMMAND,
+                rivet_handlers.handle_troubleshoot
+            ),
+            group=1  # Lower priority than command handlers
+        )
+
+    # Register fallback handlers for disabled features
+    if not rivet_handlers:
+        for cmd in ["troubleshoot", "upgrade", "book_expert", "my_sessions", "pro_stats", "vps_status"]:
+            application.add_handler(CommandHandler(cmd, cmd_service_unavailable))
+
+    if not langgraph_handlers:
+        for cmd in ["research", "consensus", "analyze"]:
+            application.add_handler(CommandHandler(cmd, cmd_service_unavailable))
+
+    if not scaffold_handlers:
+        for cmd in ["scaffold", "scaffold_status", "scaffold_history"]:
+            application.add_handler(CommandHandler(cmd, cmd_service_unavailable))
+
+    if not admin_dashboard:
+        application.add_handler(CommandHandler("admin", cmd_service_unavailable))
+
+    if not agent_manager:
+        for cmd in ["agents_admin", "agent", "agent_logs"]:
+            application.add_handler(CommandHandler(cmd, cmd_service_unavailable))
+
+    if not content_reviewer:
+        application.add_handler(CommandHandler("content", cmd_service_unavailable))
+
+    if not github_actions:
+        for cmd in ["deploy", "workflow", "workflows", "workflow_status"]:
+            application.add_handler(CommandHandler(cmd, cmd_service_unavailable))
+
+    if not kb_manager:
+        for cmd in ["kb", "kb_ingest", "kb_search", "kb_queue"]:
+            application.add_handler(CommandHandler(cmd, cmd_service_unavailable))
+
+    if not analytics:
+        for cmd in ["metrics_admin", "costs", "revenue"]:
+            application.add_handler(CommandHandler(cmd, cmd_service_unavailable))
+
+    if not system_control:
+        for cmd in ["health", "db_health", "vps_status_admin", "restart"]:
+            application.add_handler(CommandHandler(cmd, cmd_service_unavailable))
 
     # Schedule daily standup (optional - requires job-queue extra)
     job_queue = application.job_queue

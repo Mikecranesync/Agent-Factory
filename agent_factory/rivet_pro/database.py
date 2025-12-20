@@ -13,6 +13,7 @@ Usage:
 
 import os
 import json
+import logging
 from typing import Optional, Dict, List, Any
 from datetime import datetime
 
@@ -21,6 +22,8 @@ import psycopg2.extras
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 class RIVETProDatabase:
@@ -32,14 +35,14 @@ class RIVETProDatabase:
 
     def __init__(self, provider: Optional[str] = None):
         """
-        Initialize database connection.
+        Initialize database adapter (lazy connection).
 
         Args:
             provider: Database provider (neon, supabase, railway). If None, uses DATABASE_PROVIDER from .env
         """
         self.provider = provider or os.getenv("DATABASE_PROVIDER", "neon")
         self.conn = None
-        self._connect()
+        self._connection_error = None  # Store last connection error for debugging
 
     def _connect(self):
         """Establish database connection based on provider"""
@@ -63,8 +66,30 @@ class RIVETProDatabase:
         except Exception as e:
             raise ConnectionError(f"Failed to connect to {self.provider}: {e}")
 
+    def _ensure_connected(self) -> bool:
+        """
+        Ensure database connection exists. Connect if needed.
+
+        Returns:
+            True if connected successfully, False otherwise
+        """
+        if self.conn is not None:
+            return True
+
+        try:
+            self._connect()
+            logger.info(f"✅ Database connected ({self.provider})")
+            return True
+        except Exception as e:
+            self._connection_error = e
+            logger.error(f"❌ Database connection failed ({self.provider}): {e}")
+            return False
+
     def _execute(self, query: str, params: tuple = None) -> List[Dict[str, Any]]:
         """Execute query and return results as list of dicts"""
+        if not self._ensure_connected():
+            raise ConnectionError(f"Database unavailable: {self._connection_error}")
+
         cursor = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(query, params)
@@ -76,6 +101,9 @@ class RIVETProDatabase:
 
     def _execute_one(self, query: str, params: tuple = None) -> Optional[Dict[str, Any]]:
         """Execute query and return single result as dict"""
+        if not self._ensure_connected():
+            raise ConnectionError(f"Database unavailable: {self._connection_error}")
+
         cursor = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cursor.execute(query, params)
@@ -88,6 +116,9 @@ class RIVETProDatabase:
 
     def _call_function(self, function_name: str, **kwargs) -> Any:
         """Call a PostgreSQL function with named parameters"""
+        if not self._ensure_connected():
+            raise ConnectionError(f"Database unavailable: {self._connection_error}")
+
         # Build parameter string
         param_names = list(kwargs.keys())
         param_values = list(kwargs.values())

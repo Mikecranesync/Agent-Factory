@@ -32,6 +32,10 @@ from agent_factory.workflows import (
 )
 from agent_factory.observability import LangFuseTracker
 
+# Research tools for agent workflows
+from langchain_community.tools import DuckDuckGoSearchRun, WikipediaQueryRun
+from langchain_community.utilities import WikipediaAPIWrapper
+
 
 class LangGraphHandlers:
     """
@@ -44,6 +48,10 @@ class LangGraphHandlers:
     def __init__(self):
         """Initialize handlers with agent factory and tracker"""
         self.factory = AgentFactory()
+
+        # Initialize research tools
+        self.search_tool = DuckDuckGoSearchRun()
+        self.wiki_tool = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
 
         # Try to initialize LangFuse tracker
         try:
@@ -99,8 +107,11 @@ class LangGraphHandlers:
 
             planner = self.factory.create_agent(
                 role="Research Planner",
-                goal="Decide what to research",
-                backstory="Expert at breaking down complex questions",
+                tools_list=[],  # Planner doesn't need tools, just orchestrates
+                system_prompt=(
+                    "You are a Research Planner. Your goal: Decide what to research. "
+                    "Backstory: Expert at breaking down complex questions into researchable sub-questions."
+                ),
                 verbose=False,
                 callbacks=callbacks
             )
@@ -116,8 +127,11 @@ class LangGraphHandlers:
 
             researcher = self.factory.create_agent(
                 role="Researcher",
-                goal="Find accurate information",
-                backstory="Skilled at finding reliable sources",
+                tools_list=[self.search_tool, self.wiki_tool],  # Needs search and wiki tools
+                system_prompt=(
+                    "You are a Researcher. Your goal: Find accurate information. "
+                    "Backstory: Skilled at finding reliable sources using web search and Wikipedia."
+                ),
                 verbose=False,
                 callbacks=callbacks
             )
@@ -134,16 +148,22 @@ class LangGraphHandlers:
 
             analyzer = self.factory.create_agent(
                 role="Quality Analyzer",
-                goal="Evaluate research quality",
-                backstory="Critical thinker who ensures accuracy",
+                tools_list=[],  # Analyzer doesn't need tools, just evaluates
+                system_prompt=(
+                    "You are a Quality Analyzer. Your goal: Evaluate research quality. "
+                    "Backstory: Critical thinker who ensures accuracy and completeness of research findings."
+                ),
                 verbose=False,
                 callbacks=callbacks
             )
 
             writer = self.factory.create_agent(
                 role="Technical Writer",
-                goal="Create clear answers",
-                backstory="Technical writer who explains simply",
+                tools_list=[],  # Writer doesn't need tools, just synthesizes
+                system_prompt=(
+                    "You are a Technical Writer. Your goal: Create clear answers. "
+                    "Backstory: Technical writer who explains complex topics simply and accurately."
+                ),
                 verbose=False,
                 callbacks=callbacks
             )
@@ -265,32 +285,44 @@ class LangGraphHandlers:
             # Create 3 solver agents with different perspectives
             solver1 = self.factory.create_agent(
                 role="Technical Expert",
-                goal="Provide technically accurate answers",
-                backstory="Deep technical knowledge",
+                tools_list=[self.search_tool, self.wiki_tool],  # Needs research tools
+                system_prompt=(
+                    "You are a Technical Expert. Your goal: Provide technically accurate answers. "
+                    "Backstory: Deep technical knowledge in industrial automation and PLCs."
+                ),
                 verbose=False,
                 callbacks=callbacks
             )
 
             solver2 = self.factory.create_agent(
                 role="Practical Expert",
-                goal="Provide practical answers",
-                backstory="Focuses on real-world applications",
+                tools_list=[self.search_tool, self.wiki_tool],  # Needs research tools
+                system_prompt=(
+                    "You are a Practical Expert. Your goal: Provide practical answers. "
+                    "Backstory: Focuses on real-world applications and hands-on experience."
+                ),
                 verbose=False,
                 callbacks=callbacks
             )
 
             solver3 = self.factory.create_agent(
                 role="Teaching Expert",
-                goal="Provide clear educational answers",
-                backstory="Explains complex topics simply",
+                tools_list=[self.search_tool, self.wiki_tool],  # Needs research tools
+                system_prompt=(
+                    "You are a Teaching Expert. Your goal: Provide clear educational answers. "
+                    "Backstory: Explains complex topics simply for learners and beginners."
+                ),
                 verbose=False,
                 callbacks=callbacks
             )
 
             judge = self.factory.create_agent(
                 role="Judge",
-                goal="Pick the best answer",
-                backstory="Expert evaluator of answer quality",
+                tools_list=[],  # Judge doesn't need tools, just evaluates
+                system_prompt=(
+                    "You are a Judge. Your goal: Pick the best answer from multiple candidates. "
+                    "Backstory: Expert evaluator of answer quality, accuracy, and clarity."
+                ),
                 verbose=False,
                 callbacks=callbacks
             )
@@ -394,32 +426,44 @@ class LangGraphHandlers:
             # Create supervisor and specialist teams
             supervisor = self.factory.create_agent(
                 role="Workflow Supervisor",
-                goal="Analyze tasks and delegate to specialists",
-                backstory="Expert coordinator",
+                tools_list=[],  # Supervisor doesn't need tools, just coordinates
+                system_prompt=(
+                    "You are a Workflow Supervisor. Your goal: Analyze tasks and delegate to specialists. "
+                    "Backstory: Expert coordinator who routes work to the right team."
+                ),
                 verbose=False,
                 callbacks=callbacks
             )
 
             research_team = self.factory.create_agent(
                 role="Research Team",
-                goal="Find information",
-                backstory="Skilled researchers",
+                tools_list=[self.search_tool, self.wiki_tool],  # Needs research tools
+                system_prompt=(
+                    "You are a Research Team. Your goal: Find information. "
+                    "Backstory: Skilled researchers who find accurate and relevant information."
+                ),
                 verbose=False,
                 callbacks=callbacks
             )
 
             analysis_team = self.factory.create_agent(
                 role="Analysis Team",
-                goal="Analyze data and provide insights",
-                backstory="Data analysts",
+                tools_list=[],  # Analysis team doesn't need tools, just analyzes
+                system_prompt=(
+                    "You are an Analysis Team. Your goal: Analyze data and provide insights. "
+                    "Backstory: Data analysts who identify patterns and draw conclusions."
+                ),
                 verbose=False,
                 callbacks=callbacks
             )
 
             coding_team = self.factory.create_agent(
                 role="Coding Team",
-                goal="Write and explain code",
-                backstory="Software engineers",
+                tools_list=[],  # Coding team doesn't need tools, just writes code
+                system_prompt=(
+                    "You are a Coding Team. Your goal: Write and explain code. "
+                    "Backstory: Software engineers who write clean, well-documented code."
+                ),
                 verbose=False,
                 callbacks=callbacks
             )

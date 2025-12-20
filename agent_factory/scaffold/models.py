@@ -3,7 +3,7 @@
 Data models for SCAFFOLD autonomous development system.
 """
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import List, Optional
 
 
