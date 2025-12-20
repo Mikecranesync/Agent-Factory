@@ -60,8 +60,30 @@ MODEL_REGISTRY: Dict[str, ModelInfo] = {
         supports_streaming=True,
         supports_function_calling=True
     ),
+    "gpt-4-vision-preview": ModelInfo(
+        provider=LLMProvider.OPENAI,
+        model_name="gpt-4-vision-preview",
+        input_cost_per_1k=0.010,       # $10 per 1M input tokens
+        output_cost_per_1k=0.030,      # $30 per 1M output tokens
+        context_window=128000,
+        capability=ModelCapability.VISION,
+        supports_streaming=False,
+        supports_function_calling=False,
+        supports_vision=True           # Vision support
+    ),
 
     # Anthropic Models
+    "claude-3-5-sonnet-20241022": ModelInfo(
+        provider=LLMProvider.ANTHROPIC,
+        model_name="claude-3-5-sonnet-20241022",
+        input_cost_per_1k=0.003,       # $3 per 1M input tokens
+        output_cost_per_1k=0.015,      # $15 per 1M output tokens
+        context_window=200000,         # 200K context
+        capability=ModelCapability.COMPLEX,
+        supports_streaming=True,
+        supports_function_calling=True,
+        supports_vision=True           # Vision support
+    ),
     "claude-3-opus-20240229": ModelInfo(
         provider=LLMProvider.ANTHROPIC,
         model_name="claude-3-opus-20240229",
@@ -194,6 +216,10 @@ ROUTING_TIERS: Dict[ModelCapability, List[str]] = {
         "gemini-1.5-pro",           # $0.007 input (1M context!)
         "gpt-4o",                    # $0.0025 input
         "claude-3-opus-20240229",   # $0.015 input
+    ],
+    ModelCapability.VISION: [
+        "claude-3-5-sonnet-20241022",  # $0.003 input (best vision model)
+        "gpt-4-vision-preview",        # $0.010 input
     ],
 }
 

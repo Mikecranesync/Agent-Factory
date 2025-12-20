@@ -37,6 +37,7 @@ class ModelCapability(str, Enum):
     COMPLEX = "complex"        # Advanced reasoning, research
     CODING = "coding"          # Code generation and analysis
     RESEARCH = "research"      # Multi-step research workflows
+    VISION = "vision"          # Image analysis and understanding
 
 
 class ModelInfo(BaseModel):
@@ -66,6 +67,10 @@ class ModelInfo(BaseModel):
     capability: ModelCapability = ModelCapability.MODERATE
     supports_streaming: bool = True
     supports_function_calling: bool = False
+    supports_vision: bool = Field(
+        default=False,
+        description="Whether model supports image/vision inputs"
+    )
 
     class Config:
         use_enum_values = True
