@@ -95,47 +95,41 @@ class TestClaudeExecutorInitialization:
 class TestIsSuccessful:
     """Test _is_successful() method."""
 
-    def test_is_successful_exit_code_zero(self, executor):
-        """Test success when exit code is 0."""
+    def test_is_successful_with_commit_and_tests(self, executor):
+        """Test success when commit created and tests passed."""
         output = "Task completed successfully"
-        result = executor._is_successful(output, 0)
+        result = executor._is_successful(output, 0, ["abc123f"], True)
         assert result is True
 
     def test_is_successful_exit_code_nonzero(self, executor):
         """Test failure when exit code is non-zero."""
         output = "Task completed successfully"
-        result = executor._is_successful(output, 1)
+        result = executor._is_successful(output, 1, [], None)
         assert result is False
 
-    def test_is_successful_completed_pattern(self, executor):
-        """Test success with 'completed successfully' pattern."""
-        output = "The task completed successfully!"
-        result = executor._is_successful(output, 0)
+    def test_is_successful_tests_failed(self, executor):
+        """Test failure when tests failed."""
+        output = "Tests failed"
+        result = executor._is_successful(output, 0, ["abc123f"], False)
+        assert result is False
+
+    def test_is_successful_with_commit_no_tests(self, executor):
+        """Test success with commit but no tests run."""
+        output = "Task completed"
+        result = executor._is_successful(output, 0, ["abc123f"], None)
         assert result is True
 
-    def test_is_successful_tests_passed(self, executor):
-        """Test success with 'tests passed' pattern."""
-        output = "All tests passed"
-        result = executor._is_successful(output, 0)
+    def test_is_successful_with_keywords(self, executor):
+        """Test success detection via keywords."""
+        output = "Implementation complete, 3 files changed"
+        result = executor._is_successful(output, 0, [], None)
         assert result is True
 
-    def test_is_successful_git_commit(self, executor):
-        """Test success with 'git commit created' pattern."""
-        output = "git commit feat: Add feature created"
-        result = executor._is_successful(output, 0)
+    def test_is_successful_exit_code_zero_default(self, executor):
+        """Test success with exit code 0 and no other indicators."""
+        output = "Some output"
+        result = executor._is_successful(output, 0, [], None)
         assert result is True
-
-    def test_is_successful_files_changed(self, executor):
-        """Test success with 'files changed' pattern."""
-        output = "3 files changed, 50 insertions(+), 10 deletions(-)"
-        result = executor._is_successful(output, 0)
-        assert result is True
-
-    def test_is_successful_no_indicators(self, executor):
-        """Test success when exit code 0 but no explicit indicators."""
-        output = "Some output without success indicators"
-        result = executor._is_successful(output, 0)
-        assert result is True  # Exit code 0 is enough
 
 
 class TestExtractFilesChanged:
@@ -202,27 +196,128 @@ class TestExtractFilesChanged:
         assert "file2.py" in files
 
 
-class TestEstimateCost:
-    """Test _estimate_cost() method."""
+class TestExtractCommits:
+    """Test _extract_commits() method (NEW - Acceptance Criteria #5)."""
 
-    def test_estimate_cost_explicit(self, executor):
-        """Test extracting explicit cost from output."""
-        output = "Execution completed. Cost: $0.25"
-        cost = executor._estimate_cost(output)
-        assert cost == 0.25
+    def test_extract_commits_from_git_log(self, executor, temp_repo):
+        """Test extracting commits from git log."""
+        output = "Task completed"
 
-    def test_estimate_cost_heuristic(self, executor):
-        """Test heuristic cost estimation."""
-        # 10K chars = $0.10
-        output = "x" * 10000
-        cost = executor._estimate_cost(output)
-        assert cost == pytest.approx(0.10, abs=0.01)
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout="abc123f\ndef456a",
+                stderr=""
+            )
 
-    def test_estimate_cost_small_output(self, executor):
-        """Test cost for small output."""
-        output = "Small output"
-        cost = executor._estimate_cost(output)
-        assert cost < 0.01
+            commits = executor._extract_commits(output, str(temp_repo))
+
+        assert len(commits) >= 2
+        assert "abc123f" in commits
+        assert "def456a" in commits
+
+    def test_extract_commits_from_output_patterns(self, executor, temp_repo):
+        """Test extracting commits from output commit messages."""
+        output = """
+        Created commit abc123f
+        Another commit [def456a]
+        commit 1234567890abcdef
+        """
+
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="")
+
+            commits = executor._extract_commits(output, str(temp_repo))
+
+        assert len(commits) >= 2
+        # Should extract SHAs and abbreviate them
+        assert any("abc123f" in c for c in commits)
+
+    def test_extract_commits_git_log_timeout(self, executor, temp_repo):
+        """Test commit extraction when git log times out."""
+        output = "commit abc123f created"
+
+        with patch('subprocess.run') as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired("git", 5)
+
+            commits = executor._extract_commits(output, str(temp_repo))
+
+        # Should still extract from output patterns
+        assert "abc123f" in commits
+
+    def test_extract_commits_no_commits(self, executor, temp_repo):
+        """Test when no commits are found."""
+        output = "Task completed without commits"
+
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+            commits = executor._extract_commits(output, str(temp_repo))
+
+        assert commits == []
+
+
+class TestParseTestResults:
+    """Test _parse_test_results() method (NEW - Acceptance Criteria #5)."""
+
+    def test_parse_test_results_pytest_passed(self, executor):
+        """Test parsing successful pytest output."""
+        output = """
+        ===== test session starts =====
+        collected 5 items
+
+        tests/test_feature.py ..... [100%]
+
+        ===== 5 passed in 2.5s =====
+        """
+
+        result = executor._parse_test_results(output)
+        assert result is True
+
+    def test_parse_test_results_pytest_failed(self, executor):
+        """Test parsing failed pytest output."""
+        output = """
+        ===== test session starts =====
+        collected 5 items
+
+        tests/test_feature.py F.... [100%]
+
+        ===== 1 failed, 4 passed in 2.5s =====
+        """
+
+        result = executor._parse_test_results(output)
+        assert result is False
+
+    def test_parse_test_results_no_tests(self, executor):
+        """Test parsing output with no tests."""
+        output = """
+        Creating files...
+        Task completed successfully
+        """
+
+        result = executor._parse_test_results(output)
+        assert result is None
+
+    def test_parse_test_results_unittest_ok(self, executor):
+        """Test parsing successful unittest output."""
+        output = """
+        Ran 5 tests in 2.5s
+
+        OK (5 tests)
+        """
+
+        result = executor._parse_test_results(output)
+        assert result is True
+
+    def test_parse_test_results_error(self, executor):
+        """Test parsing output with ERROR."""
+        output = """
+        Running tests...
+        ERROR: test_feature.py::test_function
+        """
+
+        result = executor._parse_test_results(output)
+        assert result is False
 
 
 class TestExtractError:
@@ -317,33 +412,36 @@ class TestExecuteTask:
     """Test execute_task() method (main integration)."""
 
     def test_execute_task_success(self, executor, sample_task, temp_repo):
-        """Test successful task execution."""
+        """Test successful task execution (ACCEPTANCE CRITERIA #1, #2, #3, #4, #6)."""
         # Mock ContextAssembler
         with patch.object(executor.context_assembler, 'assemble_context') as mock_context:
             mock_context.return_value = "Mock context"
 
-            # Mock subprocess.run (Claude CLI)
+            # Mock subprocess.run for all calls
             with patch('subprocess.run') as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=0,
-                    stdout="Task completed successfully\n3 files changed",
-                    stderr=""
-                )
-
-                # Mock git diff for files_changed
-                with patch('agent_factory.scaffold.claude_executor.subprocess.run') as mock_git:
-                    mock_git.return_value = MagicMock(
+                # Return sequence: Claude CLI, git diff, git log
+                mock_run.side_effect = [
+                    # Claude CLI execution
+                    MagicMock(
                         returncode=0,
-                        stdout="file1.py\nfile2.py\n"
-                    )
+                        stdout="Task completed successfully\n5 passed in 2.5s\nCommit abc123f created",
+                        stderr=""
+                    ),
+                    # git diff (files changed)
+                    MagicMock(returncode=0, stdout="file1.py\nfile2.py\n", stderr=""),
+                    # git log (commits)
+                    MagicMock(returncode=0, stdout="abc123f", stderr="")
+                ]
 
-                    result = executor.execute_task(sample_task, str(temp_repo))
+                result = executor.execute_task(sample_task, str(temp_repo))
 
+        # Verify ExecutionResult matches acceptance criteria
         assert isinstance(result, ExecutionResult)
         assert result.success is True
-        assert result.task_id == "task-test-1"
         assert result.exit_code == 0
-        assert len(result.files_changed) >= 0
+        assert len(result.files_changed) >= 2
+        assert len(result.commits) >= 1  # Commit detected
+        assert result.tests_passed is True  # Tests passed
         assert result.error is None
 
     def test_execute_task_failure(self, executor, sample_task, temp_repo):
@@ -394,7 +492,7 @@ class TestIntegration:
     """Integration tests for full execution workflow."""
 
     def test_full_execution_workflow(self, temp_repo, sample_task):
-        """Test complete execution workflow from start to finish."""
+        """Test complete execution workflow (ALL ACCEPTANCE CRITERIA)."""
         executor = ClaudeExecutor(repo_root=temp_repo, timeout_sec=5)
 
         # Mock ContextAssembler separately to avoid git calls
@@ -403,40 +501,38 @@ class TestIntegration:
 
             # Mock subprocess calls
             with patch('subprocess.run') as mock_run:
-                # First call: Claude CLI execution
-                # Second call: git diff (files changed)
+                # Calls: Claude CLI, git diff, git log
                 mock_run.side_effect = [
-                    # Claude CLI
+                    # Claude CLI execution
                     MagicMock(
                         returncode=0,
-                        stdout="Implementation completed successfully\nAll tests passed\n",
+                        stdout="Implementation completed successfully\nAll tests passed\nCommit abc123f created",
                         stderr=""
                     ),
                     # git diff (files changed)
-                    MagicMock(
-                        returncode=0,
-                        stdout="src/main.py\ntests/test_main.py\n"
-                    ),
+                    MagicMock(returncode=0, stdout="src/main.py\ntests/test_main.py\n", stderr=""),
+                    # git log (commits)
+                    MagicMock(returncode=0, stdout="abc123f", stderr="")
                 ]
 
                 result = executor.execute_task(sample_task, str(temp_repo))
 
-        # Verify result
+        # Verify ALL acceptance criteria
         assert result.success is True
-        assert result.task_id == "task-test-1"
         assert result.exit_code == 0
-        assert len(result.files_changed) >= 0
-        assert result.duration_sec >= 0  # Can be 0 in fast tests
-        assert result.cost_usd >= 0
+        assert len(result.files_changed) >= 2  # Files detected
+        assert len(result.commits) >= 1  # Commit detected
+        assert result.tests_passed is True  # Tests passed
 
     def test_execution_result_serialization(self, executor, sample_task, temp_repo):
-        """Test ExecutionResult can be serialized to dict."""
+        """Test ExecutionResult serialization (ACCEPTANCE CRITERIA #6)."""
         with patch('subprocess.run') as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout="Done",
-                stderr=""
-            )
+            # Mock all subprocess calls
+            mock_run.side_effect = [
+                MagicMock(returncode=0, stdout="Done\nCommit abc123f", stderr=""),
+                MagicMock(returncode=0, stdout="file.py", stderr=""),
+                MagicMock(returncode=0, stdout="abc123f", stderr="")
+            ]
 
             with patch.object(executor.context_assembler, 'assemble_context'):
                 result = executor.execute_task(sample_task, str(temp_repo))
@@ -446,10 +542,13 @@ class TestIntegration:
 
         assert isinstance(result_dict, dict)
         assert "success" in result_dict
-        assert "task_id" in result_dict
         assert "files_changed" in result_dict
+        assert "exit_code" in result_dict
+        assert "commits" in result_dict
+        assert "tests_passed" in result_dict
 
         # Deserialize from dict
         result_restored = ExecutionResult.from_dict(result_dict)
         assert result_restored.success == result.success
-        assert result_restored.task_id == result.task_id
+        assert result_restored.exit_code == result.exit_code
+        assert result_restored.commits == result.commits

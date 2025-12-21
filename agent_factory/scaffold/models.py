@@ -165,31 +165,50 @@ class ExecutionResult:
     """Result of Claude Code CLI execution.
 
     Contains detailed execution information including success status,
-    files changed, output, errors, cost, duration, and enhanced success
-    indicators (git commit created, tests passed).
+    files changed, output, errors, exit code, commits, and test results.
 
     Attributes:
         success: Whether execution completed successfully
         files_changed: List of file paths modified during execution
         output: stdout from Claude Code CLI
         error: stderr or error message if execution failed
-        cost: Estimated API cost in USD
-        duration_sec: Execution time in seconds
-        commit_created: Whether a git commit was created (detected via git log)
+        exit_code: Process exit code from Claude Code CLI
+        commits: List of git commit SHAs created during execution
         tests_passed: Test result status (True=passed, False=failed, None=not run)
+        task_id: Task identifier for tracking
+        duration_sec: Execution time in seconds
+        cost_usd: Estimated API cost in USD
     """
     success: bool
     files_changed: List[str]
     output: str
     error: Optional[str] = None
-    cost: float = 0.0
-    duration_sec: float = 0.0
-    commit_created: bool = False
+    exit_code: int = 0
+    commits: List[str] = None
     tests_passed: Optional[bool] = None
+    task_id: str = "unknown"
+    duration_sec: float = 0.0
+    cost_usd: float = 0.0
+
+    def __post_init__(self):
+        """Initialize mutable defaults."""
+        if self.commits is None:
+            self.commits = []
 
     def to_dict(self) -> dict:
-        """Convert to dictionary for JSON serialization and backwards compatibility."""
-        return asdict(self)
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "success": self.success,
+            "files_changed": self.files_changed,
+            "output": self.output,
+            "error": self.error,
+            "exit_code": self.exit_code,
+            "commits": self.commits,
+            "tests_passed": self.tests_passed,
+            "task_id": self.task_id,
+            "duration_sec": self.duration_sec,
+            "cost_usd": self.cost_usd
+        }
 
     @classmethod
     def from_dict(cls, data: dict) -> "ExecutionResult":
@@ -199,8 +218,10 @@ class ExecutionResult:
             files_changed=data["files_changed"],
             output=data["output"],
             error=data.get("error"),
-            cost=data.get("cost", 0.0),
+            exit_code=data.get("exit_code", 0),
+            commits=data.get("commits", []),
+            tests_passed=data.get("tests_passed"),
+            task_id=data.get("task_id", "unknown"),
             duration_sec=data.get("duration_sec", 0.0),
-            commit_created=data.get("commit_created", False),
-            tests_passed=data.get("tests_passed")
+            cost_usd=data.get("cost_usd", 0.0)
         )
