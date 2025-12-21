@@ -4,14 +4,14 @@ title: 'BUILD: RIVET Pro Phase 5 - Research Pipeline'
 status: In Progress
 assignee: []
 created_date: '2025-12-17 07:31'
-updated_date: '2025-12-17 21:32'
+updated_date: '2025-12-20 23:54'
 labels:
   - build
   - rivet-pro
   - research
 dependencies: []
 priority: medium
-ordinal: 2000
+ordinal: 4000
 ---
 
 ## Description
