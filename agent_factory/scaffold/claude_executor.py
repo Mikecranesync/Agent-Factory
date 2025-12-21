@@ -91,6 +91,7 @@ class ClaudeExecutor:
             # Execute Claude Code CLI
             output, exit_code = self._invoke_claude_cli(context, worktree_path)
             duration_sec = time.time() - start_time
+            cost_usd = self._estimate_cost(output)
 
             # Parse results
             files_changed = self._extract_files_changed(output, worktree_path)
@@ -106,7 +107,10 @@ class ClaudeExecutor:
                 error=error,
                 exit_code=exit_code,
                 commits=commits,
-                tests_passed=tests_passed
+                tests_passed=tests_passed,
+                task_id=task_id,
+                duration_sec=duration_sec,
+                cost_usd=cost_usd
             )
 
             logger.info(
@@ -118,6 +122,7 @@ class ClaudeExecutor:
             return result
 
         except subprocess.TimeoutExpired:
+            duration_sec = time.time() - start_time
             error = f"Execution timeout after {self.timeout_sec}s"
             logger.error(f"Task {task_id}: {error}")
 
@@ -128,10 +133,14 @@ class ClaudeExecutor:
                 error=error,
                 exit_code=-1,
                 commits=[],
-                tests_passed=None
+                tests_passed=None,
+                task_id=task_id,
+                duration_sec=duration_sec,
+                cost_usd=0.0
             )
 
         except Exception as e:
+            duration_sec = time.time() - start_time
             error = f"Execution failed: {str(e)}"
             logger.exception(f"Task {task_id}: {error}")
 
@@ -142,7 +151,10 @@ class ClaudeExecutor:
                 error=error,
                 exit_code=-1,
                 commits=[],
-                tests_passed=None
+                tests_passed=None,
+                task_id=task_id,
+                duration_sec=duration_sec,
+                cost_usd=0.0
             )
 
     def _invoke_claude_cli(
