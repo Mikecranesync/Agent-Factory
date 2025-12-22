@@ -47,7 +47,7 @@ class KBCoverageEvaluator:
             # Create intent from request
             intent = RivetIntent(
                 vendor=vendor,
-                equipment_type=EquipmentType.GENERIC,  # Could be parsed from request
+                equipment_type=EquipmentType.UNKNOWN,  # Could be parsed from request
                 symptom=request.text or "",
                 raw_summary=request.text or "",
                 context_source="text_only",
