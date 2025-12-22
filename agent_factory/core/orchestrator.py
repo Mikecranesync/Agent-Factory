@@ -21,6 +21,7 @@ from agent_factory.routers.vendor_detector import VendorDetector
 from agent_factory.routers.kb_evaluator import KBCoverageEvaluator
 from agent_factory.llm.router import LLMRouter
 from agent_factory.llm.types import LLMConfig, LLMProvider, LLMResponse
+from agent_factory.core.kb_gap_logger import KBGapLogger
 import logging
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,15 @@ class RivetOrchestrator:
             enable_fallback=True,
             enable_cache=False
         )
+
+        # Initialize KB gap logger (Phase 1: KB gap tracking)
+        self.kb_gap_logger = None
+        if rag_layer:
+            try:
+                self.kb_gap_logger = KBGapLogger(db=rag_layer)
+                logger.info("KB gap logger initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize KB gap logger: {e}")
 
         # Routing statistics
         self._route_counts: Dict[RouteType, int] = {
@@ -300,6 +310,7 @@ class RivetOrchestrator:
         """Route C: No KB coverage → Groq LLM fallback.
 
         NEW (2025-12-22): Uses Groq instead of hardcoded message.
+        NEW (2025-12-22): Logs KB gap for tracking missing content.
 
         Args:
             request: User query request
@@ -308,11 +319,29 @@ class RivetOrchestrator:
         Returns:
             RivetResponse with LLM-generated answer or hardcoded fallback
         """
+        vendor = decision.vendor_detection.vendor if decision.vendor_detection else VendorType.GENERIC
+
+        # Log KB gap (Phase 1: KB gap tracking)
+        gap_id = None
+        if self.kb_gap_logger:
+            gap_id = self.kb_gap_logger.log_gap(
+                query=request.text or "",
+                intent=decision.intent,
+                search_filters={
+                    "vendor": vendor.value,
+                    "equipment": decision.intent.equipment_type.value if decision.intent.equipment_type else None,
+                    "symptom": decision.intent.symptom
+                },
+                user_id=request.user_id
+            )
+            if gap_id > 0:
+                logger.info(f"Logged KB gap: gap_id={gap_id}, query='{request.text[:50] if request.text else ''}...'")
+
         # Generate LLM response
         response_text, confidence = self._generate_llm_response(
             query=request.text or "",
             route_type=RouteType.ROUTE_C,
-            vendor=decision.vendor_detection.vendor
+            vendor=vendor
         )
 
         return RivetResponse(
