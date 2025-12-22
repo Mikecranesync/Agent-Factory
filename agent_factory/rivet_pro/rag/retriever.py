@@ -132,12 +132,12 @@ def search_docs(
 
         # Add vendor filter
         if "vendor" in filters:
-            where_clauses.append(f"vendor = ${len(params) + 1}")
+            where_clauses.append("vendor = %s")
             params.append(filters["vendor"])
 
         # Add equipment type filter
         if "equipment_type" in filters:
-            where_clauses.append(f"equipment_type = ${len(params) + 1}")
+            where_clauses.append("equipment_type = %s")
             params.append(filters["equipment_type"])
 
         # Add text search (simple keyword matching for now)
@@ -145,9 +145,12 @@ def search_docs(
             # Use OR condition for keywords
             keyword_conditions = []
             for keyword in keywords[:5]:  # Limit to top 5 keywords
-                params.append(f"%{keyword}%")
+                keyword_param = f"%{keyword}%"
+                params.append(keyword_param)
+                params.append(keyword_param)
+                params.append(keyword_param)
                 keyword_conditions.append(
-                    f"(title ILIKE ${len(params)} OR summary ILIKE ${len(params)} OR content ILIKE ${len(params)})"
+                    "(title ILIKE %s OR summary ILIKE %s OR content ILIKE %s)"
                 )
             if keyword_conditions:
                 where_clauses.append(f"({' OR '.join(keyword_conditions)})")
