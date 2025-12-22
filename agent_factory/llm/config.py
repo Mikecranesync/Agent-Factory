@@ -191,6 +191,28 @@ MODEL_REGISTRY: Dict[str, ModelInfo] = {
         supports_streaming=True,
         supports_function_calling=False
     ),
+
+    # Groq Models (Free tier with rate limits)
+    "llama-3.1-70b-versatile": ModelInfo(
+        provider=LLMProvider.GROQ,
+        model_name="llama-3.1-70b-versatile",
+        input_cost_per_1k=0.0,
+        output_cost_per_1k=0.0,
+        context_window=131072,
+        capability=ModelCapability.COMPLEX,
+        supports_streaming=True,
+        supports_function_calling=True
+    ),
+    "llama-3.1-8b-instant": ModelInfo(
+        provider=LLMProvider.GROQ,
+        model_name="llama-3.1-8b-instant",
+        input_cost_per_1k=0.0,
+        output_cost_per_1k=0.0,
+        context_window=131072,
+        capability=ModelCapability.MODERATE,
+        supports_streaming=True,
+        supports_function_calling=True
+    ),
 }
 
 
@@ -200,6 +222,7 @@ DEFAULT_MODELS: Dict[LLMProvider, str] = {
     LLMProvider.ANTHROPIC: "claude-3-haiku-20240307",
     LLMProvider.GOOGLE: "gemini-pro",
     LLMProvider.OLLAMA: "llama3",
+    LLMProvider.GROQ: "llama-3.1-70b-versatile",
 }
 
 
@@ -217,12 +240,14 @@ ROUTING_TIERS: Dict[ModelCapability, List[str]] = {
     ModelCapability.MODERATE: [
         "llama3",                    # Free (local)
         "gemini-2.0-flash",         # $0.0001 input (best cloud option!)
+        "llama-3.1-8b-instant",     # Free (Groq)
         "gpt-4o-mini",              # $0.00015 input
         "claude-3-haiku-20240307",  # $0.00025 input
         "gemini-pro",                # $0.0005 input
         "claude-3-sonnet-20240229", # $0.003 input
     ],
     ModelCapability.COMPLEX: [
+        "llama-3.1-70b-versatile",  # Free (Groq)
         "gpt-4o-mini",              # $0.00015 input
         "gemini-2.5-pro",           # $0.00125 input (≤200K context)
         "gemini-1.5-pro",           # $0.00125 input (≤200K context)

@@ -28,6 +28,7 @@ class LLMProvider(str, Enum):
     ANTHROPIC = "anthropic"
     GOOGLE = "google"
     OLLAMA = "ollama"
+    GROQ = "groq"
 
 
 class ModelCapability(str, Enum):
