@@ -4,7 +4,7 @@ Pydantic models for routing decisions, vendor detection, and KB coverage evaluat
 """
 
 from enum import Enum
-from typing import Optional
+from typing import Optional, List, Any
 from pydantic import BaseModel, Field
 
 
@@ -50,6 +50,10 @@ class KBCoverage(BaseModel):
         le=1.0,
         description="Confidence in coverage classification"
     )
+    retrieved_docs: List[Any] = Field(
+        default_factory=list,
+        description="Retrieved KB documents (RetrievedDoc objects from RAG layer)"
+    )
 
     class Config:
         json_schema_extra = {
@@ -57,7 +61,8 @@ class KBCoverage(BaseModel):
                 "level": "strong",
                 "atom_count": 12,
                 "avg_relevance": 0.85,
-                "confidence": 0.92
+                "confidence": 0.92,
+                "retrieved_docs": []
             }
         }
 

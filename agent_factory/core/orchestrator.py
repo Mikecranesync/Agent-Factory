@@ -8,6 +8,7 @@ Routes queries based on vendor detection and KB coverage evaluation:
 """
 
 from typing import Optional, Dict
+import asyncio
 from agent_factory.rivet_pro.models import RivetRequest, RivetResponse, EquipmentType, AgentID, RouteType as ModelRouteType
 from agent_factory.schemas.routing import (
     VendorType,
@@ -22,17 +23,16 @@ from agent_factory.routers.kb_evaluator import KBCoverageEvaluator
 from agent_factory.llm.router import LLMRouter
 from agent_factory.llm.types import LLMConfig, LLMProvider, LLMResponse
 from agent_factory.core.kb_gap_logger import KBGapLogger
+from agent_factory.core.gap_detector import GapDetector
 import logging
 
 logger = logging.getLogger(__name__)
 
-# TODO: Replace with real SME agents when Phase 3 (task-3.1 through task-3.4) is complete
-from agent_factory.rivet_pro.agents.mock_agents import (
-    MockSiemensAgent,
-    MockRockwellAgent,
-    MockGenericAgent,
-    MockSafetyAgent,
-)
+# Phase 3 SME Agents - PRODUCTION (replaced mocks on 2025-12-23)
+from agent_factory.rivet_pro.agents.siemens_agent import SiemensAgent
+from agent_factory.rivet_pro.agents.rockwell_agent import RockwellAgent
+from agent_factory.rivet_pro.agents.generic_agent import GenericAgent
+from agent_factory.rivet_pro.agents.safety_agent import SafetyAgent
 
 
 class RivetOrchestrator:
@@ -62,12 +62,15 @@ class RivetOrchestrator:
 
         # Initialize KB gap logger (Phase 1: KB gap tracking)
         self.kb_gap_logger = None
+        # Initialize gap detector (Phase 2: Auto-trigger ingestion)
+        self.gap_detector = None
         if rag_layer:
             try:
                 self.kb_gap_logger = KBGapLogger(db=rag_layer)
-                logger.info("KB gap logger initialized")
+                self.gap_detector = GapDetector(kb_evaluator=self.kb_evaluator)
+                logger.info("KB gap logger and gap detector initialized")
             except Exception as e:
-                logger.warning(f"Failed to initialize KB gap logger: {e}")
+                logger.warning(f"Failed to initialize KB gap systems: {e}")
 
         # Routing statistics
         self._route_counts: Dict[RouteType, int] = {
@@ -80,20 +83,20 @@ class RivetOrchestrator:
     def _load_sme_agents(self) -> Dict[VendorType, object]:
         """Load SME agents for each vendor type.
 
-        TODO: Replace with real agents when Phase 3 complete:
-        - task-3.1: SiemensAgent
-        - task-3.2: RockwellAgent
-        - task-3.3: GenericAgent
-        - task-3.4: SafetyAgent
+        Phase 3 COMPLETE (2025-12-23):
+        - SiemensAgent: Specialized for Siemens equipment
+        - RockwellAgent: Specialized for Allen-Bradley equipment
+        - GenericAgent: Cross-vendor industrial automation
+        - SafetyAgent: Safety systems and standards
 
         Returns:
             Dictionary mapping VendorType to agent instances
         """
         return {
-            VendorType.SIEMENS: MockSiemensAgent(),
-            VendorType.ROCKWELL: MockRockwellAgent(),
-            VendorType.GENERIC: MockGenericAgent(),
-            VendorType.SAFETY: MockSafetyAgent(),
+            VendorType.SIEMENS: SiemensAgent(llm_router=self.llm_router),
+            VendorType.ROCKWELL: RockwellAgent(llm_router=self.llm_router),
+            VendorType.GENERIC: GenericAgent(llm_router=self.llm_router),
+            VendorType.SAFETY: SafetyAgent(llm_router=self.llm_router),
         }
 
     async def route_query(self, request: RivetRequest) -> RivetResponse:
@@ -261,8 +264,8 @@ class RivetOrchestrator:
         vendor = decision.vendor_detection.vendor
         agent = self.sme_agents[vendor]
 
-        # Get answer from SME agent
-        response = await agent.handle_query(request)
+        # Get answer from SME agent with KB coverage
+        response = await agent.handle_query(request, decision.kb_coverage)
 
         # Update response with routing metadata
         response.route_taken = self._get_model_route_type(RouteType.ROUTE_A)
@@ -288,8 +291,8 @@ class RivetOrchestrator:
         vendor = decision.vendor_detection.vendor
         agent = self.sme_agents[vendor]
 
-        # Get answer from SME agent
-        response = await agent.handle_query(request)
+        # Get answer from SME agent with KB coverage
+        response = await agent.handle_query(request, decision.kb_coverage)
 
         # Update response with routing metadata
         response.route_taken = self._get_model_route_type(RouteType.ROUTE_B)
@@ -307,24 +310,74 @@ class RivetOrchestrator:
     async def _route_c_no_kb(
         self, request: RivetRequest, decision: RoutingDecision
     ) -> RivetResponse:
-        """Route C: No KB coverage → Groq LLM fallback.
+        """Route C: No KB coverage → Gap detection + LLM fallback + Ingestion trigger.
 
         NEW (2025-12-22): Uses Groq instead of hardcoded message.
         NEW (2025-12-22): Logs KB gap for tracking missing content.
+        NEW (2025-12-23): Gap detector analyzes query and triggers ingestion.
 
         Args:
             request: User query request
             decision: Routing decision with vendor and coverage info
 
         Returns:
-            RivetResponse with LLM-generated answer or hardcoded fallback
+            RivetResponse with LLM-generated answer + ingestion trigger
         """
         vendor = decision.vendor_detection.vendor if decision.vendor_detection else VendorType.GENERIC
 
-        # Note: KB gap logging skipped in Route C because:
-        # 1. We already know there's no KB coverage (that's why we're in Route C)
-        # 2. RoutingDecision doesn't contain parsed intent data
-        # 3. Gap is implicit - no need to log explicitly
+        # PHASE 2: Knowledge Gap Detection & Ingestion Trigger
+        ingestion_trigger = None
+        if self.gap_detector and self.kb_gap_logger:
+            try:
+                # Map routing VendorType to RivetIntent VendorType
+                from agent_factory.rivet_pro.models import VendorType as RivetVendorType
+                vendor_map = {
+                    VendorType.SIEMENS: RivetVendorType.SIEMENS,
+                    VendorType.ROCKWELL: RivetVendorType.ROCKWELL,
+                    VendorType.GENERIC: RivetVendorType.GENERIC,
+                    VendorType.SAFETY: RivetVendorType.UNKNOWN,
+                }
+                rivet_vendor = vendor_map.get(vendor, RivetVendorType.UNKNOWN)
+
+                # Create RivetIntent for gap analysis
+                from agent_factory.rivet_pro.models import RivetIntent, KBCoverage as RivetKBCoverage
+                intent = RivetIntent(
+                    vendor=rivet_vendor,
+                    equipment_type=EquipmentType.UNKNOWN,  # Could parse from request
+                    symptom=request.text or "",
+                    raw_summary=request.text or "",
+                    context_source="text_only",
+                    confidence=0.8,
+                    kb_coverage=RivetKBCoverage.NONE
+                )
+
+                # Analyze query for knowledge gaps
+                ingestion_trigger = self.gap_detector.analyze_query(
+                    request=request,
+                    intent=intent,
+                    kb_coverage=decision.kb_coverage.level
+                )
+
+                # Log gap to database for tracking
+                if ingestion_trigger:
+                    gap_id = self.kb_gap_logger.log_gap(
+                        query=request.text or "",
+                        intent=intent,
+                        search_filters={
+                            "vendor": vendor.value,
+                            "kb_coverage": decision.kb_coverage.level.value
+                        },
+                        user_id=request.user_id
+                    )
+                    ingestion_trigger["gap_id"] = gap_id
+                    logger.info(
+                        f"Ingestion trigger generated: gap_id={gap_id}, "
+                        f"priority={ingestion_trigger['priority']}, "
+                        f"equipment={ingestion_trigger['equipment_identified']}"
+                    )
+
+            except Exception as e:
+                logger.error(f"Failed to generate ingestion trigger: {e}", exc_info=True)
 
         # Generate LLM response
         response_text, confidence = self._generate_llm_response(
@@ -333,13 +386,23 @@ class RivetOrchestrator:
             vendor=vendor
         )
 
+        # Append ingestion trigger marker to response (if generated)
+        if ingestion_trigger:
+            trigger_display = self.gap_detector.format_trigger_for_display(ingestion_trigger)
+            response_text += trigger_display
+
+            # PHASE 2: Spawn research pipeline in background (async, non-blocking)
+            asyncio.create_task(
+                self._trigger_research_async(ingestion_trigger, intent)
+            )
+
         return RivetResponse(
             text=response_text,
             agent_id=self._get_agent_id(decision.vendor_detection.vendor),
             route_taken=self._get_model_route_type(RouteType.ROUTE_C),
             confidence=confidence,
             requires_followup=True,
-            research_triggered=True,
+            research_triggered=bool(ingestion_trigger),
             trace={
                 "routing_decision": decision.reasoning,
                 "route": "C",
@@ -347,6 +410,7 @@ class RivetOrchestrator:
                 "kb_coverage": decision.kb_coverage.level.value,
                 "llm_fallback": True,
                 "llm_generated": confidence > 0.0,
+                "ingestion_trigger": ingestion_trigger if ingestion_trigger else None,
             }
         )
 

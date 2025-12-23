@@ -16,11 +16,12 @@ class MockSMEAgent:
         self.agent_name = agent_name
         self.agent_id = agent_id
 
-    async def handle_query(self, request: RivetRequest) -> RivetResponse:
+    async def handle_query(self, request: RivetRequest, kb_coverage=None) -> RivetResponse:
         """Generate mock response for testing.
 
         Args:
             request: User query request
+            kb_coverage: KB coverage with retrieved documents (ignored in mock)
 
         Returns:
             Mock RivetResponse

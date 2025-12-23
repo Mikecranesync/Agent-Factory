@@ -91,7 +91,8 @@ class KBCoverageEvaluator:
                 level=level,
                 atom_count=atom_count,
                 avg_relevance=avg_relevance,
-                confidence=confidence
+                confidence=confidence,
+                retrieved_docs=docs  # Include actual KB documents for SME agents
             )
 
         except ImportError:
@@ -184,7 +185,8 @@ class KBCoverageEvaluator:
                 level=CoverageLevel.STRONG,
                 atom_count=12,
                 avg_relevance=0.85,
-                confidence=0.90
+                confidence=0.90,
+                retrieved_docs=[]  # Mock mode - no real docs
             )
         elif query_len >= 50:
             # Medium query → thin coverage (50-100 chars)
@@ -192,7 +194,8 @@ class KBCoverageEvaluator:
                 level=CoverageLevel.THIN,
                 atom_count=5,
                 avg_relevance=0.55,
-                confidence=0.70
+                confidence=0.70,
+                retrieved_docs=[]  # Mock mode - no real docs
             )
         elif "?" in query_text and query_len < 20:
             # Very short AND has question mark → unclear intent
@@ -200,7 +203,8 @@ class KBCoverageEvaluator:
                 level=CoverageLevel.UNCLEAR,
                 atom_count=1,
                 avg_relevance=0.30,
-                confidence=0.40
+                confidence=0.40,
+                retrieved_docs=[]  # Mock mode - no real docs
             )
         else:
             # Short queries without "?" → no coverage
@@ -208,7 +212,8 @@ class KBCoverageEvaluator:
                 level=CoverageLevel.NONE,
                 atom_count=2,
                 avg_relevance=0.35,
-                confidence=0.50
+                confidence=0.50,
+                retrieved_docs=[]  # Mock mode - no real docs
             )
 
     def is_strong_coverage(self, coverage: KBCoverage) -> bool:
