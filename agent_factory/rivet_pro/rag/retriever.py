@@ -165,7 +165,6 @@ def search_docs(
                 atom_type,
                 manufacturer,
                 source_document as source,
-                page_number,
                 created_at,
                 0.8 as similarity  -- Placeholder similarity score
             FROM knowledge_atoms
@@ -193,9 +192,9 @@ def search_docs(
                 vendor=row[5],  # manufacturer from DB
                 equipment_type="unknown",  # Column doesn't exist in schema yet
                 source=row[6],
-                page_number=row[7],
-                created_at=row[8],
-                similarity=row[9]
+                page_number=None,  # Column doesn't exist in schema (source_pages array used instead)
+                created_at=row[7],
+                similarity=row[8]
             )
             docs.append(doc)
 
