@@ -9,6 +9,7 @@ import logging
 import tempfile
 import base64
 import json
+import time
 from pathlib import Path
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -29,6 +30,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Import orchestrator
 from agent_factory.core.orchestrator import RivetOrchestrator
+from agent_factory.core.trace_logger import RequestTrace
 from agent_factory.rivet_pro.models import create_text_request, ChannelType, RouteType
 from agent_factory.integrations.telegram.formatters import ResponseFormatter
 
@@ -73,6 +75,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not query:
         return
 
+    # Start trace
+    trace = RequestTrace(
+        message_type="text",
+        user_id=str(user_id),
+        username=update.effective_user.username,
+        content=query
+    )
+    trace.event("INPUT_RECEIVED")
+
     logger.info(f"[{user_id}] Query: {query[:50]}...")
 
     if not orchestrator:
@@ -88,7 +99,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             channel=ChannelType.TELEGRAM
         )
 
+        # Time the routing
+        route_start = time.time()
         result = await orchestrator.route_query(request)
+        trace.timing("routing", int((time.time() - route_start) * 1000))
+
+        if result and result.route_taken:
+            trace.event("ROUTE_DECISION", route=result.route_taken.value, confidence=result.confidence)
 
         if result and result.text:
             response = result.text
@@ -156,6 +173,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await update.message.reply_text(escaped_response[i:i+4000], parse_mode="Markdown")
                 else:
                     await update.message.reply_text(escaped_response, parse_mode="Markdown")
+
+                trace.event("RESPONSE_SENT", length=len(response))
+
             except BadRequest as parse_error:
                 logger.warning(f"Markdown parse error, sending as plain text: {parse_error}")
                 # Retry without Markdown
@@ -165,13 +185,43 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     await update.message.reply_text(response)
 
-            # Send debug trace to admin
-            await _send_admin_debug_message(context, user_id, query, result)
+                trace.event("RESPONSE_SENT", length=len(response))
+
+            # Send trace to admin (Message 2)
+            admin_message = trace.format_admin_message(
+                route=result.route_taken.value if result.route_taken else "unknown",
+                confidence=result.confidence or 0.0,
+                kb_atoms=len(result.cited_documents) if result.cited_documents else 0,
+                llm_model=result.trace.get("llm_model") if result.trace else None,
+                kb_coverage="high" if result.confidence and result.confidence > 0.8 else "low"
+            )
+            try:
+                await context.bot.send_message(
+                    chat_id=8445149012,  # Admin chat ID
+                    text=admin_message,
+                    parse_mode="Markdown"
+                )
+            except Exception as admin_error:
+                logger.warning(f"Failed to send admin trace: {admin_error}")
         else:
             await update.message.reply_text("No response. Try rephrasing your question.")
 
     except Exception as e:
         logger.error(f"Error: {e}", exc_info=True)
+        trace.error(type(e).__name__, str(e), "handle_message")
+
+        # Send error trace to admin
+        error_message = trace.format_admin_message(
+            route="ERROR",
+            confidence=0,
+            kb_atoms=0,
+            error=str(e)[:200]
+        )
+        try:
+            await context.bot.send_message(chat_id=8445149012, text=error_message)
+        except:
+            pass
+
         await update.message.reply_text(f"Error: {str(e)[:200]}")
 
 
