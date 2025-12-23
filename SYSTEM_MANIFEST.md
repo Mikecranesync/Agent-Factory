@@ -95,6 +95,46 @@ journalctl -u orchestrator-bot -f
 
 ---
 
+## Pre-Deployment Validation
+
+Run these checks **BEFORE** every deployment to VPS:
+
+### 1. Schema Validation
+```bash
+poetry run python scripts/validate_schema.py
+```
+**Purpose:** Ensures retriever.py columns match database schema
+**Expected:** `[RESULT] Schema validation passed!`
+**If fails:** Update retriever.py to use existing columns
+
+### 2. Import Check
+```bash
+poetry run python -c "from agent_factory.core.orchestrator import RivetOrchestrator; print('OK')"
+```
+**Purpose:** Verifies no import errors
+**Expected:** `OK`
+**If fails:** Fix import errors before deploying
+
+### 3. Deploy to VPS
+```bash
+git push origin main
+ssh vps "cd /root/Agent-Factory && git pull && systemctl restart orchestrator-bot"
+```
+
+### 4. Verify Deployment
+```bash
+# Check service status
+ssh vps "systemctl status orchestrator-bot --no-pager"
+
+# Check for errors
+ssh vps "journalctl -u orchestrator-bot -n 30 --no-pager | grep -i error"
+
+# Check trace logs
+ssh vps "tail -20 /root/Agent-Factory/logs/traces.jsonl"
+```
+
+---
+
 ## Old Bot Setup (⚠️ LEGACY - NOT RUNNING)
 
 ### Files Exist But Unused
