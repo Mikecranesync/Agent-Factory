@@ -50,15 +50,17 @@ class RivetOrchestrator:
         """
         self.vendor_detector = VendorDetector()
         self.kb_evaluator = KBCoverageEvaluator(rag_layer=rag_layer)
-        self.sme_agents = self._load_sme_agents()
 
-        # Initialize LLM Router for Groq fallback
+        # Initialize LLM Router for Groq fallback (before SME agents)
         self.llm_router = LLMRouter(
             max_retries=3,
             retry_delay=1.0,
             enable_fallback=True,
             enable_cache=False
         )
+
+        # Load SME agents (requires llm_router to be initialized)
+        self.sme_agents = self._load_sme_agents()
 
         # Initialize KB gap logger (Phase 1: KB gap tracking)
         self.kb_gap_logger = None
@@ -550,6 +552,69 @@ class RivetOrchestrator:
                 )
 
             return (fallback, 0.0)
+
+    async def _trigger_research_async(
+        self, trigger: Dict, intent: "RivetIntent"
+    ) -> None:
+        """
+        Trigger research pipeline asynchronously (background task).
+
+        This method spawns the research pipeline in the background to avoid
+        blocking the user response. Results are logged but not returned to user.
+
+        Args:
+            trigger: Ingestion trigger dictionary from gap detector
+            intent: Parsed RivetIntent for research query
+        """
+        try:
+            logger.info(
+                f"Spawning research pipeline in background: "
+                f"gap_id={trigger.get('gap_id')}, "
+                f"equipment={trigger['equipment_identified']}, "
+                f"priority={trigger['priority']}"
+            )
+
+            # Import ResearchPipeline (lazy import to avoid circular dependencies)
+            from agent_factory.rivet_pro.research.research_pipeline import ResearchPipeline
+
+            # Create research pipeline with existing database manager
+            if hasattr(self, 'kb_evaluator') and hasattr(self.kb_evaluator, 'rag'):
+                pipeline = ResearchPipeline(db_manager=self.kb_evaluator.rag)
+            else:
+                from agent_factory.core.database_manager import DatabaseManager
+                pipeline = ResearchPipeline(db_manager=DatabaseManager())
+
+            # Run research pipeline in thread pool (it's synchronous)
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,  # Use default ThreadPoolExecutor
+                pipeline.run,
+                intent
+            )
+
+            # Log results
+            logger.info(
+                f"Research pipeline completed: "
+                f"gap_id={trigger.get('gap_id')}, "
+                f"status={result.status}, "
+                f"sources_found={len(result.sources_found)}, "
+                f"sources_queued={result.sources_queued}, "
+                f"estimated_completion={result.estimated_completion}"
+            )
+
+            # Update gap logger if research succeeded
+            if result.status == "success" and self.kb_gap_logger:
+                gap_id = trigger.get('gap_id')
+                if gap_id and gap_id > 0:
+                    # Note: Gap will be marked resolved after atoms are ingested
+                    # For now, just log that research was triggered
+                    logger.info(f"Research triggered for gap_id={gap_id}")
+
+        except Exception as e:
+            logger.error(
+                f"Failed to trigger research pipeline: {e}",
+                exc_info=True
+            )
 
     def get_routing_stats(self) -> Dict[str, int]:
         """Get routing statistics for monitoring.
