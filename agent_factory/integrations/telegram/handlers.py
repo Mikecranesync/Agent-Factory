@@ -312,6 +312,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if bot_instance.config.typing_indicator:
         await context.bot.send_chat_action(chat_id, ChatAction.TYPING)
 
+    # CHECK FOR ACTIVE MACHINE CONTEXT (Machine Library feature)
+    active_machine = context.user_data.get('active_machine')
+    if active_machine:
+        await _handle_machine_troubleshooting(update, context, active_machine, message_text)
+        return
+
     # Detect intent from natural language BEFORE routing to agent
     intent_type, parameter = IntentDetector.classify(message_text)
 
@@ -364,6 +370,110 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         error_msg = ResponseFormatter.format_error(e)
         await update.message.reply_text(
             f"{error_msg}\n\nPlease try rephrasing your question."
+        )
+
+
+# =============================================================================
+# Machine Library Troubleshooting Handler
+# =============================================================================
+
+
+async def _handle_machine_troubleshooting(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    machine: dict,
+    user_query: str
+):
+    """
+    Handle troubleshooting query with machine context enrichment.
+
+    When a user is in "troubleshooting mode" for a specific machine,
+    this handler enriches their query with machine details before
+    routing to RivetOrchestrator for intelligent troubleshooting.
+
+    Args:
+        update: Telegram update
+        context: Bot context
+        machine: Machine dict from library_db
+        user_query: User's raw query text
+    """
+    from .library_db import MachineLibraryDB
+    from . import rivet_orchestrator_handler
+
+    chat_id = update.effective_chat.id
+
+    # Check for exit command
+    if user_query.lower().strip() == "/done":
+        context.user_data.pop('active_machine', None)
+        await update.message.reply_text(
+            "✅ Exited troubleshooting mode.\n\nUse /library to return to your machines.",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Enrich query with machine context
+    enriched_query = f"""Equipment: {machine.get('manufacturer') or 'Unknown'} {machine.get('model_number') or ''}
+Serial Number: {machine.get('serial_number') or 'Unknown'}
+Location: {machine.get('location') or 'Unknown'}
+Notes: {machine.get('notes') or 'None'}
+
+User Issue: {user_query}"""
+
+    # Update last_queried timestamp
+    try:
+        db = MachineLibraryDB()
+        db.update_machine_last_queried(machine['id'])
+    except Exception as e:
+        logger.warning(f"Failed to update last_queried for machine {machine['id']}: {e}")
+
+    # Show typing indicator
+    bot_instance = context.bot_data.get("bot_instance")
+    if bot_instance and bot_instance.config.typing_indicator:
+        await context.bot.send_chat_action(chat_id, ChatAction.TYPING)
+
+    # Send to RivetOrchestrator
+    try:
+        user_id = str(update.effective_user.id)
+        username = update.effective_user.username
+
+        # Create RivetRequest
+        request = rivet_orchestrator_handler.create_text_request(
+            user_id=f"telegram_{user_id}",
+            text=enriched_query,
+            channel=rivet_orchestrator_handler.ChannelType.TELEGRAM,
+            username=username
+        )
+
+        # Route query
+        response = await rivet_orchestrator_handler.orchestrator.route_query(request)
+
+        # Log to machine history
+        try:
+            db.add_query_history(
+                machine_id=machine['id'],
+                query_text=user_query,
+                response_summary=response.text[:500],
+                route_taken=response.route_taken
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log query history: {e}")
+
+        # Format and send response
+        formatted_text = rivet_orchestrator_handler._format_response(response)
+
+        # Add troubleshooting context indicator
+        header = f"🔧 **{machine['nickname']}** | Route {response.route_taken}\n\n"
+        formatted_text = header + formatted_text
+
+        await update.message.reply_text(formatted_text, parse_mode="Markdown")
+
+    except Exception as e:
+        logger.error(f"Error in machine troubleshooting: {e}", exc_info=True)
+        error_msg = ResponseFormatter.format_error(e)
+        await update.message.reply_text(
+            f"❌ Error processing troubleshooting query:\n\n{error_msg}\n\n"
+            "Type /done to exit troubleshooting mode.",
+            parse_mode="Markdown"
         )
 
 

@@ -36,6 +36,7 @@ from . import kb_handlers
 from . import fieldeye_handlers
 from . import management_handlers
 from . import rivet_orchestrator_handler
+from . import library
 
 
 class TelegramBot:
@@ -115,6 +116,11 @@ class TelegramBot:
 
         # RivetOrchestrator - Intelligent industrial maintenance troubleshooting
         self.app.add_handler(CommandHandler("rivet", rivet_orchestrator_handler.rivet_command))
+
+        # Machine Library - Personal equipment library for technicians
+        self.app.add_handler(CommandHandler("library", library.library_command))
+        self.app.add_handler(library.add_machine_handler)  # ConversationHandler for add flow
+        self.app.add_handler(CallbackQueryHandler(library.library_callback_router, pattern="^lib_"))
 
         # Field Eye commands
         self.app.add_handler(CommandHandler("fieldeye_upload", fieldeye_handlers.fieldeye_upload_handler))
