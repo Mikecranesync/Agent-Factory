@@ -15,14 +15,25 @@ from pathlib import Path
 from logging.handlers import RotatingFileHandler
 import uuid
 import time
+import os
+import sys
 
-# Paths
-LOG_DIR = Path("/root/Agent-Factory/logs")
+# Paths - environment-aware (VPS uses /root/Agent-Factory, local uses project root)
+if os.name == 'posix' and Path("/root/Agent-Factory").exists():
+    # VPS production environment
+    LOG_DIR = Path("/root/Agent-Factory/logs")
+else:
+    # Local development (Windows or other)
+    # Find project root (where pyproject.toml is located)
+    current_file = Path(__file__).resolve()
+    project_root = current_file.parent.parent.parent  # Go up to Agent Factory root
+    LOG_DIR = project_root / "logs"
+
 TRACE_FILE = LOG_DIR / "traces.jsonl"
 ERROR_FILE = LOG_DIR / "errors.jsonl"
 METRICS_FILE = LOG_DIR / "metrics.jsonl"
 
-LOG_DIR.mkdir(exist_ok=True)
+LOG_DIR.mkdir(exist_ok=True, parents=True)
 
 # Rotating file handlers (10MB max, 5 backups)
 trace_handler = RotatingFileHandler(TRACE_FILE, maxBytes=10_000_000, backupCount=5)

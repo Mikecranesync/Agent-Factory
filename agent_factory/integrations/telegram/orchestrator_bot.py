@@ -16,6 +16,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from telegram.error import BadRequest
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
+from langsmith import traceable
 
 load_dotenv()
 
@@ -66,7 +67,133 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# BATCH 1: Extracted functions with @traceable decorators
+
+@traceable(run_type="tool", project_name="rivet-ceo-bot", name="format_user_response")
+async def format_user_response(result, trace: RequestTrace) -> str:
+    """Format orchestrator result into user-facing message."""
+    response = result.text
+
+    if result.safety_warnings:
+        response += "\n\n**Safety:**\n"
+        for w in result.safety_warnings:
+            response += f"- {w}\n"
+
+    if result.suggested_actions:
+        response += "\n\n**Steps:**\n"
+        for i, action in enumerate(result.suggested_actions, 1):
+            response += f"{i}. {action}\n"
+
+    # Build sources section
+    response += "\n\n📚 **Sources:**\n"
+
+    # Check if KB atoms were used (cited_documents or Route A/B)
+    has_kb_sources = bool(result.cited_documents) or result.route_taken in [RouteType.ROUTE_A, RouteType.ROUTE_B]
+
+    if has_kb_sources:
+        # Show KB atom count and titles
+        if result.cited_documents:
+            kb_count = len(result.cited_documents)
+            response += f"Knowledge Base ({kb_count} matches):\n"
+            for doc in result.cited_documents[:3]:  # Top 3 atoms
+                title = doc.get("title", "Document")
+                response += f"  • {title}\n"
+        else:
+            response += "Knowledge Base (match found)\n"
+
+        # Also show manual links if available
+        if result.links:
+            response += "Referenced Manuals:\n"
+            for link in result.links[:2]:  # Limit to 2
+                response += f"  • {link}\n"
+
+    elif result.route_taken in [RouteType.ROUTE_C, RouteType.ROUTE_D]:
+        # LLM-generated (no KB match)
+        response += "AI Generated (no KB match)\n"
+        if result.research_triggered:
+            response += "  • Research pipeline used\n"
+    else:
+        # Fallback: show what we have
+        if result.links:
+            for link in result.links[:3]:
+                response += f"  • {link}\n"
+        else:
+            response += "AI Generated\n"
+
+    # Add route and confidence for transparency
+    route = result.route_taken.value if result.route_taken else "unknown"
+    conf = result.confidence or 0
+    response += f"\n\n_Route: {route} | Confidence: {conf:.0%}_"
+
+    return response
+
+
+@traceable(run_type="tool", project_name="rivet-ceo-bot", name="send_to_user")
+async def send_to_user(update: Update, response: str, trace: RequestTrace):
+    """Send formatted response to user via Telegram."""
+    # Escape Markdown special characters before sending
+    escaped_response = ResponseFormatter.escape_markdown(response)
+
+    # Send response (try Markdown, fall back to plain text if parsing fails)
+    try:
+        if len(escaped_response) > 4000:
+            for i in range(0, len(escaped_response), 4000):
+                await update.message.reply_text(escaped_response[i:i+4000], parse_mode="Markdown")
+        else:
+            await update.message.reply_text(escaped_response, parse_mode="Markdown")
+
+        trace.event("RESPONSE_SENT", length=len(response))
+
+    except BadRequest as parse_error:
+        logger.warning(f"Markdown parse error, sending as plain text: {parse_error}")
+        # Retry without Markdown
+        if len(response) > 4000:
+            for i in range(0, len(response), 4000):
+                await update.message.reply_text(response[i:i+4000])
+        else:
+            await update.message.reply_text(response)
+
+        trace.event("RESPONSE_SENT", length=len(response))
+
+
+@traceable(run_type="tool", project_name="rivet-ceo-bot", name="send_admin_trace")
+async def send_admin_trace(context: ContextTypes.DEFAULT_TYPE, trace: RequestTrace, result):
+    """Send formatted trace to admin chat (8445149012)."""
+    admin_message = trace.format_admin_message(
+        route=result.route_taken.value if result.route_taken else "unknown",
+        confidence=result.confidence or 0.0,
+        kb_atoms=len(result.cited_documents) if result.cited_documents else 0,
+        llm_model=result.trace.get("llm_model") if result.trace else None,
+        kb_coverage="high" if result.confidence and result.confidence > 0.8 else "low"
+    )
+    try:
+        await context.bot.send_message(
+            chat_id=8445149012,  # Admin chat ID
+            text=admin_message,
+            parse_mode="Markdown"
+        )
+    except Exception as admin_error:
+        logger.warning(f"Failed to send admin trace: {admin_error}")
+
+
+@traceable(run_type="tool", project_name="rivet-ceo-bot", name="send_admin_error")
+async def send_admin_error(context: ContextTypes.DEFAULT_TYPE, trace: RequestTrace, error: str):
+    """Send error trace to admin."""
+    error_message = trace.format_admin_message(
+        route="ERROR",
+        confidence=0,
+        kb_atoms=0,
+        error=error[:200]
+    )
+    try:
+        await context.bot.send_message(chat_id=8445149012, text=error_message)
+    except:
+        pass
+
+
+@traceable(run_type="chain", project_name="rivet-ceo-bot", metadata={"component": "telegram_bot", "handler": "text"})
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Main text message handler - PARENT TRACE"""
     global orchestrator
 
     user_id = update.effective_user.id
@@ -75,7 +202,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not query:
         return
 
-    # Start trace
+    # Start RequestTrace (existing system - runs in parallel with LangSmith)
     trace = RequestTrace(
         message_type="text",
         user_id=str(user_id),
@@ -108,101 +235,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             trace.event("ROUTE_DECISION", route=result.route_taken.value, confidence=result.confidence)
 
         if result and result.text:
-            response = result.text
-
-            if result.safety_warnings:
-                response += "\n\n**Safety:**\n"
-                for w in result.safety_warnings:
-                    response += f"- {w}\n"
-
-            if result.suggested_actions:
-                response += "\n\n**Steps:**\n"
-                for i, action in enumerate(result.suggested_actions, 1):
-                    response += f"{i}. {action}\n"
-
-            # Build sources section
-            response += "\n\n📚 **Sources:**\n"
-
-            # Check if KB atoms were used (cited_documents or Route A/B)
-            has_kb_sources = bool(result.cited_documents) or result.route_taken in [RouteType.ROUTE_A, RouteType.ROUTE_B]
-
-            if has_kb_sources:
-                # Show KB atom count and titles
-                if result.cited_documents:
-                    kb_count = len(result.cited_documents)
-                    response += f"Knowledge Base ({kb_count} matches):\n"
-                    for doc in result.cited_documents[:3]:  # Top 3 atoms
-                        title = doc.get("title", "Document")
-                        response += f"  • {title}\n"
-                else:
-                    response += "Knowledge Base (match found)\n"
-
-                # Also show manual links if available
-                if result.links:
-                    response += "Referenced Manuals:\n"
-                    for link in result.links[:2]:  # Limit to 2
-                        response += f"  • {link}\n"
-
-            elif result.route_taken in [RouteType.ROUTE_C, RouteType.ROUTE_D]:
-                # LLM-generated (no KB match)
-                response += "AI Generated (no KB match)\n"
-                if result.research_triggered:
-                    response += "  • Research pipeline used\n"
-            else:
-                # Fallback: show what we have
-                if result.links:
-                    for link in result.links[:3]:
-                        response += f"  • {link}\n"
-                else:
-                    response += "AI Generated\n"
-
-            # Add route and confidence for transparency
-            route = result.route_taken.value if result.route_taken else "unknown"
-            conf = result.confidence or 0
-            response += f"\n\n_Route: {route} | Confidence: {conf:.0%}_"
-
-            # Debug info now sent to admin only (see _send_admin_debug_message)
-
-            # Escape Markdown special characters before sending
-            escaped_response = ResponseFormatter.escape_markdown(response)
-
-            # Send response (try Markdown, fall back to plain text if parsing fails)
-            try:
-                if len(escaped_response) > 4000:
-                    for i in range(0, len(escaped_response), 4000):
-                        await update.message.reply_text(escaped_response[i:i+4000], parse_mode="Markdown")
-                else:
-                    await update.message.reply_text(escaped_response, parse_mode="Markdown")
-
-                trace.event("RESPONSE_SENT", length=len(response))
-
-            except BadRequest as parse_error:
-                logger.warning(f"Markdown parse error, sending as plain text: {parse_error}")
-                # Retry without Markdown
-                if len(response) > 4000:
-                    for i in range(0, len(response), 4000):
-                        await update.message.reply_text(response[i:i+4000])
-                else:
-                    await update.message.reply_text(response)
-
-                trace.event("RESPONSE_SENT", length=len(response))
-
-            # Send trace to admin (Message 2)
-            admin_message = trace.format_admin_message(
-                route=result.route_taken.value if result.route_taken else "unknown",
-                confidence=result.confidence or 0.0,
-                kb_atoms=len(result.cited_documents) if result.cited_documents else 0,
-                llm_model=result.trace.get("llm_model") if result.trace else None,
-                kb_coverage="high" if result.confidence and result.confidence > 0.8 else "low"
-            )
-            try:
-                await context.bot.send_message(
-                    chat_id=8445149012,  # Admin chat ID
-                    text=admin_message,
-                    parse_mode="Markdown"
-                )
-            except Exception as admin_error:
-                logger.warning(f"Failed to send admin trace: {admin_error}")
+            # Use extracted functions (all traced)
+            response = await format_user_response(result, trace)
+            await send_to_user(update, response, trace)
+            await send_admin_trace(context, trace, result)
         else:
             await update.message.reply_text("No response. Try rephrasing your question.")
 
@@ -211,17 +247,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         trace.error(type(e).__name__, str(e), "handle_message")
 
         # Send error trace to admin
-        error_message = trace.format_admin_message(
-            route="ERROR",
-            confidence=0,
-            kb_atoms=0,
-            error=str(e)[:200]
-        )
-        try:
-            await context.bot.send_message(chat_id=8445149012, text=error_message)
-        except:
-            pass
-
+        await send_admin_error(context, trace, str(e))
         await update.message.reply_text(f"Error: {str(e)[:200]}")
 
 
