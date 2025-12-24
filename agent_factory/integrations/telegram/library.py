@@ -40,6 +40,7 @@ CB_HISTORY = "lib_hist_"       # lib_hist_{short_id}
 CB_DELETE = "lib_del_"         # lib_del_{short_id}
 CB_CONFIRM_DEL = "lib_cdel_"   # lib_cdel_{short_id}
 CB_ADD = "lib_add"
+CB_SAVE_OCR = "lib_save_ocr"   # Save from OCR extraction
 CB_BACK = "lib_back"
 CB_SKIP = "lib_skip"
 
@@ -108,7 +109,7 @@ async def library_callback_router(update: Update, context: ContextTypes.DEFAULT_
     """
     Route lib_* callbacks to specific handlers.
 
-    Handles: view, troubleshoot, history, delete, confirm delete, back
+    Handles: view, troubleshoot, history, delete, confirm delete, save from OCR, back
     """
     query = update.callback_query
     data = query.data
@@ -124,6 +125,8 @@ async def library_callback_router(update: Update, context: ContextTypes.DEFAULT_
             await _handle_delete_confirm(update, context)
         elif data.startswith(CB_CONFIRM_DEL):
             await _handle_delete_machine(update, context)
+        elif data == CB_SAVE_OCR:
+            await add_from_ocr(update, context)
         elif data == CB_BACK:
             await _handle_back_to_library(update, context)
         else:

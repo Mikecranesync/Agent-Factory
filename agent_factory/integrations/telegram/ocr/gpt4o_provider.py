@@ -42,16 +42,18 @@ IMPORTANT RULES:
 ❌ DON'T add units if not visible: "480" (wrong) vs "480V" (correct)
 ❌ DON'T guess model from logo alone: use null if text not readable
 ❌ DON'T invent serial numbers
+❌ DON'T extract fault codes from printed text on nameplates
 ✅ DO include units exactly as shown (V, A, HP, Hz)
 ✅ DO return null for fields not clearly visible
 ✅ DO preserve exact text formatting
+✅ DO ONLY extract fault_code from LED/LCD/7-segment DISPLAYS showing active errors
 
 RESPOND IN THIS JSON FORMAT:
 {
   "manufacturer": "exact company name or null",
   "model_number": "exact model/catalog number or null",
   "serial_number": "exact serial number or null",
-  "fault_code": "fault/error code if visible on display or null",
+  "fault_code": "ONLY from active LED/LCD display, NOT from printed nameplate, null otherwise",
   "other_text": "any other relevant text from nameplate"
 }
 
