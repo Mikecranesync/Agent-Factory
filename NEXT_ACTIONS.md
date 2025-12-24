@@ -2,14 +2,16 @@
 
 ## Recently Completed
 
-**✅ OCR Enhancement Project - All 5 Phases Deployed** (Commit: 80f4be2)
+**✅ OCR Enhancement Project - All 5 Phases Deployed** (Commit: 7bfc18d)
 - Phase 1: Dual OCR providers (GPT-4o primary, Gemini fallback)
 - Phase 2: KB model number filtering for precision matching
 - Phase 3: Auto-fill library from OCR (with "Save to Library" button)
 - Phase 4: Quality validation, normalization, confidence scoring
 - Phase 5: LangSmith tracing integration
-- **Status**: Deployed to VPS, bot running successfully
-- **Next**: User testing with photo upload to verify button appears
+- **CRITICAL FIX**: Replaced old GPT-4o Vision call with OCR Pipeline (AttributeError fixed)
+- **Status**: Deployed to VPS (22:28 UTC), bot running successfully, polling Telegram
+- **Logs Confirm**: OCR Pipeline initialized, GPT-4o provider active, 1964 KB atoms loaded
+- **Next**: User testing with photo upload to verify "Save to Library" button appears
 
 ## Immediate Next Step
 
