@@ -185,19 +185,6 @@ def search_docs(
         # Add text search with PostgreSQL full-text ranking
         search_query_tsquery = None
         if keywords:
-            # Use OR condition for keywords
-            keyword_conditions = []
-            for keyword in keywords[:5]:  # Limit to top 5 keywords
-                keyword_param = f"%{keyword}%"
-                params.append(keyword_param)
-                params.append(keyword_param)
-                params.append(keyword_param)
-                keyword_conditions.append(
-                    "(title ILIKE %s OR summary ILIKE %s OR content ILIKE %s)"
-                )
-            if keyword_conditions:
-                where_clauses.append(f"({' OR '.join(keyword_conditions)})")
-
             # Filter out English stop words before building ts_query
             stop_words = {
                 'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
@@ -211,6 +198,13 @@ def search_docs(
                 search_query_tsquery = " | ".join(filtered_keywords[:3])  # OR operator
             else:
                 search_query_tsquery = None
+
+            # Add tsquery filter to WHERE clause (replaces ILIKE - fixes ts_rank returning 0.0)
+            if search_query_tsquery:
+                where_clauses.append(
+                    "to_tsvector('english', title || ' ' || summary || ' ' || content) @@ to_tsquery('english', %s)"
+                )
+                params.append(search_query_tsquery)
 
         # Build complete query
         where_sql = " AND ".join(where_clauses) if where_clauses else "TRUE"
