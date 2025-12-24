@@ -24,6 +24,7 @@ from agent_factory.llm.router import LLMRouter
 from agent_factory.llm.types import LLMConfig, LLMProvider, LLMResponse
 from agent_factory.core.kb_gap_logger import KBGapLogger
 from agent_factory.core.gap_detector import GapDetector
+from agent_factory.core.performance import timed_operation, PerformanceTracker
 import logging
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,7 @@ class RivetOrchestrator:
             VendorType.SAFETY: SafetyAgent(llm_router=self.llm_router),
         }
 
+    @timed_operation("route_query_total")
     async def route_query(self, request: RivetRequest) -> RivetResponse:
         """Main routing logic - evaluates query and routes to appropriate handler.
 
@@ -309,6 +311,7 @@ class RivetOrchestrator:
 
         return response
 
+    @timed_operation("route_c_handler")
     async def _route_c_no_kb(
         self, request: RivetRequest, decision: RoutingDecision
     ) -> RivetResponse:
@@ -453,6 +456,7 @@ class RivetOrchestrator:
             }
         )
 
+    @timed_operation("llm_fallback")
     def _generate_llm_response(
         self,
         query: str,
@@ -553,6 +557,7 @@ class RivetOrchestrator:
 
             return (fallback, 0.0)
 
+    @timed_operation("research_trigger")
     async def _trigger_research_async(
         self, trigger: Dict, intent: "RivetIntent"
     ) -> None:
