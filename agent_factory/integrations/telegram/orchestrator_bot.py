@@ -17,6 +17,7 @@ from telegram.error import BadRequest
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from langsmith import traceable
+from agent_factory.integrations.telegram.ocr.pipeline import OCRPipeline
 
 load_dotenv()
 
@@ -40,6 +41,7 @@ from agent_factory.integrations.telegram.admin.kb_manager import KBManager
 orchestrator = None
 kb_manager = None
 openai_client = None
+ocr_pipeline = None
 
 
 async def get_atom_count() -> int:
@@ -379,12 +381,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     Workflow:
     1. Download photo from Telegram
-    2. Send to GPT-4o Vision for equipment info extraction
+    2. Use OCR Pipeline (GPT-4o + Gemini fallback) for equipment info extraction
     3. Build search query from extracted data
     4. Feed into orchestrator.route_query()
     5. Return troubleshooting response
     """
-    global orchestrator, openai_client
+    global orchestrator, ocr_pipeline
 
     user_id = update.effective_user.id
 
@@ -397,10 +399,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     trace.event("PHOTO_RECEIVED")
 
-    # Check if OpenAI Vision available
-    if not openai_client:
+    # Check if OCR Pipeline available
+    if not ocr_pipeline:
         await update.message.reply_text(
-            "❌ Photo OCR unavailable (OpenAI API key not configured)"
+            "❌ Photo OCR unavailable (OCR pipeline not initialized)"
         )
         return
 
@@ -429,95 +431,49 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             temp_image_path = temp_image.name
 
         try:
-            # Step 2: Encode as base64
+            # Step 2: Read image bytes
             with open(temp_image_path, "rb") as image_file:
-                image_data = base64.b64encode(image_file.read()).decode("utf-8")
+                image_bytes = image_file.read()
 
-            # Step 3: Send to GPT-4o Vision
+            # Step 3: Use OCR Pipeline (GPT-4o primary, Gemini fallback)
             ocr_start = time.time()
-            vision_response = await openai_client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": """This is an industrial equipment nameplate/label. Extract and return as JSON:
-{
-  "manufacturer": "",
-  "model_number": "",
-  "serial_number": "",
-  "fault_code": "" (if visible on display),
-  "other_text": "" (any other relevant text)
-}
-If you cannot read the image clearly, explain why."""
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{image_data}"
-                                }
-                            }
-                        ]
-                    }
-                ],
-                max_tokens=500
+            ocr_result = await ocr_pipeline.analyze_photo(image_bytes, user_id=str(user_id))
+            trace.timing("ocr", int((time.time() - ocr_start) * 1000))
+
+            logger.info(
+                f"[{user_id}] OCR result: manufacturer={ocr_result.manufacturer}, "
+                f"model={ocr_result.model_number}, confidence={ocr_result.confidence:.2f}, "
+                f"provider={ocr_result.provider}"
             )
 
-            ocr_result = vision_response.choices[0].message.content
-            trace.timing("ocr", int((time.time() - ocr_start) * 1000))
-            logger.info(f"[{user_id}] OCR result: {ocr_result[:200]}")
+            # Step 4: Extract data from OCRResult
+            manufacturer = ocr_result.manufacturer or ""
+            model = ocr_result.model_number or ""
+            fault_code = ocr_result.fault_code or ""
 
-            # Step 4: Parse JSON (or use raw text if JSON parsing fails)
-            try:
-                # Strip markdown code fences if present (GPT-4o sometimes wraps in ```json ... ```)
-                cleaned_ocr = ocr_result.strip()
-                if cleaned_ocr.startswith("```json"):
-                    cleaned_ocr = cleaned_ocr[7:]  # Remove ```json
-                elif cleaned_ocr.startswith("```"):
-                    cleaned_ocr = cleaned_ocr[3:]  # Remove ```
-                if cleaned_ocr.endswith("```"):
-                    cleaned_ocr = cleaned_ocr[:-3]  # Remove trailing ```
-                cleaned_ocr = cleaned_ocr.strip()
+            # Build search query
+            query_parts = []
+            if manufacturer:
+                query_parts.append(manufacturer)
+            if model:
+                query_parts.append(model)
+            if fault_code:
+                query_parts.append(f"fault code {fault_code}")
+            else:
+                query_parts.append("troubleshooting")
 
-                equipment_data = json.loads(cleaned_ocr)
-                manufacturer = equipment_data.get("manufacturer", "").strip()
-                model = equipment_data.get("model_number", "").strip()
-                fault_code = equipment_data.get("fault_code", "").strip()
-                other_text = equipment_data.get("other_text", "").strip()
+            search_query = " ".join(query_parts)
 
-                # Build search query
-                query_parts = []
-                if manufacturer:
-                    query_parts.append(manufacturer)
-                if model:
-                    query_parts.append(model)
-                if fault_code:
-                    query_parts.append(f"fault code {fault_code}")
-                else:
-                    query_parts.append("troubleshooting")
+            # Build display string
+            detected_info = []
+            if manufacturer:
+                detected_info.append(f"Manufacturer: {manufacturer}")
+            if model:
+                detected_info.append(f"Model: {model}")
+            if fault_code:
+                detected_info.append(f"Fault Code: {fault_code}")
 
-                search_query = " ".join(query_parts)
-
-                # Build display string
-                detected_info = []
-                if manufacturer:
-                    detected_info.append(f"Manufacturer: {manufacturer}")
-                if model:
-                    detected_info.append(f"Model: {model}")
-                if fault_code:
-                    detected_info.append(f"Fault Code: {fault_code}")
-
-                detected_str = "\n".join(detected_info) if detected_info else "Equipment detected"
-
-            except json.JSONDecodeError:
-                # Fallback: use raw OCR text as query
-                search_query = ocr_result
-                detected_str = "Equipment nameplate read"
-                manufacturer = ""
-                model = ""
-                fault_code = ""
+            detected_str = "\n".join(detected_info) if detected_info else "Equipment nameplate read"
 
             logger.info(f"[{user_id}] Search query: {search_query}")
             trace.event("OCR_COMPLETE", manufacturer=manufacturer, model=model, fault_code=fault_code)
@@ -722,6 +678,15 @@ async def post_init(app: Application):
         logger.info("OpenAI Vision API client initialized")
     else:
         logger.warning("OpenAI API key not set - photo OCR disabled")
+
+    # Initialize OCR Pipeline (dual provider: GPT-4o + Gemini)
+    global ocr_pipeline
+    try:
+        ocr_pipeline = OCRPipeline()
+        logger.info("OCR Pipeline initialized (GPT-4o + Gemini fallback)")
+    except Exception as e:
+        logger.error(f"Failed to initialize OCR Pipeline: {e}")
+        ocr_pipeline = None
 
 
 def main():
