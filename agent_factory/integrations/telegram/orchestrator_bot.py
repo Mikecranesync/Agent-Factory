@@ -723,12 +723,10 @@ async def post_init(app: Application):
     else:
         logger.warning("OpenAI API key not set - photo OCR disabled")
 
-    # Initialize KB Manager for admin commands
-    kb_manager = KBManager()
-    logger.info("KB Manager initialized")
-
 
 def main():
+    global kb_manager
+
     if not BOT_TOKEN:
         print("ERROR: ORCHESTRATOR_BOT_TOKEN not set in .env")
         return
@@ -737,6 +735,10 @@ def main():
     print("RivetCEO Bot Starting...")
     print(f"Bot: t.me/RivetCeo_bot")
     print("=" * 50)
+
+    # Initialize KB Manager before registering handlers
+    kb_manager = KBManager()
+    print("KB Manager initialized")
 
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
