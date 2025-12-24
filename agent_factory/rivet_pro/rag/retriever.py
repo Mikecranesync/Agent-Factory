@@ -92,7 +92,7 @@ class RetrievedDoc:
 )
 def search_docs(
     intent: RivetIntent,
-    config: Optional[RAGConfig] = None,
+    rag_config: Optional[RAGConfig] = None,
     db: Optional[DatabaseManager] = None,
     model_number: Optional[str] = None,
     part_number: Optional[str] = None
@@ -105,7 +105,7 @@ def search_docs(
 
     Args:
         intent: Parsed user intent with vendor/equipment/symptom info
-        config: RAG configuration (uses default if not provided)
+        rag_config: RAG configuration (uses default if not provided)
         db: DatabaseManager instance (creates new if not provided)
         model_number: Equipment model number from OCR (e.g., "G120C", "PowerFlex 525")
         part_number: Equipment part number from OCR (e.g., "6SL3244-0BB13-1PA0")
@@ -131,8 +131,8 @@ def search_docs(
         True
     """
     # Use default config if not provided
-    if config is None:
-        config = RAGConfig()
+    if rag_config is None:
+        rag_config = RAGConfig()
 
     # Use default DatabaseManager if not provided
     if db is None:
@@ -235,7 +235,7 @@ def search_docs(
                 FROM knowledge_atoms
                 WHERE {where_sql}
                 ORDER BY similarity DESC, created_at DESC
-                LIMIT {config.search.top_k}
+                LIMIT {rag_config.search.top_k}
             """
             params.append(search_query_tsquery)
         else:
@@ -255,7 +255,7 @@ def search_docs(
                 FROM knowledge_atoms
                 WHERE {where_sql}
                 ORDER BY created_at DESC
-                LIMIT {config.search.top_k}
+                LIMIT {rag_config.search.top_k}
             """
 
         # Execute query
@@ -363,8 +363,8 @@ def estimate_coverage(
         True
     """
     # Use default config if not provided
-    if config is None:
-        config = RAGConfig()
+    if rag_config is None:
+        rag_config = RAGConfig()
 
     # Search for relevant docs (with model filtering if provided)
     docs = search_docs(intent, config=config, db=db, model_number=model_number)
@@ -376,7 +376,7 @@ def estimate_coverage(
         avg_similarity = sum(doc.similarity for doc in docs) / len(docs)
 
     # Assess coverage using config thresholds
-    coverage = config.assess_coverage(
+    coverage = rag_config.assess_coverage(
         num_docs=len(docs),
         avg_similarity=avg_similarity
     )
