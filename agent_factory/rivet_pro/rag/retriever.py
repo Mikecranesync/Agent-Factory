@@ -73,18 +73,22 @@ class RetrievedDoc:
 def search_docs(
     intent: RivetIntent,
     config: Optional[RAGConfig] = None,
-    db: Optional[DatabaseManager] = None
+    db: Optional[DatabaseManager] = None,
+    model_number: Optional[str] = None,
+    part_number: Optional[str] = None
 ) -> List[RetrievedDoc]:
     """
     Search knowledge base for relevant documents.
 
-    Performs semantic search with vendor/equipment filtering and optional
-    hybrid keyword search. Returns top-k most relevant documents.
+    Performs keyword search with vendor/equipment/model filtering.
+    Returns top-k most relevant documents sorted by text relevance.
 
     Args:
         intent: Parsed user intent with vendor/equipment/symptom info
         config: RAG configuration (uses default if not provided)
         db: DatabaseManager instance (creates new if not provided)
+        model_number: Equipment model number from OCR (e.g., "G120C", "PowerFlex 525")
+        part_number: Equipment part number from OCR (e.g., "6SL3244-0BB13-1PA0")
 
     Returns:
         List of RetrievedDoc objects sorted by similarity (highest first)
@@ -100,7 +104,7 @@ def search_docs(
         ...     confidence=0.9,
         ...     kb_coverage="strong"
         ... )
-        >>> docs = search_docs(intent)
+        >>> docs = search_docs(intent, model_number="G120C")
         >>> len(docs)
         8
         >>> docs[0].similarity > 0.75
@@ -118,12 +122,13 @@ def search_docs(
     filters = build_filters(intent)
     keywords = build_keyword_filters(intent)
 
-    logger.info(f"Searching with filters: {filters}, keywords: {keywords[:5]}")
+    logger.info(
+        f"Searching with filters: {filters}, keywords: {keywords[:5]}, "
+        f"model_number: {model_number}, part_number: {part_number}"
+    )
 
     try:
-        # Get embedding for semantic search
-        # TODO: Generate embedding from raw_summary using OpenAI
-        # For now, use keyword search only
+        # Get search text from intent
         query_text = intent.raw_summary
 
         # Build SQL query with filters
@@ -135,10 +140,30 @@ def search_docs(
             where_clauses.append("manufacturer = %s")
             params.append(filters["manufacturer"])
 
+        # Add model number filter (normalized - remove hyphens/spaces)
+        if model_number:
+            # Normalize: "G-120C" -> "G120C", "S7 1200" -> "S71200"
+            normalized_model = model_number.replace("-", "").replace(" ", "").upper()
+            where_clauses.append(
+                "REPLACE(REPLACE(UPPER(product_family), '-', ''), ' ', '') LIKE %s"
+            )
+            params.append(f"%{normalized_model}%")
+            logger.info(f"Model filter applied: {model_number} (normalized: {normalized_model})")
+
+        # Add part number filter (exact match if provided)
+        if part_number:
+            where_clauses.append(
+                "(source_document ILIKE %s OR content ILIKE %s)"
+            )
+            part_pattern = f"%{part_number}%"
+            params.extend([part_pattern, part_pattern])
+            logger.info(f"Part number filter applied: {part_number}")
+
         # Note: equipment_type column does not exist in knowledge_atoms table
         # Filtering by equipment type removed until schema is updated
 
-        # Add text search (simple keyword matching for now)
+        # Add text search with PostgreSQL full-text ranking
+        search_query_tsquery = None
         if keywords:
             # Use OR condition for keywords
             keyword_conditions = []
@@ -153,26 +178,54 @@ def search_docs(
             if keyword_conditions:
                 where_clauses.append(f"({' OR '.join(keyword_conditions)})")
 
+            # Build ts_query for ranking (use first 3 keywords)
+            search_query_tsquery = " | ".join(keywords[:3])  # OR operator for ts_query
+
         # Build complete query
         where_sql = " AND ".join(where_clauses) if where_clauses else "TRUE"
 
-        sql = f"""
-            SELECT
-                atom_id,
-                title,
-                summary,
-                content,
-                atom_type,
-                manufacturer,
-                source_document as source,
-                source_pages,
-                created_at,
-                0.8 as similarity  -- Placeholder similarity score
-            FROM knowledge_atoms
-            WHERE {where_sql}
-            ORDER BY created_at DESC
-            LIMIT {config.search.top_k}
-        """
+        # Use ts_rank for text relevance scoring instead of hardcoded 0.8
+        if search_query_tsquery:
+            sql = f"""
+                SELECT
+                    atom_id,
+                    title,
+                    summary,
+                    content,
+                    atom_type,
+                    manufacturer,
+                    source_document as source,
+                    source_pages,
+                    created_at,
+                    ts_rank(
+                        to_tsvector('english', title || ' ' || summary || ' ' || content),
+                        plainto_tsquery('english', %s)
+                    ) as similarity
+                FROM knowledge_atoms
+                WHERE {where_sql}
+                ORDER BY similarity DESC, created_at DESC
+                LIMIT {config.search.top_k}
+            """
+            params.append(search_query_tsquery)
+        else:
+            # No keywords - use default relevance
+            sql = f"""
+                SELECT
+                    atom_id,
+                    title,
+                    summary,
+                    content,
+                    atom_type,
+                    manufacturer,
+                    source_document as source,
+                    source_pages,
+                    created_at,
+                    0.5 as similarity  -- Default relevance when no keywords
+                FROM knowledge_atoms
+                WHERE {where_sql}
+                ORDER BY created_at DESC
+                LIMIT {config.search.top_k}
+            """
 
         # Execute query
         result = db.execute_query(sql, tuple(params))
@@ -214,7 +267,8 @@ def search_docs(
 def estimate_coverage(
     intent: RivetIntent,
     config: Optional[RAGConfig] = None,
-    db: Optional[DatabaseManager] = None
+    db: Optional[DatabaseManager] = None,
+    model_number: Optional[str] = None
 ) -> KBCoverage:
     """
     Estimate knowledge base coverage for a given intent.
@@ -225,6 +279,7 @@ def estimate_coverage(
         intent: Parsed user intent
         config: RAG configuration (uses default if not provided)
         db: DatabaseManager instance (creates new if not provided)
+        model_number: Equipment model number for filtering (optional)
 
     Returns:
         KBCoverage enum (strong/thin/none)
@@ -240,7 +295,7 @@ def estimate_coverage(
         ...     confidence=0.9,
         ...     kb_coverage="strong"  # Will be updated by this function
         ... )
-        >>> coverage = estimate_coverage(intent)
+        >>> coverage = estimate_coverage(intent, model_number="G120C")
         >>> coverage in [KBCoverage.STRONG, KBCoverage.THIN, KBCoverage.NONE]
         True
     """
@@ -248,8 +303,8 @@ def estimate_coverage(
     if config is None:
         config = RAGConfig()
 
-    # Search for relevant docs
-    docs = search_docs(intent, config=config, db=db)
+    # Search for relevant docs (with model filtering if provided)
+    docs = search_docs(intent, config=config, db=db, model_number=model_number)
 
     # Calculate average similarity
     if not docs:
