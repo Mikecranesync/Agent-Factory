@@ -40,10 +40,24 @@ orchestrator = None
 openai_client = None
 
 
+async def get_atom_count() -> int:
+    """Query actual atom count from database."""
+    try:
+        from agent_factory.core.database_manager import DatabaseManager
+        db = DatabaseManager()
+        query = "SELECT COUNT(*) FROM knowledge_atoms"
+        result = db.execute_query(query)
+        return result[0][0] if result else 0
+    except Exception as e:
+        logger.error(f"Failed to query atom count: {e}")
+        return 0
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    atom_count = await get_atom_count()
     await update.message.reply_text(
         "**RivetCEO - Industrial AI Assistant**\n\n"
-        "I'm your direct line to 96 specialized agents and 1,057 knowledge atoms.\n\n"
+        f"I'm your direct line to 96 specialized agents and {atom_count} knowledge atoms.\n\n"
         "Just ask me anything about:\n"
         "- PLC troubleshooting\n"
         "- VFD fault codes\n"
@@ -58,11 +72,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global orchestrator
     online = "Online" if orchestrator else "Offline"
+    atom_count = await get_atom_count()
     await update.message.reply_text(
         f"**RivetCEO Status**\n\n"
         f"Orchestrator: {online}\n"
         f"Agents: 96 available\n"
-        f"Knowledge Base: 1,057 atoms\n"
+        f"Knowledge Base: {atom_count} atoms\n"
         f"Routes: A/B/C/D active",
         parse_mode="Markdown"
     )
@@ -656,7 +671,12 @@ async def post_init(app: Application):
         # Verify database has atoms
         result = db.execute_query("SELECT COUNT(*) FROM knowledge_atoms")
         atom_count = result[0][0] if result else 0
-        logger.info(f"Database initialized with {atom_count} knowledge atoms")
+
+        if atom_count == 0:
+            logger.warning("⚠️  CRITICAL: Knowledge Base is empty! Bot will run with limited capabilities.")
+            logger.warning("   Run: poetry run python upload_atoms_to_neon.py")
+        else:
+            logger.info(f"✅ Knowledge Base: {atom_count} atoms loaded")
 
         # Pass RAG layer to orchestrator
         orchestrator = RivetOrchestrator(rag_layer=db)
