@@ -87,7 +87,7 @@ class KBCoverageEvaluator:
 
             # Search for relevant KB atoms with DatabaseManager (with model filtering)
             config = RAGConfig(top_k=10)
-            docs = search_docs(intent=intent, config=config, db=self.rag, model_number=model_number)
+            docs = search_docs(intent=intent, rag_config=config, db=self.rag, model_number=model_number)
 
             # Calculate metrics from RetrievedDoc objects
             atom_count = len(docs)
