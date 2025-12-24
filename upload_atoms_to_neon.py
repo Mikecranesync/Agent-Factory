@@ -85,18 +85,18 @@ def upload_atoms_batch(conn, atoms: List[Dict[str, Any]], batch_size: int = 50):
         for atom in batch:
             values.append((
                 atom['atom_id'],
-                atom['atom_type'],
+                atom.get('atom_type', atom.get('type', 'concept')),  # Handle both 'atom_type' and 'type'
                 atom['title'],
                 atom['summary'],
                 atom['content'],
-                atom['manufacturer'],
+                atom.get('vendor', atom.get('manufacturer', 'unknown')),  # Handle both 'vendor' and 'manufacturer'
                 atom.get('product_family'),
                 atom.get('product_version'),
-                atom['difficulty'],
-                atom.get('prerequisites', []),
+                atom.get('difficulty', 'intermediate'),
+                atom.get('prereqs', atom.get('prerequisites', [])),  # Handle both 'prereqs' and 'prerequisites'
                 atom.get('related_atoms', []),
                 atom['source_document'],
-                atom['source_pages'],
+                atom.get('source_pages', []),
                 atom.get('source_url'),
                 atom.get('citations'),
                 atom.get('quality_score', 1.0),
@@ -157,10 +157,10 @@ def main():
         print("Please set NEON_DB_URL in your .env file")
         sys.exit(1)
 
-    # Check atoms directory
-    atoms_dir = Path("data/atoms")
-    if not atoms_dir.exists():
-        print(f"[ERROR] Atoms directory not found: {atoms_dir}")
+    # Check atoms file
+    atoms_file = Path("data/atoms-with-embeddings.json")
+    if not atoms_file.exists():
+        print(f"[ERROR] Atoms file not found: {atoms_file}")
         sys.exit(1)
 
     print("=" * 70)
@@ -176,8 +176,16 @@ def main():
         print(f"[ERROR] Connection failed: {e}")
         sys.exit(1)
 
-    # Load atoms from directory
-    atoms = load_atoms_from_directory(atoms_dir)
+    # Load atoms from single JSON file
+    print(f"\nLoading atoms from: {atoms_file}")
+    try:
+        with open(atoms_file, 'r', encoding='utf-8') as f:
+            atoms = json.load(f)
+        print(f"[OK] Loaded {len(atoms)} atoms")
+    except Exception as e:
+        print(f"[ERROR] Failed to load atoms: {e}")
+        conn.close()
+        sys.exit(1)
 
     if len(atoms) == 0:
         print("[WARNING] No atoms found to upload")
