@@ -320,6 +320,7 @@ class RivetOrchestrator:
         NEW (2025-12-22): Uses Groq instead of hardcoded message.
         NEW (2025-12-22): Logs KB gap for tracking missing content.
         NEW (2025-12-23): Gap detector analyzes query and triggers ingestion.
+        NEW (2025-12-24): Parallelized gap detection + LLM response (36s → <5s target).
 
         Args:
             request: User query request
@@ -330,65 +331,17 @@ class RivetOrchestrator:
         """
         vendor = decision.vendor_detection.vendor if decision.vendor_detection else VendorType.GENERIC
 
-        # PHASE 2: Knowledge Gap Detection & Ingestion Trigger
-        ingestion_trigger = None
-        if self.gap_detector and self.kb_gap_logger:
-            try:
-                # Map routing VendorType to RivetIntent VendorType
-                from agent_factory.rivet_pro.models import VendorType as RivetVendorType
-                vendor_map = {
-                    VendorType.SIEMENS: RivetVendorType.SIEMENS,
-                    VendorType.ROCKWELL: RivetVendorType.ROCKWELL,
-                    VendorType.GENERIC: RivetVendorType.GENERIC,
-                    VendorType.SAFETY: RivetVendorType.UNKNOWN,
-                }
-                rivet_vendor = vendor_map.get(vendor, RivetVendorType.UNKNOWN)
+        # PARALLEL EXECUTION: Gap detection + LLM response (don't block each other)
+        gap_task = asyncio.create_task(
+            self._analyze_gap_async(request, decision, vendor)
+        )
+        llm_task = asyncio.create_task(
+            self._generate_llm_response_async(request.text or "", RouteType.ROUTE_C, vendor)
+        )
 
-                # Create RivetIntent for gap analysis
-                from agent_factory.rivet_pro.models import RivetIntent, KBCoverage as RivetKBCoverage
-                intent = RivetIntent(
-                    vendor=rivet_vendor,
-                    equipment_type=EquipmentType.UNKNOWN,  # Could parse from request
-                    symptom=request.text or "",
-                    raw_summary=request.text or "",
-                    context_source="text_only",
-                    confidence=0.8,
-                    kb_coverage=RivetKBCoverage.NONE
-                )
-
-                # Analyze query for knowledge gaps
-                ingestion_trigger = self.gap_detector.analyze_query(
-                    request=request,
-                    intent=intent,
-                    kb_coverage=decision.kb_coverage.level
-                )
-
-                # Log gap to database for tracking
-                if ingestion_trigger:
-                    gap_id = self.kb_gap_logger.log_gap(
-                        query=request.text or "",
-                        intent=intent,
-                        search_filters={
-                            "vendor": vendor.value,
-                            "kb_coverage": decision.kb_coverage.level.value
-                        },
-                        user_id=request.user_id
-                    )
-                    ingestion_trigger["gap_id"] = gap_id
-                    logger.info(
-                        f"Ingestion trigger generated: gap_id={gap_id}, "
-                        f"priority={ingestion_trigger['priority']}, "
-                        f"equipment={ingestion_trigger['equipment_identified']}"
-                    )
-
-            except Exception as e:
-                logger.error(f"Failed to generate ingestion trigger: {e}", exc_info=True)
-
-        # Generate LLM response
-        response_text, confidence = self._generate_llm_response(
-            query=request.text or "",
-            route_type=RouteType.ROUTE_C,
-            vendor=vendor
+        # Wait for both to complete
+        ingestion_trigger, (response_text, confidence) = await asyncio.gather(
+            gap_task, llm_task
         )
 
         # Append ingestion trigger marker to response (if generated)
@@ -396,10 +349,12 @@ class RivetOrchestrator:
             trigger_display = self.gap_detector.format_trigger_for_display(ingestion_trigger)
             response_text += trigger_display
 
-            # PHASE 2: Spawn research pipeline in background (async, non-blocking)
-            asyncio.create_task(
-                self._trigger_research_async(ingestion_trigger, intent)
-            )
+            # Fire-and-forget: Gap logging + research trigger (don't block user response)
+            intent_data = ingestion_trigger.get("intent")  # Intent returned from gap analysis
+            if intent_data:
+                asyncio.create_task(
+                    self._log_and_trigger_research(ingestion_trigger, intent_data, request, vendor, decision)
+                )
 
         return RivetResponse(
             text=response_text,
@@ -455,6 +410,138 @@ class RivetOrchestrator:
                 "llm_generated": confidence > 0.0,
             }
         )
+
+    @timed_operation("gap_detection")
+    async def _analyze_gap_async(
+        self,
+        request: RivetRequest,
+        decision: RoutingDecision,
+        vendor: VendorType
+    ) -> Optional[Dict]:
+        """Analyze knowledge gap asynchronously (runs in parallel with LLM).
+
+        Args:
+            request: User query request
+            decision: Routing decision with coverage info
+            vendor: Detected vendor type
+
+        Returns:
+            Ingestion trigger dict (with intent) or None if gap detection unavailable
+        """
+        if not (self.gap_detector and self.kb_gap_logger):
+            return None
+
+        try:
+            # Map routing VendorType to RivetIntent VendorType
+            from agent_factory.rivet_pro.models import VendorType as RivetVendorType
+            vendor_map = {
+                VendorType.SIEMENS: RivetVendorType.SIEMENS,
+                VendorType.ROCKWELL: RivetVendorType.ROCKWELL,
+                VendorType.GENERIC: RivetVendorType.GENERIC,
+                VendorType.SAFETY: RivetVendorType.UNKNOWN,
+            }
+            rivet_vendor = vendor_map.get(vendor, RivetVendorType.UNKNOWN)
+
+            # Create RivetIntent for gap analysis
+            from agent_factory.rivet_pro.models import RivetIntent, KBCoverage as RivetKBCoverage
+            intent = RivetIntent(
+                vendor=rivet_vendor,
+                equipment_type=EquipmentType.UNKNOWN,  # Could parse from request
+                symptom=request.text or "",
+                raw_summary=request.text or "",
+                context_source="text_only",
+                confidence=0.8,
+                kb_coverage=RivetKBCoverage.NONE
+            )
+
+            # Analyze query for knowledge gaps (synchronous, but runs in parallel with LLM)
+            ingestion_trigger = self.gap_detector.analyze_query(
+                request=request,
+                intent=intent,
+                kb_coverage=decision.kb_coverage.level
+            )
+
+            # Attach intent to trigger for later use
+            if ingestion_trigger:
+                ingestion_trigger["intent"] = intent
+
+            return ingestion_trigger
+
+        except Exception as e:
+            logger.error(f"Failed to analyze gap: {e}", exc_info=True)
+            return None
+
+    @timed_operation("llm_response_async")
+    async def _generate_llm_response_async(
+        self,
+        query: str,
+        route_type: RouteType,
+        vendor: VendorType
+    ) -> tuple[str, float]:
+        """Generate LLM response asynchronously (runs in thread pool to avoid blocking).
+
+        Args:
+            query: User query text
+            route_type: RouteType.ROUTE_C or RouteType.ROUTE_D
+            vendor: Detected vendor type
+
+        Returns:
+            Tuple of (response_text, confidence_score)
+        """
+        # Run synchronous LLM call in thread pool to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,  # Use default ThreadPoolExecutor
+            self._generate_llm_response,
+            query,
+            route_type,
+            vendor
+        )
+
+    @timed_operation("gap_logging_and_research")
+    async def _log_and_trigger_research(
+        self,
+        ingestion_trigger: Dict,
+        intent: "RivetIntent",
+        request: RivetRequest,
+        vendor: VendorType,
+        decision: RoutingDecision
+    ) -> None:
+        """Log gap to database and trigger research pipeline (fire-and-forget).
+
+        This runs in background after user receives response, so DB write latency
+        doesn't block the user.
+
+        Args:
+            ingestion_trigger: Trigger dict from gap detector
+            intent: Parsed RivetIntent for logging
+            request: User query request
+            vendor: Detected vendor type
+            decision: Routing decision
+        """
+        try:
+            # Log gap to database
+            gap_id = self.kb_gap_logger.log_gap(
+                query=request.text or "",
+                intent=intent,
+                search_filters={
+                    "vendor": vendor.value,
+                    "kb_coverage": decision.kb_coverage.level.value
+                },
+                user_id=request.user_id
+            )
+            ingestion_trigger["gap_id"] = gap_id
+            logger.info(
+                f"Gap logged: gap_id={gap_id}, "
+                f"priority={ingestion_trigger['priority']}, "
+                f"equipment={ingestion_trigger['equipment_identified']}"
+            )
+
+            # Trigger research pipeline
+            await self._trigger_research_async(ingestion_trigger, intent)
+
+        except Exception as e:
+            logger.error(f"Failed to log gap and trigger research: {e}", exc_info=True)
 
     @timed_operation("llm_fallback")
     def _generate_llm_response(
