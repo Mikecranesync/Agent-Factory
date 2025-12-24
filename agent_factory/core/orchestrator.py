@@ -9,6 +9,7 @@ Routes queries based on vendor detection and KB coverage evaluation:
 
 from typing import Optional, Dict
 import asyncio
+import time
 from agent_factory.rivet_pro.models import RivetRequest, RivetResponse, EquipmentType, AgentID, RouteType as ModelRouteType
 from agent_factory.schemas.routing import (
     VendorType,
@@ -82,6 +83,10 @@ class RivetOrchestrator:
             RouteType.ROUTE_C: 0,
             RouteType.ROUTE_D: 0,
         }
+
+        # LLM response cache (5-minute TTL to reduce API costs)
+        self._llm_cache: Dict[str, tuple[tuple[str, float], float]] = {}  # {cache_key: ((response, confidence), timestamp)}
+        self._cache_ttl = 300  # 5 minutes in seconds
 
     def _load_sme_agents(self) -> Dict[VendorType, object]:
         """Load SME agents for each vendor type.
@@ -552,6 +557,8 @@ class RivetOrchestrator:
     ) -> tuple[str, float]:
         """Generate LLM response for Routes C and D using Groq fallback.
 
+        Uses 5-minute cache to avoid redundant API calls for similar queries.
+
         Args:
             query: User query text
             route_type: RouteType.ROUTE_C or RouteType.ROUTE_D
@@ -560,6 +567,21 @@ class RivetOrchestrator:
         Returns:
             Tuple of (response_text, confidence_score)
         """
+        # Check cache (5-minute TTL)
+        cache_key = f"{route_type.value}:{vendor.value}:{hash(query)}"
+        current_time = time.time()
+
+        if cache_key in self._llm_cache:
+            cached_response, cached_time = self._llm_cache[cache_key]
+            age_seconds = current_time - cached_time
+
+            if age_seconds < self._cache_ttl:
+                logger.info(
+                    f"LLM cache HIT for {route_type.value} (age: {age_seconds:.1f}s, "
+                    f"saved ~$0.002)"
+                )
+                return cached_response
+
         # Build system prompt
         if route_type == RouteType.ROUTE_C:
             system_prompt = (
@@ -614,7 +636,12 @@ class RivetOrchestrator:
                 f"confidence={confidence:.2f}"
             )
 
-            return (llm_response.content, confidence)
+            # Cache response for 5 minutes
+            response_tuple = (llm_response.content, confidence)
+            self._llm_cache[cache_key] = (response_tuple, current_time)
+            logger.debug(f"LLM cache STORE for {route_type.value} (TTL: {self._cache_ttl}s)")
+
+            return response_tuple
 
         except Exception as e:
             # All LLMs failed → hardcoded message
