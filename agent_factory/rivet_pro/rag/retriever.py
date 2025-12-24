@@ -178,13 +178,24 @@ def search_docs(
             if keyword_conditions:
                 where_clauses.append(f"({' OR '.join(keyword_conditions)})")
 
-            # Build ts_query for ranking (use first 3 keywords)
-            search_query_tsquery = " | ".join(keywords[:3])  # OR operator for ts_query
+            # Filter out English stop words before building ts_query
+            stop_words = {
+                'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
+                'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the',
+                'to', 'was', 'will', 'with', 'what', 'when', 'where', 'who', 'why'
+            }
+            filtered_keywords = [kw for kw in keywords[:5] if kw.lower() not in stop_words]
+
+            # Build ts_query for ranking (use filtered keywords)
+            if filtered_keywords:
+                search_query_tsquery = " | ".join(filtered_keywords[:3])  # OR operator
+            else:
+                search_query_tsquery = None
 
         # Build complete query
         where_sql = " AND ".join(where_clauses) if where_clauses else "TRUE"
 
-        # Use ts_rank for text relevance scoring instead of hardcoded 0.8
+        # Use ts_rank for text relevance scoring
         if search_query_tsquery:
             sql = f"""
                 SELECT
@@ -208,7 +219,7 @@ def search_docs(
             """
             params.append(search_query_tsquery)
         else:
-            # No keywords - use default relevance
+            # No valid keywords after stop word filtering - use default relevance
             sql = f"""
                 SELECT
                     atom_id,
