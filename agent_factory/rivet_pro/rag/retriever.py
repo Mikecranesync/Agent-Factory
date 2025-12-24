@@ -19,6 +19,21 @@ from agent_factory.rivet_pro.rag.config import RAGConfig
 from agent_factory.rivet_pro.rag.filters import build_filters, build_keyword_filters
 from agent_factory.core.database_manager import DatabaseManager
 
+# LangSmith tracing
+try:
+    from langsmith import traceable
+    from langsmith.run_helpers import get_current_run_tree
+    LANGSMITH_AVAILABLE = True
+except ImportError:
+    # Graceful degradation if langsmith not installed
+    def traceable(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+    def get_current_run_tree():
+        return None
+    LANGSMITH_AVAILABLE = False
+
 # Set up logging
 logger = logging.getLogger(__name__)
 
@@ -70,6 +85,11 @@ class RetrievedDoc:
         }
 
 
+@traceable(
+    run_type="retriever",
+    name="KB.search_docs_with_model_filter",
+    tags=["kb-search", "model-filtering"]
+)
 def search_docs(
     intent: RivetIntent,
     config: Optional[RAGConfig] = None,
@@ -210,7 +230,7 @@ def search_docs(
                     created_at,
                     ts_rank(
                         to_tsvector('english', title || ' ' || summary || ' ' || content),
-                        plainto_tsquery('english', %s)
+                        to_tsquery('english', %s)
                     ) as similarity
                 FROM knowledge_atoms
                 WHERE {where_sql}
@@ -275,6 +295,31 @@ def search_docs(
             logger.info(f"Retrieved {len(docs)} documents, similarity scores: min={min(similarity_scores):.3f}, max={max(similarity_scores):.3f}, avg={avg_sim:.3f}")
         else:
             logger.info(f"Retrieved {len(docs)} documents (no similarity scores)")
+
+        # Add LangSmith trace metadata
+        if LANGSMITH_AVAILABLE:
+            run_tree = get_current_run_tree()
+            if run_tree:
+                run_tree.metadata.update({
+                    "vendor": filters.get("manufacturer"),
+                    "model_number": model_number,
+                    "model_filter_applied": model_number is not None,
+                    "part_number": part_number,
+                    "part_filter_applied": part_number is not None,
+                    "results_count": len(docs),
+                    "avg_similarity": avg_sim if similarity_scores else 0.0,
+                    "min_similarity": min(similarity_scores) if similarity_scores else 0.0,
+                    "max_similarity": max(similarity_scores) if similarity_scores else 0.0,
+                    "keywords_used": keywords[:5] if keywords else [],
+                    "search_query_tsquery": search_query_tsquery if search_query_tsquery else None,
+                })
+
+                # Add tags for vendor and model
+                if filters.get("manufacturer"):
+                    run_tree.tags.append(f"vendor:{filters.get('manufacturer')}")
+                if model_number:
+                    run_tree.tags.append(f"model:{model_number.replace(' ', '_').replace('-', '_')}")
+
         return docs
 
     except Exception as e:
