@@ -671,7 +671,12 @@ async def post_init(app: Application):
         # Verify database has atoms
         result = db.execute_query("SELECT COUNT(*) FROM knowledge_atoms")
         atom_count = result[0][0] if result else 0
-        logger.info(f"Database initialized with {atom_count} knowledge atoms")
+
+        if atom_count == 0:
+            logger.warning("⚠️  CRITICAL: Knowledge Base is empty! Bot will run with limited capabilities.")
+            logger.warning("   Run: poetry run python upload_atoms_to_neon.py")
+        else:
+            logger.info(f"✅ Knowledge Base: {atom_count} atoms loaded")
 
         # Pass RAG layer to orchestrator
         orchestrator = RivetOrchestrator(rag_layer=db)
