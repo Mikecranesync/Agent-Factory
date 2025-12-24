@@ -332,8 +332,6 @@ class KBManager:
 
         Returns:
             True if successful
-
-        TODO: Execute actual SSH command to VPS
         """
         try:
             # Command to add URL to Redis queue
@@ -344,15 +342,20 @@ class KBManager:
             ]
 
             # Execute SSH command
-            # Note: This requires SSH key setup on local machine
-            # For now, just log the command (will be enabled in Phase 8)
-            logger.info(f"Would execute: {' '.join(cmd)}")
-            logger.info(f"Added to queue: {url}")
+            logger.info(f"Executing: {' '.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
 
-            # Placeholder: return success
-            # Real implementation will execute subprocess.run(cmd)
-            return True
+            if result.returncode == 0:
+                queue_length = result.stdout.strip()
+                logger.info(f"URL added to queue at position {queue_length}: {url}")
+                return True
+            else:
+                logger.error(f"SSH command failed: {result.stderr}")
+                return False
 
+        except subprocess.TimeoutExpired:
+            logger.error(f"SSH command timed out after 10 seconds")
+            return False
         except Exception as e:
             logger.error(f"Failed to add URL to queue: {e}")
             return False
@@ -398,15 +401,44 @@ class KBManager:
 
         Returns:
             List of pending URLs
-
-        TODO: Query VPS Redis
         """
-        # Placeholder data
-        return [
-            "https://example.com/manual1.pdf",
-            "https://example.com/manual2.pdf",
-            "https://youtube.com/watch?v=abc123",
-        ]
+        try:
+            # Get queue length
+            cmd_len = [
+                "ssh",
+                f"{self.vps_user}@{self.vps_host}",
+                "docker exec infra_redis_1 redis-cli LLEN kb_ingest_jobs"
+            ]
+
+            result = subprocess.run(cmd_len, capture_output=True, text=True, timeout=10)
+            if result.returncode != 0:
+                logger.error(f"Failed to get queue length: {result.stderr}")
+                return []
+
+            queue_length = int(result.stdout.strip())
+            if queue_length == 0:
+                return []
+
+            # Get first 50 URLs from queue
+            cmd_urls = [
+                "ssh",
+                f"{self.vps_user}@{self.vps_host}",
+                f"docker exec infra_redis_1 redis-cli LRANGE kb_ingest_jobs 0 {min(queue_length - 1, 49)}"
+            ]
+
+            result = subprocess.run(cmd_urls, capture_output=True, text=True, timeout=10)
+            if result.returncode != 0:
+                logger.error(f"Failed to get queue URLs: {result.stderr}")
+                return []
+
+            # Parse URLs (each on a new line)
+            urls = [url.strip() for url in result.stdout.strip().split("\n") if url.strip()]
+            logger.info(f"Retrieved {len(urls)} URLs from ingestion queue")
+            return urls
+
+        except Exception as e:
+            logger.error(f"Failed to get ingestion queue: {e}")
+            return []
 
     async def _format_kb_stats(self, stats: KBStats) -> str:
         """Format KB statistics for display"""

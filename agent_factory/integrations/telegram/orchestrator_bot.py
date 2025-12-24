@@ -35,8 +35,10 @@ from agent_factory.core.trace_logger import RequestTrace
 from agent_factory.rivet_pro.models import create_text_request, ChannelType, RouteType
 from agent_factory.integrations.telegram.formatters import ResponseFormatter
 from agent_factory.integrations.telegram import library
+from agent_factory.integrations.telegram.admin.kb_manager import KBManager
 
 orchestrator = None
+kb_manager = None
 openai_client = None
 
 
@@ -689,7 +691,7 @@ If you cannot read the image clearly, explain why."""
 
 
 async def post_init(app: Application):
-    global orchestrator, openai_client
+    global orchestrator, openai_client, kb_manager
     try:
         # Initialize database connection
         from agent_factory.core.database_manager import DatabaseManager
@@ -721,6 +723,10 @@ async def post_init(app: Application):
     else:
         logger.warning("OpenAI API key not set - photo OCR disabled")
 
+    # Initialize KB Manager for admin commands
+    kb_manager = KBManager()
+    logger.info("KB Manager initialized")
+
 
 def main():
     if not BOT_TOKEN:
@@ -741,6 +747,12 @@ def main():
     app.add_handler(CommandHandler("library", library.library_command))
     app.add_handler(library.add_machine_handler)  # ConversationHandler for add flow
     app.add_handler(CallbackQueryHandler(library.library_callback_router, pattern="^lib_"))
+
+    # Knowledge Base Management - Admin commands for KB ingestion
+    app.add_handler(CommandHandler("kb", kb_manager.handle_kb))
+    app.add_handler(CommandHandler("kb_ingest", kb_manager.handle_kb_ingest))
+    app.add_handler(CommandHandler("kb_search", kb_manager.handle_kb_search))
+    app.add_handler(CommandHandler("kb_queue", kb_manager.handle_kb_queue))
 
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))  # Photo handler (BEFORE text)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
