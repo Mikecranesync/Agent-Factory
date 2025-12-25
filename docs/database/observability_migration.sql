@@ -332,3 +332,328 @@ COMMENT ON TABLE ingestion_metrics_daily IS
 -- Test hourly aggregation
 -- SELECT aggregate_hourly_metrics(NOW() - INTERVAL '1 hour');
 -- SELECT * FROM ingestion_metrics_hourly ORDER BY hour_start DESC LIMIT 5;
+
+-- ============================================================================
+-- TRACEABILITY TABLES (Added for 24/7 Ingestion Pipeline)
+-- ============================================================================
+-- These tables enable full traceability from atom → source URL → agent executions
+-- Part of the 24/7 Knowledge Base Ingestion Pipeline implementation
+
+-- Table 4: Ingestion Sessions
+-- ============================================================================
+-- Tracks each source URL processing run from start to finish
+-- Links atoms to their originating ingestion session
+-- Enables queries like "show me all atoms from this PDF"
+
+CREATE TABLE IF NOT EXISTS ingestion_sessions (
+    session_id UUID PRIMARY KEY,
+    source_url TEXT NOT NULL,
+    source_hash VARCHAR(16) NOT NULL,  -- SHA-256 hash (first 16 chars) for deduplication
+    status VARCHAR(20) NOT NULL CHECK (status IN ('pending', 'processing', 'success', 'partial', 'failed')),
+
+    -- Results
+    atoms_created INTEGER DEFAULT 0 CHECK (atoms_created >= 0),
+    atoms_failed INTEGER DEFAULT 0 CHECK (atoms_failed >= 0),
+
+    -- Timing
+    started_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
+
+    -- Error tracking
+    error_stage VARCHAR(50),  -- Which stage failed (acquisition, extraction, etc.)
+    error_message TEXT,
+
+    -- Ensure completed_at is after started_at
+    CHECK (completed_at IS NULL OR completed_at >= started_at),
+
+    -- Ensure source_hash uniqueness (prevent duplicate ingestions)
+    UNIQUE(source_hash)
+);
+
+-- Indexes for fast session queries
+CREATE INDEX IF NOT EXISTS idx_sessions_status
+    ON ingestion_sessions(status);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_completed_at
+    ON ingestion_sessions(completed_at DESC)
+    WHERE completed_at IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_sessions_source_hash
+    ON ingestion_sessions(source_hash);
+
+COMMENT ON TABLE ingestion_sessions IS
+'Tracks each source URL processing run. Links atoms to their originating ingestion session.
+Enables full traceability: atom → session → source URL.';
+
+-- ============================================================================
+-- Table 5: Agent Traces
+-- ============================================================================
+-- Stores execution metadata for each agent involved in ingestion
+-- Tracks: AtomBuilder, CitationValidator, QualityChecker, GeminiJudge
+-- Enables performance analysis and cost tracking per agent
+
+CREATE TABLE IF NOT EXISTS agent_traces (
+    trace_id UUID PRIMARY KEY,
+    session_id UUID NOT NULL REFERENCES ingestion_sessions(session_id) ON DELETE CASCADE,
+    agent_name VARCHAR(100) NOT NULL,
+
+    -- Performance metrics
+    duration_ms INTEGER NOT NULL CHECK (duration_ms >= 0),
+    tokens_used INTEGER DEFAULT 0 CHECK (tokens_used >= 0),
+    cost_usd NUMERIC(10, 6) DEFAULT 0 CHECK (cost_usd >= 0),
+
+    -- Success tracking
+    success BOOLEAN NOT NULL,
+    error_message TEXT,
+
+    -- Timing
+    started_at TIMESTAMPTZ NOT NULL
+);
+
+-- Indexes for fast trace queries
+CREATE INDEX IF NOT EXISTS idx_traces_session
+    ON agent_traces(session_id);
+
+CREATE INDEX IF NOT EXISTS idx_traces_agent_name
+    ON agent_traces(agent_name);
+
+CREATE INDEX IF NOT EXISTS idx_traces_started_at
+    ON agent_traces(started_at DESC);
+
+-- Composite index for session + agent queries
+CREATE INDEX IF NOT EXISTS idx_traces_session_agent
+    ON agent_traces(session_id, agent_name);
+
+COMMENT ON TABLE agent_traces IS
+'Stores execution metadata for each agent in the ingestion pipeline.
+Enables performance analysis, cost tracking, and debugging per agent execution.';
+
+-- ============================================================================
+-- Table Modification: Link Atoms to Sessions
+-- ============================================================================
+-- Add foreign key from knowledge_atoms to ingestion_sessions
+-- This enables querying all atoms created in a specific ingestion run
+
+-- Check if column exists first (idempotent)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'knowledge_atoms'
+        AND column_name = 'ingestion_session_id'
+    ) THEN
+        ALTER TABLE knowledge_atoms
+            ADD COLUMN ingestion_session_id UUID REFERENCES ingestion_sessions(session_id) ON DELETE SET NULL;
+
+        CREATE INDEX idx_atoms_session ON knowledge_atoms(ingestion_session_id);
+    END IF;
+END$$;
+
+COMMENT ON COLUMN knowledge_atoms.ingestion_session_id IS
+'Links atom to the ingestion session that created it. Enables full traceability.';
+
+-- ============================================================================
+-- Table 6: Gap Requests (Autonomous Discovery)
+-- ============================================================================
+-- Tracks user queries that resulted in Route C (no KB coverage)
+-- These become high-priority ingestion targets (gap-driven discovery)
+
+CREATE TABLE IF NOT EXISTS gap_requests (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    query_text TEXT NOT NULL,
+    equipment_detected TEXT,  -- manufacturer/model extracted from query
+    route VARCHAR(10) NOT NULL CHECK (route IN ('A', 'B', 'C', 'D')),
+    confidence FLOAT,
+    kb_atoms_found INTEGER DEFAULT 0,
+
+    -- Priority scoring
+    request_count INTEGER DEFAULT 1,  -- How many times this gap was requested
+    priority_score FLOAT DEFAULT 50.0,  -- Auto-calculated: request_count * 10 + confidence
+
+    -- Ingestion tracking
+    ingestion_queued BOOLEAN DEFAULT FALSE,
+    ingestion_queued_at TIMESTAMPTZ,
+    ingestion_completed BOOLEAN DEFAULT FALSE,
+
+    -- Timestamps
+    first_requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    -- Ensure priority_score is valid
+    CHECK (priority_score >= 0 AND priority_score <= 100)
+);
+
+-- Indexes for fast gap queries
+CREATE INDEX IF NOT EXISTS idx_gap_equipment
+    ON gap_requests(equipment_detected)
+    WHERE equipment_detected IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_gap_priority
+    ON gap_requests(priority_score DESC)
+    WHERE ingestion_queued = FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_gap_route
+    ON gap_requests(route)
+    WHERE route = 'C';
+
+COMMENT ON TABLE gap_requests IS
+'Tracks Route C queries (no KB coverage). Highest-priority ingestion targets.
+Enables gap-driven autonomous discovery.';
+
+-- ============================================================================
+-- Table 7: Domain Rate Limits
+-- ============================================================================
+-- Tracks per-domain request timing to prevent getting blocked
+
+CREATE TABLE IF NOT EXISTS domain_rate_limits (
+    domain VARCHAR(255) PRIMARY KEY,
+    requests_per_hour INTEGER NOT NULL DEFAULT 10,
+    delay_seconds INTEGER NOT NULL DEFAULT 6,  -- Delay between requests
+    last_request_at TIMESTAMPTZ,
+    total_requests INTEGER DEFAULT 0,
+    blocked_until TIMESTAMPTZ  -- If we got rate-limited, wait until this time
+);
+
+-- Seed with known manufacturer domains
+INSERT INTO domain_rate_limits (domain, requests_per_hour, delay_seconds) VALUES
+    ('rockwellautomation.com', 10, 6),
+    ('literature.rockwellautomation.com', 10, 6),
+    ('siemens.com', 5, 12),
+    ('cache.industry.siemens.com', 5, 12),
+    ('mitsubishielectric.com', 8, 8),
+    ('ab.com', 10, 6),
+    ('abb.com', 8, 8),
+    ('schneider-electric.com', 8, 8),
+    ('omron.com', 10, 6)
+ON CONFLICT (domain) DO NOTHING;
+
+COMMENT ON TABLE domain_rate_limits IS
+'Per-domain rate limiting config. Prevents getting blocked by manufacturer portals.';
+
+-- ============================================================================
+-- Table 8: Ingestion Queue (Persistent JSONL alternative)
+-- ============================================================================
+-- Database-backed queue (alternative to JSONL file)
+-- Enables atomic operations and better concurrency
+
+CREATE TABLE IF NOT EXISTS ingestion_queue (
+    id BIGSERIAL PRIMARY KEY,
+    source_url TEXT NOT NULL,
+    source_hash VARCHAR(16) NOT NULL UNIQUE,  -- Deduplication
+    priority INTEGER NOT NULL DEFAULT 50 CHECK (priority >= 0 AND priority <= 100),
+
+    -- Discovery source
+    source_type VARCHAR(50) NOT NULL CHECK (source_type IN ('manual', 'gap_request', 'crawler', 'telegram_bot')),
+    source_id TEXT,  -- gap_request.id, telegram user_id, etc.
+
+    -- Status tracking
+    status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+    retry_count INTEGER DEFAULT 0 CHECK (retry_count >= 0),
+
+    -- Timestamps
+    queued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ
+);
+
+-- Indexes for queue operations
+CREATE INDEX IF NOT EXISTS idx_queue_status_priority
+    ON ingestion_queue(status, priority DESC, queued_at)
+    WHERE status = 'pending';
+
+CREATE INDEX IF NOT EXISTS idx_queue_source_hash
+    ON ingestion_queue(source_hash);
+
+COMMENT ON TABLE ingestion_queue IS
+'Database-backed ingestion queue with deduplication and priority.
+Alternative to JSONL file - enables atomic operations and concurrency.';
+
+-- ============================================================================
+-- Table 9: Document Validation Results
+-- ============================================================================
+-- Stores LLM validation scores for ingested documents
+-- Filters out marketing PDFs, wrong language, corrupted files
+
+CREATE TABLE IF NOT EXISTS document_validations (
+    id BIGSERIAL PRIMARY KEY,
+    source_url TEXT NOT NULL,
+    source_hash VARCHAR(16) NOT NULL UNIQUE,  -- Enforce deduplication
+
+    -- LLM validation
+    is_technical_manual BOOLEAN,
+    validation_score INTEGER CHECK (validation_score >= 0 AND validation_score <= 100),
+    language_detected VARCHAR(10),
+    document_type VARCHAR(50),  -- manual, datasheet, catalog, marketing, etc.
+
+    -- Metadata
+    manufacturer_detected TEXT,
+    model_detected TEXT,
+
+    -- Validation details
+    validation_reason TEXT,
+    validated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Indexes for validation queries
+CREATE INDEX IF NOT EXISTS idx_validation_source_hash
+    ON document_validations(source_hash);
+
+CREATE INDEX IF NOT EXISTS idx_validation_score
+    ON document_validations(validation_score DESC)
+    WHERE is_technical_manual = TRUE;
+
+COMMENT ON TABLE document_validations IS
+'LLM validation results for documents before ingestion.
+Filters out non-technical content (marketing, wrong language, etc.)';
+
+-- ============================================================================
+-- Traceability Query Examples
+-- ============================================================================
+
+-- Example 1: Get all atoms from a specific source URL
+-- SELECT ka.*
+-- FROM knowledge_atoms ka
+-- JOIN ingestion_sessions s ON ka.ingestion_session_id = s.session_id
+-- WHERE s.source_url = 'https://example.com/manual.pdf';
+
+-- Example 2: Get full trace for an atom (session + agents)
+-- SELECT
+--     ka.atom_id,
+--     ka.title,
+--     s.source_url,
+--     s.status,
+--     t.agent_name,
+--     t.duration_ms,
+--     t.tokens_used,
+--     t.cost_usd,
+--     t.success
+-- FROM knowledge_atoms ka
+-- JOIN ingestion_sessions s ON ka.ingestion_session_id = s.session_id
+-- LEFT JOIN agent_traces t ON s.session_id = t.session_id
+-- WHERE ka.atom_id = 'your-atom-id'
+-- ORDER BY t.started_at;
+
+-- Example 3: Get agent performance summary for last 24h
+-- SELECT
+--     agent_name,
+--     COUNT(*) as executions,
+--     AVG(duration_ms) as avg_duration_ms,
+--     SUM(tokens_used) as total_tokens,
+--     SUM(cost_usd) as total_cost,
+--     AVG(CASE WHEN success THEN 1.0 ELSE 0.0 END) as success_rate
+-- FROM agent_traces
+-- WHERE started_at > NOW() - INTERVAL '24 hours'
+-- GROUP BY agent_name
+-- ORDER BY total_cost DESC;
+
+-- Example 4: Get session success rate by hour
+-- SELECT
+--     DATE_TRUNC('hour', started_at) as hour,
+--     COUNT(*) as total_sessions,
+--     SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful,
+--     AVG(atoms_created) as avg_atoms_created
+-- FROM ingestion_sessions
+-- WHERE started_at > NOW() - INTERVAL '24 hours'
+-- GROUP BY hour
+-- ORDER BY hour DESC;
