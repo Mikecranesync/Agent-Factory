@@ -136,17 +136,11 @@ if ! command -v timeout &> /dev/null; then
     fi
 fi
 
-# Build command (skip database in local hook for speed)
-# GitHub Actions will include DB metrics
-if [ -n "$TIMEOUT_CMD" ]; then
-    UPDATE_CMD="$TIMEOUT_CMD ${TIMEOUT_SECONDS}s bash -c 'DB_SKIP=1 poetry run python scripts/update_readme_metrics.py | poetry run python scripts/update_readme.py'"
-else
-    # Windows: Skip database to avoid timeout
-    UPDATE_CMD="bash -c 'DB_SKIP=1 poetry run python scripts/update_readme_metrics.py | poetry run python scripts/update_readme.py'"
-fi
+# Execute update (skip database for speed)
+export DB_SKIP=1
 
-# Execute update
-if eval "$UPDATE_CMD" 2>&1 | tee -a "$LOG_DIR/pre_push_output.log"; then
+# Run metrics extraction and README update
+if poetry run python scripts/update_readme_metrics.py 2>&1 | poetry run python scripts/update_readme.py 2>&1 | tee -a "$LOG_DIR/pre_push_output.log"; then
     # Check if README actually changed
     if git diff --quiet README.md; then
         echo_info "ℹ️  No changes to README"
