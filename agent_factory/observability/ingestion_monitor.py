@@ -501,7 +501,7 @@ class IngestionMonitor:
             metric: Metric record to write
         """
         try:
-            # Build INSERT query
+            # Build INSERT query (using %s placeholders for psycopg)
             query = """
                 INSERT INTO ingestion_metrics_realtime (
                     source_url, source_type, source_hash, status,
@@ -512,7 +512,7 @@ class IngestionMonitor:
                     stage_7_storage_ms, total_duration_ms,
                     error_stage, error_message, vendor, equipment_type,
                     started_at, completed_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
 
             values = (
