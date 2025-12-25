@@ -15,6 +15,11 @@ Agent Factory is not just a framework—it's the **orchestration engine** poweri
 
 ## 📝 Latest Updates
 
+**2025-12-25 14:45:51 UTC**
+- Fixed Use %s placeholders for psycopg in immediate write query
+- **Metrics:** Files: 1 | Lines: +2/-2 | KB Atoms: (unavailable)
+
+
 **2025-12-25 14:42:06 UTC**
 - Fixed Use plain text instead of Markdown for batch summaries (fixes 400 error)
 - **Metrics:** Files: 1 | Lines: +17/-14 | KB Atoms: (unavailable)
