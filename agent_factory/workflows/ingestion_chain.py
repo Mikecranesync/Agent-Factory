@@ -563,11 +563,33 @@ Focus on clarity, accuracy, and educational value. Return only valid JSON."""
 
     try:
         response = llm.invoke(prompt)
-        atom_json = response.content
+        atom_json = response.content.strip()
+
+        # Log raw response for debugging
+        if not atom_json:
+            logger.error(f"LLM returned empty response")
+            return None
+
+        # Try to extract JSON if wrapped in markdown code blocks
+        if "```json" in atom_json:
+            # Extract content between ```json and ```
+            start = atom_json.find("```json") + 7
+            end = atom_json.find("```", start)
+            atom_json = atom_json[start:end].strip()
+        elif "```" in atom_json:
+            # Extract content between ``` and ```
+            start = atom_json.find("```") + 3
+            end = atom_json.find("```", start)
+            atom_json = atom_json[start:end].strip()
 
         # Parse JSON
         import json
-        atom_dict = json.loads(atom_json)
+        try:
+            atom_dict = json.loads(atom_json)
+        except json.JSONDecodeError as json_err:
+            logger.error(f"JSON parse error: {json_err}")
+            logger.error(f"LLM response (first 200 chars): {atom_json[:200]}")
+            return None
 
         # Add source metadata
         atom_dict["source_urls"] = [source_metadata["url"]]
