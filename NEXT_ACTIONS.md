@@ -1,6 +1,38 @@
 # Next Actions (2025-12-24)
 
+## CRITICAL
+
+**Deploy & Test Persistent State System** (HIGH PRIORITY)
+- ✅ Infrastructure complete: ConversationStateManager + 4-tier database fallback
+- ✅ Integration complete: library.py add_machine flow saves state after EVERY input
+- Next: Deploy to VPS and test with connection interruptions
+- Goal: Verify zero data loss, seamless resume capability
+- Files: `migrations/002_conversation_states.sql` (run on VPS)
+- Estimate: 30 minutes deployment + 30 minutes testing
+- See: `docs/PERSISTENT_STATE_COMPLETE.md` for full details
+
 ## Recently Completed
+
+**✅ Persistent Conversation State - Phase 1 + 2 COMPLETE** (Commits: 6b5319d, d5f32c2)
+- ✅ LocalDatabaseProvider (SQLite fallback when cloud fails)
+- ✅ ConversationStateManager (save/load/clear/cleanup)
+- ✅ Database schema (conversation_states table)
+- ✅ 4-tier failover: Neon → Supabase → Railway → Local SQLite
+- ✅ PostgreSQL → SQLite compatibility layer
+- ✅ **library.py Integration** - State saved after EVERY user input
+- ✅ **Resume capability** - Continues from last state after reconnect
+- ✅ **State cleanup** - Clears on success or /cancel
+- **Status**: Infrastructure + integration 100% complete, ready for VPS deployment
+- **Docs**: `docs/PERSISTENT_STATE_COMPLETE.md`
+
+**✅ Save to Library Button - Full Workflow** (Commits: cd23abd, 530a4c2)
+- ✅ Fixed NameError: add_from_ocr function created
+- ✅ Fixed OCR hallucination: fault codes only from displays (not nameplates)
+- ✅ ConversationHandler wired up correctly
+- ✅ User tested: Button appears → shows preview → asks for nickname
+- **Issue**: Save failed due to Neon connection pool timeout (15s)
+- **Workaround**: Bot restarted, pool reset
+- **Long-term fix**: Local SQLite fallback (already built)
 
 **✅ OCR Enhancement Project - All 5 Phases Deployed** (Commit: 7bfc18d)
 - Phase 1: Dual OCR providers (GPT-4o primary, Gemini fallback)
