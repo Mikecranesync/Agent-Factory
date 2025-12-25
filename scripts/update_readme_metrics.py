@@ -36,6 +36,7 @@ Example Output:
 import subprocess
 import json
 import sys
+import os
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Optional
@@ -189,6 +190,17 @@ def get_db_stats() -> Dict[str, Any]:
     Returns:
         Dictionary with atom_count and atom_count_delta (change from last run)
     """
+    # Check if database queries should be skipped (for speed in local hooks)
+    if os.getenv("DB_SKIP"):
+        print("INFO: Skipping database query (DB_SKIP=1)", file=sys.stderr)
+        cached_count = load_cached_atom_count()
+        return {
+            "atom_count": cached_count if cached_count > 0 else 0,
+            "atom_count_delta": 0,
+            "source": "cache",
+            "skipped": True
+        }
+
     try:
         # Initialize database manager (handles failover automatically)
         db = DatabaseManager()
