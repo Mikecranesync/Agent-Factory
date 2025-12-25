@@ -15,6 +15,15 @@ Agent Factory is not just a framework—it's the **orchestration engine** poweri
 
 ## 📝 Latest Updates
 
+**2025-12-25 14:22:18 UTC**
+- Fixed Make batch notifications read from database not in-memory queue
+- Add db_manager param to TelegramNotifier
+- Query ingestion_metrics_realtime for last 5 min sessions
+- Mark sessions as notified to prevent duplicates
+- Works across all processes (CLI, Redis worker, bot)
+- **Metrics:** Files: 2 | Lines: +80/-13 | KB Atoms: (unavailable)
+
+
 **2025-12-25 14:10:35 UTC**
 - Fixed Add persistent KB observability batch timer to orchestrator bot
 - Integrate batch notification timer into bot's event loop
