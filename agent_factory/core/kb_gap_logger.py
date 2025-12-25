@@ -31,69 +31,95 @@ class KBGapLogger:
         query: str,
         intent: RivetIntent,
         search_filters: dict,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
+        route: str = "C",
+        confidence: float = 0.0,
+        kb_atoms_found: int = 0
     ) -> int:
         """
-        Log KB gap. Returns gap_id.
-        Increments frequency if query seen before (within 7 days).
+        Log KB gap to gap_requests table (NEW SCHEMA for autonomous ingestion).
+        Increments request_count and updates priority if query seen before (within 7 days).
 
         Args:
             query: Original user query
             intent: Parsed RivetIntent with vendor, equipment, symptom
             search_filters: Filters used in KB search
             user_id: User identifier (Telegram user_id, etc.)
+            route: Route taken (A/B/C/D)
+            confidence: Confidence score from routing
+            kb_atoms_found: Number of KB atoms found (0 for Route C)
 
         Returns:
             gap_id: ID of the logged gap record
         """
         try:
-            # Check if duplicate gap within 7 days
+            # Extract equipment identifier for deduplication and queuing
+            equipment_detected = None
+            if intent:
+                vendor_str = intent.vendor.value if intent.vendor else "unknown"
+                equipment_str = intent.equipment_type.value if intent.equipment_type else "unknown"
+                equipment_detected = f"{vendor_str}:{equipment_str}"
+
+            # Check if duplicate gap within 7 days (same equipment)
             check_sql = """
-                SELECT id, frequency FROM kb_gaps
-                WHERE query = %s AND triggered_at > NOW() - INTERVAL '7 days'
-                AND resolved = FALSE
-                ORDER BY triggered_at DESC LIMIT 1
+                SELECT id, request_count FROM gap_requests
+                WHERE equipment_detected = $1
+                AND last_requested_at > NOW() - INTERVAL '7 days'
+                AND ingestion_completed = FALSE
+                ORDER BY last_requested_at DESC LIMIT 1
             """
-            result = self.db.execute_query(check_sql, (query,))
+            result = self.db.execute_query(check_sql, (equipment_detected,))
 
             if result:
-                # Increment frequency for existing gap
-                gap_id, freq = result[0]
+                # Increment request_count and update priority for existing gap
+                gap_id, req_count = result[0]
+                new_count = req_count + 1
+                new_priority = min(new_count * 10 + confidence * 100, 100.0)
+
                 update_sql = """
-                    UPDATE kb_gaps
-                    SET frequency = %s, last_asked_at = NOW()
-                    WHERE id = %s
+                    UPDATE gap_requests
+                    SET request_count = $1, priority_score = $2, last_requested_at = NOW()
+                    WHERE id = $3
                 """
-                self.db.execute_query(update_sql, (freq + 1, gap_id))
-                logger.info(f"Incremented KB gap frequency: gap_id={gap_id}, frequency={freq + 1}")
+                self.db.execute_query(update_sql, (new_count, new_priority, gap_id), fetch_mode="none")
+                logger.info(
+                    f"Incremented gap request: gap_id={gap_id}, "
+                    f"request_count={new_count}, priority={new_priority:.1f}"
+                )
                 return gap_id
             else:
-                # New gap - insert record
+                # New gap - insert record to gap_requests table
+                initial_priority = 50.0 + confidence * 10  # Base 50 + confidence boost
                 insert_sql = """
-                    INSERT INTO kb_gaps (
-                        query, intent_vendor, intent_equipment,
-                        intent_symptom, search_filters, user_id
+                    INSERT INTO gap_requests (
+                        user_id, query_text, equipment_detected, route,
+                        confidence, kb_atoms_found, priority_score
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
                     RETURNING id
                 """
                 result = self.db.execute_query(
                     insert_sql,
                     (
+                        int(user_id) if user_id and user_id.isdigit() else 0,  # Convert to BIGINT
                         query,
-                        intent.vendor.value if intent.vendor else None,
-                        intent.equipment_type.value if intent.equipment_type else None,
-                        intent.symptom,
-                        json.dumps(search_filters),
-                        user_id
+                        equipment_detected,
+                        route,
+                        confidence,
+                        kb_atoms_found,
+                        initial_priority
                     )
                 )
                 gap_id = result[0][0]
-                logger.info(f"Logged new KB gap: gap_id={gap_id}, query='{query[:50]}...'")
+                logger.info(
+                    f"Logged new gap request: gap_id={gap_id}, "
+                    f"equipment={equipment_detected}, query='{query[:50]}...', "
+                    f"priority={initial_priority:.1f}"
+                )
                 return gap_id
 
         except Exception as e:
-            logger.error(f"Failed to log KB gap: {e}", exc_info=True)
+            logger.error(f"Failed to log gap request: {e}", exc_info=True)
             # Return -1 to indicate failure (caller can check)
             return -1
 

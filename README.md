@@ -15,6 +15,14 @@ Agent Factory is not just a framework—it's the **orchestration engine** poweri
 
 ## 📝 Latest Updates
 
+**2025-12-25 14:30:36 UTC**
+- Fixed Write ingestion metrics immediately instead of background queue
+- Add _write_metric_immediately() for synchronous DB writes
+- Prevents metrics loss when scripts exit before flush
+- Falls back to failover log if DB unavailable
+- **Metrics:** Files: 1 | Lines: +71/-3 | KB Atoms: (unavailable)
+
+
 **2025-12-25 14:22:18 UTC**
 - Fixed Make batch notifications read from database not in-memory queue
 - Add db_manager param to TelegramNotifier
