@@ -4,6 +4,109 @@ Chronological record of development activities.
 
 ---
 
+## [2025-12-24] Multi-Tier Persistent Conversation State
+
+### [23:51] Phase 1 Complete - Infrastructure Built
+
+**Summary**: Implemented rock-solid persistent conversation state system with 4-tier database fallback (Neon → Supabase → Railway → Local SQLite). Prevents data loss from connection interruptions, enables resumable conversations.
+
+**Files Created**:
+1. `agent_factory/integrations/telegram/conversation_state.py` (250 lines)
+   - ConversationStateManager class
+   - Methods: save_state(), load_state(), clear_state(), cleanup_expired()
+   - Multi-tier failover via DatabaseManager
+   - 24-hour TTL for abandoned conversations
+   - Thread-safe operations
+
+2. `migrations/002_conversation_states.sql` (40 lines)
+   - PostgreSQL schema: UUID, JSONB, ON CONFLICT upsert
+   - SQLite compatible: TEXT instead of UUID/JSONB
+   - Unique constraint: one conversation per user/type
+   - Indexes: user lookup + expiration cleanup
+   - Auto-cleanup function (PostgreSQL only)
+
+**Files Modified**:
+1. `agent_factory/core/database_manager.py` (+120 lines)
+   - Added LocalDatabaseProvider class (lines 221-330)
+     - SQLite database provider for final fallback
+     - PostgreSQL parameter conversion ($1 → ?)
+     - Auto-schema initialization
+     - Always available (local filesystem)
+   - Updated DatabaseManager.__init__() (line 363)
+     - Changed primary provider: supabase → neon
+     - Updated failover order: neon,supabase,railway,local
+   - Added local provider initialization (lines 407-413)
+     - Creates data/local.db on startup
+     - Initializes conversation_states table
+     - Logs success/failure
+
+**Testing**:
+- ✅ All modules import successfully
+- ✅ LocalDatabaseProvider compiles
+- ✅ ConversationStateManager initializes
+- ✅ Multi-tier failover configured
+- ⏳ Integration testing pending
+
+**Commits**:
+- `6b5319d`: feat(persistence): Add rock-solid multi-tier conversation state persistence
+
+### [23:32] Fix Save to Library Button - Multiple Issues
+
+**Issue #1: NameError - add_from_ocr not defined**
+- **Problem**: Button callback router called add_from_ocr() but function didn't exist
+- **Error**: `NameError: name 'add_from_ocr' is not defined`
+- **Fix**: Created add_from_ocr() function in library.py (lines 444-486)
+  - Gets OCR result from context.user_data
+  - Pre-fills manufacturer/model/serial
+  - Shows preview with confidence warning
+  - Jumps to NICKNAME state
+- **Commit**: `cd23abd`
+
+**Issue #2: OCR Hallucinating Fault Codes**
+- **Problem**: GPT-4o extracted "EQ02" fault code from nameplate with no display
+- **Root Cause**: Prompt not strict enough about fault code sources
+- **Fix**: Enhanced gpt4o_provider.py prompt (lines 42-49, 56)
+  - Added rule: "DON'T extract fault codes from printed nameplates"
+  - Added rule: "ONLY extract from LED/LCD/7-segment DISPLAYS"
+  - Updated JSON schema description
+- **Testing**: Next photo showed Fault Code: (empty) - correct!
+- **Commit**: `530a4c2`
+
+**Issue #3: AttributeError - OCR returns string not object**
+- **Problem**: Old code called GPT-4o directly (returned string), new button expected OCRResult
+- **Error**: `'str' object has no attribute 'confidence'`
+- **Fix**: Replaced old GPT-4o call with OCR Pipeline in orchestrator_bot.py
+  - Imported OCRPipeline (line 20)
+  - Initialized ocr_pipeline globally (lines 728-735)
+  - Replaced 85 lines of old code with pipeline call (lines 434-483)
+- **Commit**: `7bfc18d`
+
+**Issue #4: Database Connection Pool Timeout**
+- **Problem**: Save to library failed - couldn't get connection after 15 seconds
+- **Error**: `ERROR: couldn't get a connection after 15.00 sec`
+- **Root Cause**: Neon connection pool exhausted (15+ retry attempts)
+- **Immediate Fix**: Bot restart reset connection pool
+- **Long-Term Fix**: Local SQLite fallback (built in Phase 1)
+
+### [22:28] OCR Pipeline Deployment to VPS
+
+**Deployment**:
+- Pushed commits: 7bfc18d, 530a4c2, cd23abd
+- SSH to VPS: git pull origin main
+- Restarted orchestrator-bot service
+- Verified logs: OCR Pipeline initialized, 1964 KB atoms loaded
+
+**User Testing**:
+- ✅ Photo sent: Siemens 3RQ2000-2AW00
+- ✅ OCR extracted: Manufacturer + Model (no hallucinated fault code)
+- ✅ Button appeared: "📸 Equipment detected! Save to library?"
+- ✅ Button clicked: Showed preview with pre-filled data
+- ✅ Conversation started: Asked for nickname
+- ❌ Save failed: Database connection timeout
+- ✅ Bot restarted: Connection pool reset
+
+---
+
 ## [2025-12-24] RivetCEO Performance Optimization
 
 ### [18:00] Route C Latency Fix + KB Population (Fix #1 & #2 Merged)
