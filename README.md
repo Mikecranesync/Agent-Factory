@@ -15,6 +15,15 @@ Agent Factory is not just a framework—it's the **orchestration engine** poweri
 
 ## 📝 Latest Updates
 
+**2025-12-25 14:10:35 UTC**
+- Fixed Add persistent KB observability batch timer to orchestrator bot
+- Integrate batch notification timer into bot's event loop
+- Timer runs every 5 minutes for BATCH mode summaries
+- Survives bot restarts and keeps running 24/7
+- Graceful error handling if initialization fails
+- **Metrics:** Files: 1 | Lines: +34/-0 | KB Atoms: (unavailable)
+
+
 **2025-12-25 12:40:09 UTC**
 - Added Integrate KB observability into ingestion pipeline
 - Add IngestionMonitor + TelegramNotifier to ingestion_chain.py
