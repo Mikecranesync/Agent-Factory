@@ -205,10 +205,10 @@ class IngestionSession:
         # Build metric record
         metric = self._build_metric_record(status)
 
-        # Queue for batch write
-        await self.monitor._queue_write(metric)
+        # Write immediately to database (don't queue for background writer)
+        await self.monitor._write_metric_immediately(metric)
 
-        logger.debug(f"[{self.session_id}] Session queued for write (status={status})")
+        logger.debug(f"[{self.session_id}] Session written to database (status={status})")
 
         # Send Telegram notification (if notifier configured)
         if self.monitor.notifier:
@@ -489,6 +489,74 @@ class IngestionMonitor:
 
         except Exception as e:
             logger.error(f"Failover log write failed: {e}")
+
+    async def _write_metric_immediately(self, metric: Dict[str, Any]):
+        """
+        Write single metric to database immediately (synchronous write).
+
+        Used when scripts exit before background writer can flush.
+        Falls back to failover log if database unavailable.
+
+        Args:
+            metric: Metric record to write
+        """
+        try:
+            # Build INSERT query
+            query = """
+                INSERT INTO ingestion_metrics_realtime (
+                    source_url, source_type, source_hash, status,
+                    atoms_created, atoms_failed, chunks_processed,
+                    avg_quality_score, quality_pass_rate,
+                    stage_1_acquisition_ms, stage_2_extraction_ms, stage_3_chunking_ms,
+                    stage_4_generation_ms, stage_5_validation_ms, stage_6_embedding_ms,
+                    stage_7_storage_ms, total_duration_ms,
+                    error_stage, error_message, vendor, equipment_type,
+                    started_at, completed_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+            """
+
+            values = (
+                metric["source_url"],
+                metric["source_type"],
+                metric["source_hash"],
+                metric["status"],
+                metric["atoms_created"],
+                metric["atoms_failed"],
+                metric["chunks_processed"],
+                metric.get("avg_quality_score"),
+                metric.get("quality_pass_rate"),
+                metric.get("stage_1_acquisition_ms", 0),
+                metric.get("stage_2_extraction_ms", 0),
+                metric.get("stage_3_chunking_ms", 0),
+                metric.get("stage_4_generation_ms", 0),
+                metric.get("stage_5_validation_ms", 0),
+                metric.get("stage_6_embedding_ms", 0),
+                metric.get("stage_7_storage_ms", 0),
+                metric["total_duration_ms"],
+                metric.get("error_stage"),
+                metric.get("error_message"),
+                metric.get("vendor"),
+                metric.get("equipment_type"),
+                metric["started_at"],
+                metric["completed_at"]
+            )
+
+            # Execute in thread pool (database calls are sync)
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                self.db.execute_query,
+                query,
+                values,
+                "none"  # fetch_mode - we don't need results from INSERT
+            )
+
+            logger.debug(f"Metric written immediately to database")
+
+        except Exception as e:
+            logger.error(f"Immediate write failed: {e}", exc_info=True)
+            # Failover: Write to file
+            await self._write_to_failover_log([metric])
 
     async def _queue_write(self, metric: Dict[str, Any]):
         """
