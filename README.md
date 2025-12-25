@@ -15,6 +15,11 @@ Agent Factory is not just a framework—it's the **orchestration engine** poweri
 
 ## 📝 Latest Updates
 
+**2025-12-25 16:34:47 UTC**
+- Fixed Add robust JSON extraction from LLM responses (handles markdown code blocks + better logging)
+- **Metrics:** Files: 1 | Lines: +24/-2 | KB Atoms: (unavailable)
+
+
 **2025-12-25 16:30:05 UTC**
 - Fixed Gracefully degrade when source_fingerprints table missing (allows ingestion to continue)
 - **Metrics:** Files: 1 | Lines: +33/-15 | KB Atoms: (unavailable)
