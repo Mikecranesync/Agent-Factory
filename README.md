@@ -15,6 +15,30 @@ Agent Factory is not just a framework—it's the **orchestration engine** poweri
 
 ## 📝 Latest Updates
 
+**2025-12-25 11:44:27 UTC**
+- Updated documentation for Add KB Observability Platform system map and test files
+- docs/SYSTEM_MAP_OBSERVABILITY.md (25 KB)
+- Complete architecture documentation
+- Component specifications (IngestionMonitor, TelegramNotifier)
+- Data flow diagrams
+- Configuration guide
+- Performance characteristics
+- Testing & validation procedures
+- Production deployment guide
+- Troubleshooting reference
+- Security considerations
+- test_ingestion_monitor.py - Phase 2.1 integration test
+- Tests IngestionMonitor with real database
+- Validates failover logging
+- Verifies background writer queue
+- data/observability/failed_metrics.jsonl (3.2 KB)
+- Example failover log (database unavailable scenario)
+- Demonstrates graceful degradation
+- .claude/observability/metrics.json
+- Metrics configuration
+- **Metrics:** Files: 4 | Lines: +944/-0 | KB Atoms: (unavailable)
+
+
 **2025-12-25 11:42:04 UTC**
 - Fixed Use temp file instead of pipe for hook reliability
 - Avoids stderr/stdout mixing in pipes on Windows
