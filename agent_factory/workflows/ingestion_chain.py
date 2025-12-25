@@ -24,6 +24,8 @@ import os
 import logging
 import hashlib
 import requests
+import asyncio
+import atexit
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Any, TypedDict
@@ -35,8 +37,103 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from agent_factory.memory.storage import SupabaseMemoryStorage
 from core.models import LearningObject, PLCAtom, EducationalLevel, Status
+from agent_factory.core.database_manager import DatabaseManager
+from agent_factory.observability import IngestionMonitor, TelegramNotifier
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Observability Initialization (Module-Level Singleton)
+# ============================================================================
+
+_db_manager = None
+_monitor = None
+_notifier = None
+_batch_timer_task = None
+
+
+def _get_monitor():
+    """
+    Lazy initialization of IngestionMonitor with TelegramNotifier.
+
+    Returns singleton instance for the entire module.
+    """
+    global _db_manager, _monitor, _notifier
+
+    if _monitor is None:
+        try:
+            _db_manager = DatabaseManager()
+
+            # Initialize notifier in BATCH mode
+            _notifier = TelegramNotifier(
+                bot_token=os.getenv("ORCHESTRATOR_BOT_TOKEN"),
+                chat_id=int(os.getenv("TELEGRAM_ADMIN_CHAT_ID", "8445149012")),
+                mode=os.getenv("KB_NOTIFICATION_MODE", "BATCH"),
+                quiet_hours_start=int(os.getenv("NOTIFICATION_QUIET_START", "23")),
+                quiet_hours_end=int(os.getenv("NOTIFICATION_QUIET_END", "7"))
+            )
+
+            _monitor = IngestionMonitor(_db_manager, telegram_notifier=_notifier)
+
+            # Start batch timer if in BATCH mode
+            if os.getenv("KB_NOTIFICATION_MODE", "BATCH") == "BATCH":
+                start_batch_timer()
+
+            logger.info("IngestionMonitor initialized with TelegramNotifier")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize IngestionMonitor: {e}")
+            _monitor = None
+
+    return _monitor
+
+
+async def _batch_notification_timer():
+    """Background task to send batch summaries every 5 minutes."""
+    while True:
+        await asyncio.sleep(300)  # 5 minutes
+        try:
+            if _notifier:
+                await _notifier.send_batch_summary()
+                logger.info("Batch notification summary sent")
+        except Exception as e:
+            logger.error(f"Batch summary failed: {e}")
+            # Don't crash timer
+
+
+def start_batch_timer():
+    """Start background timer for BATCH mode notifications."""
+    global _batch_timer_task
+
+    if _batch_timer_task is None:
+        try:
+            # Get or create event loop
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                # No loop running, create new one
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            _batch_timer_task = loop.create_task(_batch_notification_timer())
+            logger.info("Batch notification timer started (5-minute intervals)")
+
+        except Exception as e:
+            logger.error(f"Failed to start batch timer: {e}")
+
+
+def _shutdown_monitor():
+    """Shutdown monitor on exit."""
+    if _monitor:
+        try:
+            asyncio.run(_monitor.shutdown())
+            logger.info("IngestionMonitor shutdown complete")
+        except Exception as e:
+            logger.error(f"Monitor shutdown failed: {e}")
+
+
+atexit.register(_shutdown_monitor)
 
 
 # ============================================================================
@@ -704,8 +801,109 @@ def create_ingestion_chain() -> StateGraph:
 
 
 # ============================================================================
+# Helper Functions
+# ============================================================================
+
+def _detect_source_type(url: str) -> str:
+    """Detect source type from URL."""
+    if url.endswith(".pdf") or "pdf" in url.lower():
+        return "pdf"
+    elif "youtube.com" in url or "youtu.be" in url:
+        return "youtube"
+    elif "reddit.com" in url:
+        return "reddit"
+    elif "stackoverflow.com" in url:
+        return "stackoverflow"
+    else:
+        return "web"
+
+
+# ============================================================================
 # Public API
 # ============================================================================
+
+async def _ingest_source_monitored(url: str, monitor: IngestionMonitor) -> Dict[str, Any]:
+    """
+    Internal async function that runs ingestion with monitoring.
+
+    Args:
+        url: Source URL
+        monitor: IngestionMonitor instance
+
+    Returns:
+        Ingestion results
+    """
+    # Detect source type
+    source_type = _detect_source_type(url)
+
+    async with monitor.track_ingestion(url, source_type) as session:
+        try:
+            # Create chain
+            chain = create_ingestion_chain()
+
+            # Initialize state
+            initial_state: IngestionState = {
+                "url": url,
+                "source_type": "",
+                "raw_content": None,
+                "chunks": [],
+                "atoms": [],
+                "validated_atoms": [],
+                "embeddings": [],
+                "source_metadata": {},
+                "errors": [],
+                "current_stage": "",
+                "retry_count": 0,
+                "atoms_created": 0,
+                "atoms_failed": 0
+            }
+
+            # Run chain
+            import time
+            start_time = time.time()
+            final_state = chain.invoke(initial_state)
+            total_duration_ms = int((time.time() - start_time) * 1000)
+
+            # Extract vendor if available
+            vendor = final_state.get("source_metadata", {}).get("vendor")
+
+            # Since we don't have per-stage timing yet, estimate based on total duration
+            # TODO: Add detailed stage timing by instrumenting each node
+            stage_duration = total_duration_ms // 7  # Rough estimate across 7 stages
+            session.record_stage("acquisition", stage_duration, True)
+            session.record_stage("extraction", stage_duration, True)
+            session.record_stage("chunking", stage_duration, True)
+            session.record_stage("generation", stage_duration, True)
+            session.record_stage("validation", stage_duration, True,
+                                metadata={"vendor": vendor} if vendor else {})
+            session.record_stage("embedding", stage_duration, True)
+            session.record_stage("storage", stage_duration, True)
+
+            # Mark complete
+            session.finish(
+                atoms_created=final_state["atoms_created"],
+                atoms_failed=final_state["atoms_failed"]
+            )
+
+            logger.info(f"Ingestion complete: {final_state['atoms_created']} atoms created, {final_state['atoms_failed']} failed")
+
+            return {
+                "success": True,
+                "atoms_created": final_state["atoms_created"],
+                "atoms_failed": final_state["atoms_failed"],
+                "errors": final_state["errors"],
+                "source_metadata": final_state["source_metadata"],
+                "total_duration_ms": total_duration_ms
+            }
+
+        except Exception as e:
+            # Record failure
+            session.metadata["error_message"] = str(e)
+            session.finish(atoms_created=0, atoms_failed=1)
+
+            logger.error(f"Ingestion failed: {e}")
+            raise
+
 
 def ingest_source(url: str) -> Dict[str, Any]:
     """
@@ -719,49 +917,69 @@ def ingest_source(url: str) -> Dict[str, Any]:
     """
     logger.info(f"Starting ingestion for: {url}")
 
-    # Create chain
-    chain = create_ingestion_chain()
+    # Get monitor instance
+    monitor = _get_monitor()
 
-    # Initialize state
-    initial_state: IngestionState = {
-        "url": url,
-        "source_type": "",
-        "raw_content": None,
-        "chunks": [],
-        "atoms": [],
-        "validated_atoms": [],
-        "embeddings": [],
-        "source_metadata": {},
-        "errors": [],
-        "current_stage": "",
-        "retry_count": 0,
-        "atoms_created": 0,
-        "atoms_failed": 0
-    }
+    if monitor:
+        # Run with monitoring
+        try:
+            return asyncio.run(_ingest_source_monitored(url, monitor))
+        except Exception as e:
+            logger.error(f"Monitored ingestion failed: {e}")
+            return {
+                "success": False,
+                "atoms_created": 0,
+                "atoms_failed": 0,
+                "errors": [str(e)],
+                "source_metadata": {}
+            }
+    else:
+        # Fallback: run without monitoring
+        logger.warning("IngestionMonitor not available, running without monitoring")
 
-    # Run chain
-    try:
-        final_state = chain.invoke(initial_state)
+        # Create chain
+        chain = create_ingestion_chain()
 
-        logger.info(f"Ingestion complete: {final_state['atoms_created']} atoms created, {final_state['atoms_failed']} failed")
-
-        return {
-            "success": True,
-            "atoms_created": final_state["atoms_created"],
-            "atoms_failed": final_state["atoms_failed"],
-            "errors": final_state["errors"],
-            "source_metadata": final_state["source_metadata"]
-        }
-
-    except Exception as e:
-        logger.error(f"Ingestion failed: {e}")
-        return {
-            "success": False,
+        # Initialize state
+        initial_state: IngestionState = {
+            "url": url,
+            "source_type": "",
+            "raw_content": None,
+            "chunks": [],
+            "atoms": [],
+            "validated_atoms": [],
+            "embeddings": [],
+            "source_metadata": {},
+            "errors": [],
+            "current_stage": "",
+            "retry_count": 0,
             "atoms_created": 0,
-            "atoms_failed": 0,
-            "errors": [str(e)],
-            "source_metadata": {}
+            "atoms_failed": 0
         }
+
+        # Run chain
+        try:
+            final_state = chain.invoke(initial_state)
+
+            logger.info(f"Ingestion complete: {final_state['atoms_created']} atoms created, {final_state['atoms_failed']} failed")
+
+            return {
+                "success": True,
+                "atoms_created": final_state["atoms_created"],
+                "atoms_failed": final_state["atoms_failed"],
+                "errors": final_state["errors"],
+                "source_metadata": final_state["source_metadata"]
+            }
+
+        except Exception as e:
+            logger.error(f"Ingestion failed: {e}")
+            return {
+                "success": False,
+                "atoms_created": 0,
+                "atoms_failed": 0,
+                "errors": [str(e)],
+                "source_metadata": {}
+            }
 
 
 if __name__ == "__main__":
