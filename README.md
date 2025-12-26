@@ -15,6 +15,16 @@ Agent Factory is not just a framework—it's the **orchestration engine** poweri
 
 ## 📝 Latest Updates
 
+**2025-12-26 23:13:41 UTC**
+- Add Rivet MVP parallel sprint setup
+- 6 workstream prompts for parallel Claude CLI development
+- FastAPI app with complete Stripe integration
+- Feature flags with beta tier (full access)
+- Sprint coordination files and guides
+- Multi-laptop setup instructions
+- **Metrics:** Files: 13 | Lines: +2734/-0 | KB Atoms: (unavailable)
+
+
 **2025-12-26 17:03:20 UTC**
 - Added Complete Phase 3 Dynamic Few-Shot RAG Integration
 - examples/integration.py - FewShotEnhancer with async support
