@@ -41,6 +41,7 @@ from agent_factory.rivet_pro.database import RIVETProDatabase
 from agent_factory.rivet_pro.vps_kb_client import VPSKBClient
 from agent_factory.integrations.telegram.conversation_manager import ConversationManager
 from agent_factory.rivet_pro.clarification import IntentClarifier, ClarificationRequest
+from agent_factory.integrations.telegram.api_client import RivetAPIClient
 
 
 class RIVETProHandlers:
@@ -61,6 +62,7 @@ class RIVETProHandlers:
         self.db = RIVETProDatabase()  # Uses DATABASE_PROVIDER from .env
         self.conversation_manager = ConversationManager(db=self.db)  # Phase 1: Memory
         self.vps_client = VPSKBClient()  # VPS KB Factory connection
+        self.api_client = RivetAPIClient()  # WS-3: Backend API for work orders
 
         # Stripe config (test mode)
         self.stripe_api_key = os.getenv("STRIPE_API_KEY", "")
