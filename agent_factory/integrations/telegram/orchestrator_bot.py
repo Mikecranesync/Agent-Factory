@@ -131,7 +131,9 @@ async def format_user_response(result, trace: RequestTrace) -> str:
         # LLM-generated (no KB match)
         response += "AI Generated (no KB match)\n"
         if result.research_triggered:
-            response += "  • Research pipeline used\n"
+            response += "\n🔍 **Researching Similar Issues**\n"
+            response += "I'm searching forums and documentation for additional information.\n"
+            response += "Check back in 3-5 minutes for updated results!\n"
     else:
         # Fallback: show what we have
         if result.links:

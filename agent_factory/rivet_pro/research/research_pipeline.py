@@ -7,6 +7,7 @@ Coordinates forum scraping, deduplication, and knowledge base ingestion.
 
 import hashlib
 import logging
+import threading
 from dataclasses import dataclass
 from typing import List, Optional
 from datetime import datetime
@@ -257,8 +258,9 @@ class ResearchPipeline:
                 # Insert source fingerprint to mark as queued
                 self._insert_fingerprint(source.url, source.source_type)
 
-                # TODO: Call ingestion_chain.ingest_source(source.url) asynchronously
-                # For now, just log the intent
+                # Trigger ingestion in background thread (fire-and-forget)
+                self._trigger_ingestion_background(source.url)
+
                 logger.info(f"Queued for ingestion: {source.url}")
                 queued_count += 1
 
@@ -267,6 +269,76 @@ class ResearchPipeline:
 
         logger.info(f"Queued {queued_count}/{len(sources)} sources for ingestion")
         return queued_count
+
+    def _trigger_ingestion_background(self, url: str) -> None:
+        """
+        Trigger ingestion in a background thread (fire-and-forget).
+
+        This allows the research pipeline to return immediately without
+        waiting for ingestion to complete (which can take 10-30 seconds).
+
+        Args:
+            url: Source URL to ingest
+        """
+        def run_ingestion():
+            """Background thread function for ingestion."""
+            try:
+                from agent_factory.workflows.ingestion_chain import ingest_source
+
+                logger.info(f"Starting background ingestion for: {url}")
+                result = ingest_source(url)
+
+                # Update fingerprint with completion status
+                if result.get("success"):
+                    self._mark_ingestion_complete(url)
+                    logger.info(
+                        f"Ingestion complete for {url}: "
+                        f"{result.get('atoms_created', 0)} atoms created"
+                    )
+                else:
+                    logger.error(
+                        f"Ingestion failed for {url}: "
+                        f"{result.get('errors', [])}"
+                    )
+
+            except Exception as e:
+                logger.error(f"Background ingestion error for {url}: {e}", exc_info=True)
+
+        # Launch background thread (daemon so it doesn't block shutdown)
+        thread = threading.Thread(target=run_ingestion, daemon=True, name=f"ingestion-{url[:50]}")
+        thread.start()
+        logger.debug(f"Launched background ingestion thread for {url}")
+
+    def _mark_ingestion_complete(self, url: str) -> None:
+        """
+        Mark source fingerprint as ingested.
+
+        Args:
+            url: Source URL that completed ingestion
+        """
+        try:
+            conn = self.db.get_connection("supabase")
+            if not conn:
+                logger.warning("No database connection, skipping completion marker")
+                return
+
+            fingerprint = self._compute_fingerprint(url)
+
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE source_fingerprints
+                    SET ingestion_completed_at = %s
+                    WHERE url_hash = %s
+                    """,
+                    (datetime.utcnow(), fingerprint)
+                )
+                conn.commit()
+
+            logger.debug(f"Marked {url} as ingested")
+
+        except Exception as e:
+            logger.error(f"Error marking ingestion complete for {url}: {e}")
 
     def _insert_fingerprint(self, url: str, source_type: str) -> None:
         """
