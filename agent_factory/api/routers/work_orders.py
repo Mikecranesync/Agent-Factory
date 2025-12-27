@@ -11,6 +11,13 @@ from typing import Literal, Optional, List
 import logging
 from datetime import datetime
 
+from agent_factory.integrations.atlas import (
+    AtlasClient,
+    WorkOrderCreate as AtlasWorkOrderCreate,
+    WorkOrderUpdate as AtlasWorkOrderUpdate,
+    AssetSummary as AtlasAssetSummary
+)
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -72,56 +79,52 @@ class WorkOrderListResponse(BaseModel):
 async def create_work_order(request: WorkOrderCreate):
     """
     Create a new work order.
-    
+
     This is the core endpoint called by:
     - Telegram voice handler (after transcription + intent parsing)
     - Telegram text handler
     - Web interface
     - Direct API calls
-    
+
     The work order is created in Atlas CMMS.
     """
     logger.info(f"Creating work order: {request.title} for asset {request.asset_id}")
-    
-    # ==========================================================================
-    # TODO: Create in Atlas CMMS (WS-1 provides AtlasClient)
-    # ==========================================================================
-    # from agent_factory.integrations.atlas import AtlasClient
-    # atlas = AtlasClient()
-    # 
-    # work_order = await atlas.create_work_order({
-    #     "title": request.title,
-    #     "description": request.description,
-    #     "asset": {"id": request.asset_id},
-    #     "priority": request.priority,
-    #     "category": {"name": "Corrective"},
-    #     "metadata": {
-    #         "source": request.source,
-    #         "created_by": request.created_by,
-    #         "fault_codes": request.fault_codes
-    #     }
-    # })
-    
-    # Placeholder response
-    work_order_id = f"WO-{int(datetime.now().timestamp())}"
-    
-    # ==========================================================================
-    # TODO: Log to LangSmith for observability
-    # ==========================================================================
-    # from agent_factory.observability import log_work_order_created
-    # log_work_order_created(work_order_id, request.source, request.created_by)
-    
-    return WorkOrderResponse(
-        id=work_order_id,
-        title=request.title,
-        description=request.description,
-        status="OPEN",
-        priority=request.priority,
-        asset_id=request.asset_id,
-        asset_name=None,  # Would come from Atlas
-        created_by=request.created_by,
-        created_at=datetime.now().isoformat()
-    )
+
+    try:
+        async with AtlasClient() as atlas:
+            # Create Atlas work order
+            atlas_wo = await atlas.create_work_order(
+                AtlasWorkOrderCreate(
+                    title=request.title,
+                    description=request.description or f"Created via {request.source}",
+                    asset_id=int(request.asset_id),
+                    priority=request.priority
+                )
+            )
+
+            # TODO: Log to LangSmith for observability
+            # from agent_factory.observability import log_work_order_created
+            # log_work_order_created(atlas_wo.id, request.source, request.created_by)
+
+            return WorkOrderResponse(
+                id=str(atlas_wo.id),
+                title=atlas_wo.title,
+                description=atlas_wo.description,
+                status=atlas_wo.status,
+                priority=atlas_wo.priority,
+                asset_id=request.asset_id,
+                asset_name=atlas_wo.asset.get("name") if atlas_wo.asset else None,
+                created_by=request.created_by,
+                created_at=atlas_wo.created_at.isoformat(),
+                updated_at=atlas_wo.updated_at.isoformat() if atlas_wo.updated_at else None
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to create work order in Atlas: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create work order: {str(e)}"
+        )
 
 
 @router.get("/work-orders/{work_order_id}", response_model=WorkOrderResponse)
@@ -129,25 +132,71 @@ async def get_work_order(work_order_id: str):
     """
     Get a work order by ID.
     """
-    # ==========================================================================
-    # TODO: Fetch from Atlas CMMS
-    # ==========================================================================
-    raise HTTPException(501, "Not implemented yet")
+    try:
+        async with AtlasClient() as atlas:
+            atlas_wo = await atlas.get_work_order(int(work_order_id))
+
+            return WorkOrderResponse(
+                id=str(atlas_wo.id),
+                title=atlas_wo.title,
+                description=atlas_wo.description,
+                status=atlas_wo.status,
+                priority=atlas_wo.priority,
+                asset_id=str(atlas_wo.asset.get("id")) if atlas_wo.asset else "unknown",
+                asset_name=atlas_wo.asset.get("name") if atlas_wo.asset else None,
+                created_by=atlas_wo.created_by.get("email") if atlas_wo.created_by else "unknown",
+                created_at=atlas_wo.created_at.isoformat(),
+                updated_at=atlas_wo.updated_at.isoformat() if atlas_wo.updated_at else None
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to fetch work order {work_order_id}: {e}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Work order not found: {work_order_id}"
+        )
 
 
 @router.put("/work-orders/{work_order_id}", response_model=WorkOrderResponse)
 async def update_work_order(work_order_id: str, request: WorkOrderUpdate):
     """
     Update a work order.
-    
+
     Can update status, priority, description, or add notes.
     """
     logger.info(f"Updating work order {work_order_id}")
-    
-    # ==========================================================================
-    # TODO: Update in Atlas CMMS
-    # ==========================================================================
-    raise HTTPException(501, "Not implemented yet")
+
+    try:
+        async with AtlasClient() as atlas:
+            atlas_wo = await atlas.update_work_order(
+                int(work_order_id),
+                AtlasWorkOrderUpdate(
+                    title=request.title,
+                    description=request.description,
+                    status=request.status,
+                    priority=request.priority
+                )
+            )
+
+            return WorkOrderResponse(
+                id=str(atlas_wo.id),
+                title=atlas_wo.title,
+                description=atlas_wo.description,
+                status=atlas_wo.status,
+                priority=atlas_wo.priority,
+                asset_id=str(atlas_wo.asset.get("id")) if atlas_wo.asset else "unknown",
+                asset_name=atlas_wo.asset.get("name") if atlas_wo.asset else None,
+                created_by=atlas_wo.created_by.get("email") if atlas_wo.created_by else "unknown",
+                created_at=atlas_wo.created_at.isoformat(),
+                updated_at=atlas_wo.updated_at.isoformat() if atlas_wo.updated_at else None
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to update work order {work_order_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update work order: {str(e)}"
+        )
 
 
 @router.get("/work-orders", response_model=WorkOrderListResponse)
@@ -161,35 +210,77 @@ async def list_work_orders(
 ):
     """
     List work orders with optional filters.
-    
+
     Used by:
     - Telegram bot to show user's work orders
     - Web dashboard
     """
-    # ==========================================================================
-    # TODO: Query Atlas CMMS with filters
-    # ==========================================================================
-    return WorkOrderListResponse(
-        work_orders=[],
-        total=0,
-        page=page,
-        per_page=per_page
-    )
+    try:
+        async with AtlasClient() as atlas:
+            # Atlas uses 0-indexed pages
+            work_orders = await atlas.list_work_orders(
+                user_id=int(user_id) if user_id else None,
+                status=status,
+                page=page - 1,
+                size=per_page
+            )
+
+            return WorkOrderListResponse(
+                work_orders=[
+                    WorkOrderResponse(
+                        id=str(wo.id),
+                        title=wo.title,
+                        description=wo.description,
+                        status=wo.status,
+                        priority=wo.priority,
+                        asset_id=str(wo.asset.get("id")) if wo.asset else "unknown",
+                        asset_name=wo.asset.get("name") if wo.asset else None,
+                        created_by=wo.created_by.get("email") if wo.created_by else "unknown",
+                        created_at=wo.created_at.isoformat(),
+                        updated_at=wo.updated_at.isoformat() if wo.updated_at else None
+                    )
+                    for wo in work_orders
+                ],
+                total=len(work_orders),  # Atlas doesn't return total count in this endpoint
+                page=page,
+                per_page=per_page
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to list work orders: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list work orders: {str(e)}"
+        )
 
 
 @router.post("/work-orders/{work_order_id}/complete")
 async def complete_work_order(work_order_id: str, notes: Optional[str] = None):
     """
     Mark a work order as completed.
-    
+
     Convenience endpoint for the Telegram bot.
     """
     logger.info(f"Completing work order {work_order_id}")
-    
-    # ==========================================================================
-    # TODO: Update in Atlas CMMS
-    # ==========================================================================
-    return {"status": "completed", "work_order_id": work_order_id}
+
+    try:
+        async with AtlasClient() as atlas:
+            await atlas.update_work_order(
+                int(work_order_id),
+                AtlasWorkOrderUpdate(
+                    status="COMPLETE",
+                    description=notes if notes else None
+                )
+            )
+
+            return {"status": "completed", "work_order_id": work_order_id}
+
+    except Exception as e:
+        logger.error(f"Failed to complete work order {work_order_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to complete work order: {str(e)}"
+        )
 
 
 # =============================================================================
@@ -211,21 +302,32 @@ async def search_assets(
 ):
     """
     Search assets by name, location, or ID.
-    
+
     Used by intent clarification when user says "the pump" and we need
     to ask which one.
     """
     logger.info(f"Searching assets: {q}")
-    
-    # ==========================================================================
-    # TODO: Query Atlas CMMS
-    # ==========================================================================
-    # from agent_factory.integrations.atlas import AtlasClient
-    # atlas = AtlasClient()
-    # assets = await atlas.search_assets(query=q, limit=limit)
-    
-    # Placeholder - return empty for now
-    return []
+
+    try:
+        async with AtlasClient() as atlas:
+            atlas_assets = await atlas.search_assets(query=q, limit=limit)
+
+            return [
+                AssetSummary(
+                    id=str(asset.id),
+                    name=asset.name,
+                    location=asset.location,
+                    type=None  # Atlas AssetSummary doesn't have type field
+                )
+                for asset in atlas_assets
+            ]
+
+    except Exception as e:
+        logger.error(f"Failed to search assets: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to search assets: {str(e)}"
+        )
 
 
 @router.get("/assets/{asset_id}")
@@ -233,7 +335,24 @@ async def get_asset(asset_id: str):
     """
     Get asset details by ID.
     """
-    # ==========================================================================
-    # TODO: Fetch from Atlas CMMS
-    # ==========================================================================
-    raise HTTPException(501, "Not implemented yet")
+    try:
+        async with AtlasClient() as atlas:
+            asset = await atlas.get_asset(int(asset_id))
+
+            return {
+                "id": str(asset.id),
+                "name": asset.name,
+                "description": asset.description,
+                "model": asset.model,
+                "serial_number": asset.serial_number,
+                "location": asset.location,
+                "status": asset.status,
+                "created_at": asset.created_at.isoformat()
+            }
+
+    except Exception as e:
+        logger.error(f"Failed to fetch asset {asset_id}: {e}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Asset not found: {asset_id}"
+        )
