@@ -728,7 +728,8 @@ def main():
     )
 
     # Register command handlers
-    application.add_handler(CommandHandler("start", cmd_start))
+    # NOTE: /start is now handled by RIVET Pro handlers (with onboarding)
+    # application.add_handler(CommandHandler("start", cmd_start))  # Disabled - using RIVET Pro /start
     application.add_handler(CommandHandler("help", cmd_help))
     application.add_handler(CommandHandler("status", cmd_status))
     application.add_handler(CommandHandler("agents", cmd_agents))
@@ -738,12 +739,26 @@ def main():
     application.add_handler(CommandHandler("issue", cmd_issue))
 
     # Register RIVET Pro handlers
+    application.add_handler(CommandHandler("start", rivet_handlers.handle_start))  # Enhanced with onboarding
     application.add_handler(CommandHandler("troubleshoot", rivet_handlers.handle_troubleshoot))
     application.add_handler(CommandHandler("upgrade", rivet_handlers.handle_upgrade))
     application.add_handler(CommandHandler("book_expert", rivet_handlers.handle_book_expert))
     application.add_handler(CommandHandler("my_sessions", rivet_handlers.handle_my_sessions))
     application.add_handler(CommandHandler("pro_stats", rivet_handlers.handle_pro_stats))
     application.add_handler(CommandHandler("vps_status", rivet_handlers.handle_vps_status))
+
+    # Onboarding system handlers (new!)
+    application.add_handler(CommandHandler("tutorial", rivet_handlers.handle_tutorial))
+    application.add_handler(CommandHandler("tour", rivet_handlers.handle_tour))
+    application.add_handler(CommandHandler("quickstart", rivet_handlers.handle_quickstart))
+    application.add_handler(CommandHandler("about", rivet_handlers.handle_about))
+    application.add_handler(CommandHandler("pricing", rivet_handlers.handle_pricing))
+
+    # Onboarding callback query handler (inline buttons)
+    application.add_handler(CallbackQueryHandler(
+        rivet_handlers.handle_onboarding_callback,
+        pattern="^(onboard_|tour_)"
+    ))
 
     # Register Machine/Print handlers (TAB 3: WS-3)
     application.add_handler(CommandHandler("add_machine", add_machine_command))
@@ -878,8 +893,9 @@ def main():
     logger.info("=" * 70)
     logger.info(f"Authorized Users: {len(AUTHORIZED_USERS)}")
     logger.info(f"Daily Standup: {STANDUP_HOUR:02d}:{STANDUP_MINUTE:02d}")
-    logger.info("System Commands: /start, /help, /status, /agents, /metrics, /approve, /reject, /issue")
-    logger.info("RIVET Pro: /troubleshoot, /upgrade, /book_expert, /my_sessions, /pro_stats")
+    logger.info("System Commands: /help, /status, /agents, /metrics, /approve, /reject, /issue")
+    logger.info("RIVET Pro: /start (onboarding), /troubleshoot, /upgrade, /book_expert, /my_sessions, /pro_stats")
+    logger.info("Onboarding: /tutorial, /tour, /quickstart, /about, /pricing")
     logger.info("SCAFFOLD: /scaffold, /scaffold_status, /scaffold_history")
     logger.info("Admin Panel: /admin, /agents_admin, /content, /deploy, /kb, /metrics_admin, /health")
     logger.info("TIER 0.1 (CEO Command & Control): Voice messages, Image OCR, Session management")
