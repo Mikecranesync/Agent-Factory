@@ -78,30 +78,72 @@ app.include_router(work_orders_router, prefix="/api", tags=["Work Orders"])
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint with database status."""
+    """Enhanced health check endpoint with all dependencies."""
     from agent_factory.rivet_pro.database import RIVETProDatabase
+    import time
+
+    start_time = time.time()
+    checks = {}
 
     # Check database connection
     db_healthy = False
     db_provider = None
+    db_error = None
     try:
         db = RIVETProDatabase()
         db_provider = db.provider
-        # Simple query to verify connection
         db._execute_one("SELECT 1 as test")
         db_healthy = True
         db.close()
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
+        db_error = str(e)
+
+    checks["database"] = {
+        "healthy": db_healthy,
+        "provider": db_provider,
+        "error": db_error
+    }
+
+    # Check Stripe API connectivity
+    stripe_healthy = False
+    stripe_error = None
+    if settings.stripe_secret_key:
+        try:
+            # Lightweight API call - just retrieve balance (doesn't modify anything)
+            balance = stripe.Balance.retrieve()
+            stripe_healthy = True
+        except stripe.error.StripeError as e:
+            logger.error(f"Stripe health check failed: {e}")
+            stripe_error = str(e)
+    else:
+        stripe_error = "Stripe secret key not configured"
+
+    checks["stripe"] = {
+        "healthy": stripe_healthy,
+        "configured": bool(settings.stripe_secret_key),
+        "error": stripe_error
+    }
+
+    # Aggregate overall status
+    all_healthy = db_healthy and stripe_healthy
+    any_degraded = (db_healthy or stripe_healthy) and not all_healthy
+
+    if all_healthy:
+        overall_status = "healthy"
+    elif any_degraded:
+        overall_status = "degraded"
+    else:
+        overall_status = "unhealthy"
+
+    response_time = time.time() - start_time
 
     return {
-        "status": "healthy" if db_healthy else "degraded",
+        "status": overall_status,
         "service": "rivet-api",
-        "stripe_configured": bool(settings.stripe_secret_key),
-        "database": {
-            "healthy": db_healthy,
-            "provider": db_provider
-        }
+        "version": "1.0.0",
+        "response_time_ms": round(response_time * 1000, 2),
+        "checks": checks
     }
 
 

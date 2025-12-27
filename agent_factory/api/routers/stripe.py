@@ -13,6 +13,7 @@ from typing import Literal, Optional
 import logging
 
 from agent_factory.api.config import get_settings
+from agent_factory.observability.langsmith_config import trace_endpoint
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -173,6 +174,7 @@ async def checkout_success(session_id: str):
 # =============================================================================
 
 @router.post("/webhooks/stripe", response_model=WebhookResponse)
+@trace_endpoint(name="stripe_webhook", metadata={"category": "payments"})
 async def stripe_webhook(
     request: Request,
     stripe_signature: str = Header(alias="Stripe-Signature")

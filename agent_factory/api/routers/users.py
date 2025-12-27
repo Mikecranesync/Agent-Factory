@@ -12,6 +12,7 @@ import logging
 from uuid import uuid4
 
 from agent_factory.rivet_pro.database import RIVETProDatabase
+from agent_factory.observability.langsmith_config import trace_endpoint
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -61,6 +62,7 @@ class TelegramLinkRequest(BaseModel):
 # =============================================================================
 
 @router.post("/users/provision", response_model=UserProvisionResponse)
+@trace_endpoint(name="provision_user_from_stripe", metadata={"category": "user_provisioning"})
 async def provision_user(request: UserProvisionRequest):
     """
     Provision a new user.
@@ -119,6 +121,7 @@ async def provision_user(request: UserProvisionRequest):
 
 
 @router.get("/users/{user_id}", response_model=UserResponse)
+@trace_endpoint(name="get_user_by_id", metadata={"category": "user_lookup"})
 async def get_user(user_id: str):
     """
     Get user details by ID.
@@ -143,6 +146,7 @@ async def get_user(user_id: str):
 
 
 @router.get("/users/by-email/{email}", response_model=UserResponse)
+@trace_endpoint(name="get_user_by_email", metadata={"category": "user_lookup"})
 async def get_user_by_email(email: str):
     """
     Get user details by email.
@@ -167,6 +171,7 @@ async def get_user_by_email(email: str):
 
 
 @router.get("/users/by-telegram/{telegram_id}", response_model=UserResponse)
+@trace_endpoint(name="get_user_by_telegram", metadata={"category": "user_lookup"})
 async def get_user_by_telegram(telegram_id: int):
     """
     Get user details by Telegram user ID.
@@ -193,6 +198,7 @@ async def get_user_by_telegram(telegram_id: int):
 
 
 @router.post("/users/from-telegram", response_model=UserProvisionResponse)
+@trace_endpoint(name="provision_user_from_telegram", metadata={"category": "user_provisioning"})
 async def provision_from_telegram(telegram_user_id: int, telegram_username: Optional[str] = None):
     """
     Provision a new user from Telegram bot /start command.
@@ -235,6 +241,7 @@ async def provision_from_telegram(telegram_user_id: int, telegram_username: Opti
 
 
 @router.post("/users/link-telegram")
+@trace_endpoint(name="link_telegram_account", metadata={"category": "user_management"})
 async def link_telegram_account(request: TelegramLinkRequest):
     """
     Link a Telegram account to an existing user.
@@ -258,6 +265,7 @@ async def link_telegram_account(request: TelegramLinkRequest):
 
 
 @router.put("/users/{user_id}/tier")
+@trace_endpoint(name="update_user_tier", metadata={"category": "user_management"})
 async def update_user_tier(user_id: str, tier: Literal["basic", "pro", "enterprise"]):
     """
     Update a user's subscription tier.
