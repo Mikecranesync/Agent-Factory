@@ -533,12 +533,13 @@ class RivetOrchestrator:
     async def _route_c_no_kb(
         self, request: RivetRequest, decision: RoutingDecision, trace: Optional[RequestTrace] = None
     ) -> RivetResponse:
-        """Route C: No KB coverage → Gap detection + LLM fallback + Ingestion trigger.
+        """Route C: No KB coverage → Gap detection + LLM fallback + Manual search + Ingestion trigger.
 
         NEW (2025-12-22): Uses Groq instead of hardcoded message.
         NEW (2025-12-22): Logs KB gap for tracking missing content.
         NEW (2025-12-23): Gap detector analyzes query and triggers ingestion.
         NEW (2025-12-24): Parallelized gap detection + LLM response (36s → <5s target).
+        NEW (2025-12-27): Added real-time manual search (delivers manuals to user immediately).
 
         Args:
             request: User query request
@@ -546,22 +547,38 @@ class RivetOrchestrator:
             trace: Optional RequestTrace for debugging
 
         Returns:
-            RivetResponse with LLM-generated answer + ingestion trigger
+            RivetResponse with LLM-generated answer + manual URLs + ingestion trigger
         """
         vendor = decision.vendor_detection.vendor if decision.vendor_detection else VendorType.GENERIC
 
-        # PARALLEL EXECUTION: Gap detection + LLM response (don't block each other)
+        # PARALLEL EXECUTION: Gap detection + LLM response + Manual search (3-way parallel)
         gap_task = asyncio.create_task(
             self._analyze_gap_async(request, decision, vendor)
         )
         llm_task = asyncio.create_task(
             self._generate_llm_response_async(request.text or "", RouteType.ROUTE_C, vendor)
         )
-
-        # Wait for both to complete
-        ingestion_trigger, (response_text, confidence) = await asyncio.gather(
-            gap_task, llm_task
+        manual_task = asyncio.create_task(
+            self._find_manual_async(request.text or "", vendor)
         )
+
+        # Wait for all three to complete
+        ingestion_trigger, (response_text, confidence), manuals = await asyncio.gather(
+            gap_task, llm_task, manual_task
+        )
+
+        # Append manual URLs to response (if found)
+        manual_links = []
+        if manuals:
+            # Add manual reference to response text
+            if len(manuals) == 1:
+                response_text += f"\n\n📄 **Manual Found:** {manuals[0]['title']}\n{manuals[0]['url']}"
+            elif len(manuals) > 1:
+                response_text += f"\n\n📚 **Manuals Found:**\n" + "\n".join([
+                    f"• {m['title']}: {m['url']}" for m in manuals[:3]
+                ])
+
+            manual_links = [m["url"] for m in manuals]
 
         # Trace agent reasoning
         if trace:
@@ -573,6 +590,7 @@ class RivetOrchestrator:
                     f"KB coverage insufficient ({decision.kb_coverage.atom_count} atoms)",
                     f"Analyzed knowledge gap for research trigger",
                     f"Generated LLM response (Groq fallback)",
+                    f"Searched web for manuals (found {len(manuals)})",
                     f"Research pipeline triggered for ingestion" if ingestion_trigger else "No research trigger needed"
                 ],
                 confidence=confidence,
@@ -598,6 +616,11 @@ class RivetOrchestrator:
             confidence=confidence,
             requires_followup=True,
             research_triggered=bool(ingestion_trigger),
+            links=manual_links,
+            cited_documents=[
+                {"title": m["title"], "url": m["url"], "page": "Web Search"}
+                for m in manuals
+            ] if manuals else [],
             trace={
                 "routing_decision": decision.reasoning,
                 "route": "C",
@@ -605,6 +628,8 @@ class RivetOrchestrator:
                 "kb_coverage": decision.kb_coverage.level.value,
                 "llm_fallback": True,
                 "llm_generated": confidence > 0.0,
+                "web_search_performed": len(manuals) > 0,
+                "web_sources_found": len(manuals),
                 "ingestion_trigger": ingestion_trigger if ingestion_trigger else None,
             }
         )
