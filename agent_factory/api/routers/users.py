@@ -11,6 +11,8 @@ from typing import Literal, Optional
 import logging
 from uuid import uuid4
 
+from agent_factory.integrations.atlas import AtlasClient
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -77,10 +79,10 @@ async def provision_user(request: UserProvisionRequest):
     3. Return user info
     """
     logger.info(f"Provisioning user: {request.email} ({request.subscription_tier})")
-    
+
     # Generate user ID
     user_id = str(uuid4())
-    
+
     # ==========================================================================
     # TODO: Create user in database
     # ==========================================================================
@@ -90,25 +92,27 @@ async def provision_user(request: UserProvisionRequest):
     #     stripe_customer_id=request.stripe_customer_id,
     #     tier=request.subscription_tier
     # )
-    
-    # ==========================================================================
-    # TODO: Create user in Atlas CMMS (WS-1)
-    # ==========================================================================
-    # from agent_factory.integrations.atlas import AtlasClient
-    # atlas = AtlasClient()
-    # atlas_user = await atlas.create_user(
-    #     email=request.email,
-    #     role="technician",
-    #     metadata={"stripe_id": request.stripe_customer_id}
-    # )
-    # atlas_user_id = atlas_user["id"]
-    atlas_user_id = None  # Placeholder
-    
+
+    # Create user in Atlas CMMS
+    atlas_user_id = None
+    if request.email:
+        try:
+            async with AtlasClient() as atlas:
+                atlas_user = await atlas.create_user(
+                    email=request.email,
+                    tier=request.subscription_tier
+                )
+                atlas_user_id = str(atlas_user.id)
+                logger.info(f"Created Atlas user: {atlas_user_id}")
+        except Exception as e:
+            logger.error(f"Failed to create Atlas user: {e}")
+            # Continue anyway - Atlas is optional for MVP
+
     # Generate Telegram deep link
     telegram_link = f"https://t.me/RivetCEO_bot?start={user_id}"
-    
+
     logger.info(f"User provisioned: {user_id}")
-    
+
     return UserProvisionResponse(
         user_id=user_id,
         atlas_user_id=atlas_user_id,
@@ -169,17 +173,17 @@ async def provision_from_telegram(telegram_user_id: int, telegram_username: Opti
     Called by the Telegram bot when a new user sends /start.
     """
     logger.info(f"Provisioning user from Telegram: {telegram_user_id} (@{telegram_username})")
-    
+
     # Generate user ID
     user_id = str(uuid4())
-    
+
     # ==========================================================================
-    # TODO: Check if user already exists
+    # TODO: Check if user already exists in database
     # ==========================================================================
     # existing = await get_user_by_telegram(telegram_user_id)
     # if existing:
     #     return existing
-    
+
     # ==========================================================================
     # TODO: Create user in database
     # ==========================================================================
@@ -188,11 +192,27 @@ async def provision_from_telegram(telegram_user_id: int, telegram_username: Opti
     #     telegram_username=telegram_username,
     #     tier="beta"
     # )
-    
-    # For MVP, just return success
+
+    # Create user in Atlas CMMS (use Telegram username as email placeholder)
+    atlas_user_id = None
+    if telegram_username:
+        try:
+            # For Telegram users without email, use username@telegram placeholder
+            email = f"{telegram_username}@telegram.rivet.com"
+            async with AtlasClient() as atlas:
+                atlas_user = await atlas.create_user(
+                    email=email,
+                    tier="beta"
+                )
+                atlas_user_id = str(atlas_user.id)
+                logger.info(f"Created Atlas user from Telegram: {atlas_user_id}")
+        except Exception as e:
+            logger.error(f"Failed to create Atlas user from Telegram: {e}")
+            # Continue anyway - Atlas is optional for MVP
+
     return UserProvisionResponse(
         user_id=user_id,
-        atlas_user_id=None,
+        atlas_user_id=atlas_user_id,
         telegram_link=f"https://t.me/RivetCEO_bot",
         tier="beta"  # Everyone gets full access during beta
     )
