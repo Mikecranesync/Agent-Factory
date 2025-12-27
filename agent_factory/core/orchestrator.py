@@ -42,6 +42,9 @@ from examples.integration import FewShotEnhancer, FewShotConfig
 from examples.store import CaseStore
 from examples.embedder import CaseEmbedder
 
+# TAB 3 Phase 2: Response Synthesizer Integration (2025-12-27)
+from agent_factory.rivet_pro.response_synthesizer import ResponseSynthesizer
+
 
 class RivetOrchestrator:
     """4-route orchestrator for RIVET Pro queries.
@@ -94,6 +97,10 @@ class RivetOrchestrator:
             logger.info("Few-shot RAG enhancer initialized (test mode)")
         except Exception as e:
             logger.warning(f"Few-shot enhancer initialization failed (continuing without it): {e}")
+
+        # Initialize Response Synthesizer (TAB 3 Phase 2 - 2025-12-27)
+        self.response_synthesizer = ResponseSynthesizer()
+        logger.info("Response Synthesizer initialized (TAB 3 Phase 2)")
 
         # Initialize KB gap logger (Phase 1: KB gap tracking)
         self.kb_gap_logger = None
@@ -448,7 +455,15 @@ class RivetOrchestrator:
         response.trace["kb_coverage"] = decision.kb_coverage.level.value
         response.trace["fewshot_cases_retrieved"] = fewshot_cases_count
 
-        return response
+        # TAB 3 Phase 2: Apply Response Synthesizer enhancements
+        enhanced_response = self.response_synthesizer.synthesize(
+            response=response,
+            kb_coverage=decision.kb_coverage.level,
+            vendor=vendor,
+            request=request
+        )
+
+        return enhanced_response
 
     async def _route_b_thin_kb(
         self, request: RivetRequest, decision: RoutingDecision, trace: Optional[RequestTrace] = None
@@ -521,13 +536,21 @@ class RivetOrchestrator:
         response.trace["kb_coverage"] = decision.kb_coverage.level.value
         response.kb_enrichment_triggered = True
 
+        # TAB 3 Phase 2: Apply Response Synthesizer enhancements
+        enhanced_response = self.response_synthesizer.synthesize(
+            response=response,
+            kb_coverage=decision.kb_coverage.level,
+            vendor=vendor,
+            request=request
+        )
+
         # Trigger enrichment pipeline - log gap for background processing
-        if response.kb_enrichment_triggered:
+        if enhanced_response.kb_enrichment_triggered:
             asyncio.create_task(
-                self._log_enrichment_gap(request, decision, response)
+                self._log_enrichment_gap(request, decision, enhanced_response)
             )
 
-        return response
+        return enhanced_response
 
     @timed_operation("route_c_handler")
     async def _route_c_no_kb(
@@ -609,7 +632,8 @@ class RivetOrchestrator:
                     self._log_and_trigger_research(ingestion_trigger, intent_data, request, vendor, decision)
                 )
 
-        return RivetResponse(
+        # Create base response
+        response = RivetResponse(
             text=response_text,
             agent_id=self._get_agent_id(decision.vendor_detection.vendor),
             route_taken=self._get_model_route_type(RouteType.ROUTE_C),
@@ -633,6 +657,16 @@ class RivetOrchestrator:
                 "ingestion_trigger": ingestion_trigger if ingestion_trigger else None,
             }
         )
+
+        # TAB 3 Phase 2: Apply Response Synthesizer enhancements (safety warnings even for fallback responses)
+        enhanced_response = self.response_synthesizer.synthesize(
+            response=response,
+            kb_coverage=decision.kb_coverage.level,
+            vendor=vendor,
+            request=request
+        )
+
+        return enhanced_response
 
     async def _route_d_unclear(
         self, request: RivetRequest, decision: RoutingDecision, trace: Optional[RequestTrace] = None

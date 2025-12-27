@@ -69,6 +69,23 @@ from agent_factory.integrations.telegram.admin import (
 )
 from agent_factory.integrations.telegram.scaffold_handlers import ScaffoldHandlers
 from agent_factory.integrations.telegram.tier0_handlers import TIER0Handlers
+from agent_factory.integrations.telegram.print_handlers import (
+    add_machine_command,
+    list_machines_command,
+    upload_print_command,
+    list_prints_command,
+    chat_print_command,
+    end_chat_command,
+    cancel_command,
+    handle_print_document
+)
+from agent_factory.integrations.telegram.manual_handlers import (
+    upload_manual_command,
+    manual_search_command,
+    manual_list_command,
+    manual_gaps_command,
+    handle_manual_document
+)
 
 # ============================================================================
 # Configuration
@@ -205,6 +222,46 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "*/issue <title>*\n"
         "Create GitHub issue. Multi-line titles supported. "
         "Example: `/issue Fix Research Agent timeout`\n\n"
+
+        "*Machine/Print Commands:*\n\n"
+
+        "*/add_machine <name>*\n"
+        "Create a machine to track electrical prints. "
+        "Example: `/add_machine Lathe_1`\n\n"
+
+        "*/list_machines*\n"
+        "Show all your machines and their print counts.\n\n"
+
+        "*/upload_print <machine>*\n"
+        "Upload electrical print PDF for a machine. "
+        "Example: `/upload_print Lathe_1`\n\n"
+
+        "*/list_prints <machine>*\n"
+        "Show all prints for a machine.\n\n"
+
+        "*/chat_print <machine>*\n"
+        "Start Q&A session with machine's electrical prints. "
+        "Ask about wiring, components, circuits.\n\n"
+
+        "*/end_chat*\n"
+        "End the current print chat session.\n\n"
+
+        "*Manual Library:*\n\n"
+
+        "*/upload_manual*\n"
+        "Upload OEM manual PDF to shared knowledge base. "
+        "Works for all users.\n\n"
+
+        "*/manual_search <query>*\n"
+        "Search indexed manuals with vector search. "
+        "Example: `/manual_search PowerFlex 525 fault F001`\n\n"
+
+        "*/manual_list [manufacturer] [family]*\n"
+        "List all indexed manuals, optionally filtered. "
+        "Example: `/manual_list Allen-Bradley VFD`\n\n"
+
+        "*/manual_gaps*\n"
+        "Show most requested missing manuals to help prioritize uploads.\n\n"
 
         "*Notifications:*\n"
         "- Daily standup (8 AM)\n"
@@ -688,6 +745,21 @@ def main():
     application.add_handler(CommandHandler("pro_stats", rivet_handlers.handle_pro_stats))
     application.add_handler(CommandHandler("vps_status", rivet_handlers.handle_vps_status))
 
+    # Register Machine/Print handlers (TAB 3: WS-3)
+    application.add_handler(CommandHandler("add_machine", add_machine_command))
+    application.add_handler(CommandHandler("list_machines", list_machines_command))
+    application.add_handler(CommandHandler("upload_print", upload_print_command))
+    application.add_handler(CommandHandler("list_prints", list_prints_command))
+    application.add_handler(CommandHandler("chat_print", chat_print_command))
+    application.add_handler(CommandHandler("end_chat", end_chat_command))
+    application.add_handler(CommandHandler("cancel", cancel_command))
+
+    # Register Manual Library handlers (TAB 3: WS-3)
+    application.add_handler(CommandHandler("upload_manual", upload_manual_command))
+    application.add_handler(CommandHandler("manual_search", manual_search_command))
+    application.add_handler(CommandHandler("manual_list", manual_list_command))
+    application.add_handler(CommandHandler("manual_gaps", manual_gaps_command))
+
     # Register LangGraph workflow handlers
     application.add_handler(CommandHandler("research", langgraph_handlers.handle_research))
     application.add_handler(CommandHandler("consensus", langgraph_handlers.handle_consensus))
@@ -733,6 +805,36 @@ def main():
     application.add_handler(CommandHandler("db_health", system_control.handle_db_health))
     application.add_handler(CommandHandler("vps_status_admin", system_control.handle_vps_status))
     application.add_handler(CommandHandler("restart", system_control.handle_restart))
+
+    # PDF Upload Router (TAB 3: WS-3) - Routes PDF uploads to correct handler
+    async def handle_pdf_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Route PDF uploads to print or manual handler based on user state"""
+        # Check awaiting_manual flag
+        if context.user_data.get("awaiting_manual"):
+            await handle_manual_document(update, context)
+            return
+
+        # Check awaiting_print flag
+        if context.user_data.get("awaiting_print"):
+            await handle_print_document(update, context)
+            return
+
+        # No active upload session - prompt user
+        await update.message.reply_text(
+            "📄 *I received a PDF!*\n\n"
+            "*What would you like to do?*\n\n"
+            "• `/upload_print <machine>` - Add as electrical print\n"
+            "• `/upload_manual` - Add to manual library\n\n"
+            "*Examples:*\n"
+            "• `/upload_print Lathe_1`\n"
+            "• `/upload_manual`",
+            parse_mode=ParseMode.MARKDOWN
+        )
+
+    application.add_handler(
+        MessageHandler(filters.Document.PDF, handle_pdf_upload),
+        group=0  # High priority - before text handler
+    )
 
     # TIER 0.1: Voice and image message handlers (high priority)
     application.add_handler(

@@ -70,10 +70,12 @@ app.add_middleware(
 from agent_factory.api.routers.stripe import router as stripe_router
 from agent_factory.api.routers.users import router as users_router
 from agent_factory.api.routers.work_orders import router as work_orders_router
+from agent_factory.api.routers.manuals import router as manuals_router
 
 app.include_router(stripe_router, prefix="/api", tags=["Stripe"])
 app.include_router(users_router, prefix="/api", tags=["Users"])
 app.include_router(work_orders_router, prefix="/api", tags=["Work Orders"])
+app.include_router(manuals_router, prefix="/api/manuals", tags=["Manuals"])
 
 
 @app.get("/health")

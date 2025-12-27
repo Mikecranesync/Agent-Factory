@@ -369,17 +369,37 @@ def identify_urgency(text: str) -> str:
 def extract_fault_code(text: str) -> Optional[str]:
     """Extract fault code from text."""
     patterns = [
-        r'\b[fF]\d{1,4}\b',
-        r'\b[eE]rr?\d{1,4}\b',
-        r'\b[aA]larm\s*\d{1,4}\b',
-        r'\bfault\s*code\s*(\d+)\b',
-        r'\bcode\s+([A-Za-z]?\d+)\b',
-        r'\berror\s+([A-Za-z]?\d+)\b',
+        r'\b[fF]\d{1,4}\b',              # F001, F1, f004
+        r'\b[eE]rr?\d{1,4}\b',           # E01, Err5
+        r'\b[aA]larm\s*\d{1,4}\b',       # Alarm 5
+        r'\bfault\s*code\s*(\d+)\b',     # fault code 5
+        r'\bcode\s+([A-Za-z]?\d+)\b',    # code 45, code A12
+        r'\berror\s+([A-Za-z]?\d+)\b',   # error 12
     ]
-    
+
     for pattern in patterns:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             return match.group(0).upper().replace(" ", "")
-    
+
+    return None
+
+
+def extract_model_number(text: str) -> Optional[str]:
+    """Extract model number from text."""
+    # Common model number patterns
+    patterns = [
+        r'\b(PowerFlex\s*\d{3}[A-Z]?)\b',     # PowerFlex 525
+        r'\b(22[A-F]-[A-Z0-9]+)\b',            # 22B-D010N104
+        r'\b(1756-[A-Z0-9]+)\b',               # 1756-L71
+        r'\b(S7-\d{4})\b',                     # S7-1500
+        r'\b(ACS\d{3})\b',                     # ACS880
+        r'\b([A-Z]{2,3}\d{3,4}[A-Z]?)\b',     # Generic
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return match.group(1).upper()
+
     return None
