@@ -107,37 +107,80 @@ class RIVETProDatabase:
     # =============================================================================
 
     def get_user(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """Get user subscription by user_id"""
+        """Get user by user_id"""
         return self._execute_one(
-            "SELECT * FROM user_subscriptions WHERE user_id = %s",
+            "SELECT * FROM rivet_users WHERE id = %s",
             (user_id,)
         )
 
     def get_user_by_telegram_id(self, telegram_user_id: int) -> Optional[Dict[str, Any]]:
-        """Get user subscription by Telegram user ID"""
+        """Get user by Telegram user ID"""
         return self._execute_one(
-            "SELECT * FROM user_subscriptions WHERE telegram_user_id = %s",
+            "SELECT * FROM rivet_users WHERE telegram_id = %s",
             (telegram_user_id,)
         )
 
-    def create_user(self, user_id: str, telegram_user_id: int, telegram_username: str, **kwargs) -> Dict[str, Any]:
-        """Create new user subscription"""
-        fields = ["user_id", "telegram_user_id", "telegram_username"]
-        values = [user_id, telegram_user_id, telegram_username]
+    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """Get user by email address"""
+        return self._execute_one(
+            "SELECT * FROM rivet_users WHERE email = %s",
+            (email,)
+        )
 
-        for key, value in kwargs.items():
-            fields.append(key)
-            values.append(value)
+    def get_user_by_stripe_customer_id(self, stripe_customer_id: str) -> Optional[Dict[str, Any]]:
+        """Get user by Stripe customer ID"""
+        return self._execute_one(
+            "SELECT * FROM rivet_users WHERE stripe_customer_id = %s",
+            (stripe_customer_id,)
+        )
 
-        placeholders = ", ".join(["%s"] * len(values))
-        field_names = ", ".join(fields)
+    def create_user(
+        self,
+        email: Optional[str] = None,
+        telegram_id: Optional[int] = None,
+        telegram_username: Optional[str] = None,
+        stripe_customer_id: Optional[str] = None,
+        atlas_user_id: Optional[str] = None,
+        tier: str = "beta"
+    ) -> Dict[str, Any]:
+        """Create new user with flexible field population"""
+        import uuid
+        user_id = str(uuid.uuid4())
 
-        query = f"""
-            INSERT INTO user_subscriptions ({field_names})
-            VALUES ({placeholders})
+        query = """
+            INSERT INTO rivet_users
+            (id, email, telegram_id, telegram_username, stripe_customer_id, atlas_user_id, tier)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING *
         """
-        return self._execute_one(query, tuple(values))
+        return self._execute_one(
+            query,
+            (user_id, email, telegram_id, telegram_username, stripe_customer_id, atlas_user_id, tier)
+        )
+
+    def update_user_telegram(
+        self,
+        user_id: str,
+        telegram_id: int,
+        telegram_username: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Link Telegram account to existing user"""
+        return self._execute_one(
+            """
+            UPDATE rivet_users
+            SET telegram_id = %s, telegram_username = %s
+            WHERE id = %s
+            RETURNING *
+            """,
+            (telegram_id, telegram_username, user_id)
+        )
+
+    def update_user_tier(self, user_id: str, tier: str) -> Dict[str, Any]:
+        """Update user subscription tier"""
+        return self._execute_one(
+            "UPDATE rivet_users SET tier = %s WHERE id = %s RETURNING *",
+            (tier, user_id)
+        )
 
     def get_user_limits(self, user_id: str) -> Dict[str, Any]:
         """Get user limits using helper function"""

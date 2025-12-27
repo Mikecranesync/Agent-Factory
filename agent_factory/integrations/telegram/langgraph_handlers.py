@@ -30,7 +30,7 @@ from agent_factory.workflows import (
     create_consensus_workflow,
     create_supervisor_workflow
 )
-from agent_factory.observability import LangFuseTracker
+# from agent_factory.observability import LangFuseTracker  # TODO: Re-enable when LangFuseTracker is implemented
 
 
 class LangGraphHandlers:
@@ -46,13 +46,9 @@ class LangGraphHandlers:
         self.factory = AgentFactory()
 
         # Try to initialize LangFuse tracker
-        try:
-            self.tracker = LangFuseTracker()
-            self.observability_enabled = True
-        except ValueError:
-            # LangFuse not configured - workflows still work, just no traces
-            self.tracker = None
-            self.observability_enabled = False
+        # TODO: Re-enable when LangFuseTracker is implemented
+        self.tracker = None
+        self.observability_enabled = False
 
     async def handle_research(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
