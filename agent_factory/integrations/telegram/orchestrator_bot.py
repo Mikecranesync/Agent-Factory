@@ -646,6 +646,100 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Error processing photo: {str(e)[:200]}")
 
 
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle voice messages - Transcribe with Whisper and route through orchestrator.
+
+    Same routing as text messages (A/B/C/D routes).
+    """
+    global orchestrator, openai_client
+
+    # Check dependencies
+    if openai_client is None:
+        await update.message.reply_text(
+            "⚠️ Voice transcription is not available. Please use text messages."
+        )
+        return
+
+    if orchestrator is None:
+        await update.message.reply_text(
+            "⚠️ Orchestrator is not available. Please contact support."
+        )
+        return
+
+    user_id = update.effective_user.id
+    username = update.effective_user.username or "unknown"
+    voice = update.message.voice
+
+    logger.info(f"[{user_id}] Voice message received, duration: {voice.duration}s")
+
+    processing_msg = await update.message.reply_text("🎤 Processing voice...")
+
+    try:
+        # Download voice file
+        file = await context.bot.get_file(voice.file_id)
+
+        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
+            await file.download_to_drive(tmp.name)
+            audio_path = Path(tmp.name)
+
+        # Transcribe with Whisper
+        await processing_msg.edit_text("🎤 Transcribing...")
+
+        with open(audio_path, 'rb') as audio_file:
+            transcription = await openai_client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                language="en"
+            )
+
+        transcribed_text = transcription.text.strip()
+        logger.info(f"[{user_id}] Transcribed: {transcribed_text[:100]}...")
+
+        # Cleanup
+        audio_path.unlink()
+
+        # Acknowledge transcription
+        await processing_msg.edit_text(
+            f"🎤 **I heard:** \"{transcribed_text}\"\n\n_Analyzing..._",
+            parse_mode="Markdown"
+        )
+
+        # Route through orchestrator (same as text messages)
+        request = create_text_request(
+            user_id=f"telegram_{user_id}",
+            text=transcribed_text,
+            channel=ChannelType.TELEGRAM,
+            username=username
+        )
+
+        response = await orchestrator.route_query(request)
+
+        # Format response (same as handle_message)
+        trace = RequestTrace(
+            message_type="voice",
+            user_id=str(user_id),
+            username=username,
+            content=transcribed_text
+        )
+        formatted_text = await format_user_response(response, trace)
+
+        # Send final response
+        await update.message.reply_text(formatted_text, parse_mode="Markdown")
+
+        logger.info(
+            f"[{user_id}] Voice processed. "
+            f"Route: {response.route_taken.value}, Confidence: {response.confidence:.2f}"
+        )
+
+    except Exception as e:
+        logger.error(f"[{user_id}] Voice error: {e}", exc_info=True)
+        await processing_msg.edit_text(
+            f"❌ **Error processing voice**\n\n{str(e)[:200]}",
+            parse_mode="Markdown"
+        )
+
+
 async def post_init(app: Application):
     global orchestrator, openai_client, kb_manager
     try:
@@ -757,6 +851,10 @@ def main():
     app.add_handler(CommandHandler("kb_queue", kb_manager.handle_kb_queue))
 
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))  # Photo handler (BEFORE text)
+
+    # Voice message handler - Transcribe + Route through RivetOrchestrator
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot running. Ctrl+C to stop.")

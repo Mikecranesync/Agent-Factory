@@ -41,6 +41,7 @@ from .voice.handler import VoiceHandler
 from .voice.transcriber import WhisperTranscriber
 from .rivet_pro_handlers import RIVETProHandlers
 from . import photo_handler
+from . import voice_orchestrator_handler  # WS-3: Voice → Orchestrator routing
 
 
 class TelegramBot:
@@ -164,11 +165,11 @@ class TelegramBot:
         # Callback handler (inline buttons)
         self.app.add_handler(CallbackQueryHandler(self._unified_callback_handler))
 
-        # Voice message handler (NEW - WS3)
+        # Voice message handler (NEW - WS3) - Routes through RivetOrchestrator
         self.app.add_handler(
             MessageHandler(
                 filters.VOICE,
-                self.voice_handler.handle_voice
+                voice_orchestrator_handler.handle_voice_orchestrator
             )
         )
 
