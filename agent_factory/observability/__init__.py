@@ -1,1 +1,1 @@
-Observability and tracing infrastructure.
+"""Observability and tracing infrastructure."""
