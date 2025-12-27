@@ -25,6 +25,7 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode, ChatAction
 
 from agent_factory.core.agent_factory import AgentFactory
+from agent_factory.core.trace_logger import RequestTrace
 from agent_factory.workflows import (
     create_research_workflow,
     create_consensus_workflow,
@@ -172,6 +173,24 @@ class LangGraphHandlers:
             })
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
+
+            # Trace LangGraph workflow execution
+            trace = RequestTrace("langgraph_research", user_id)
+            trace.langgraph_execution({
+                "workflow": "research",
+                "nodes_executed": ["planner", "researcher", "analyzer", "writer"],
+                "state_transitions": {
+                    "final_step": result["current_step"],
+                    "quality_gate_activated": result["retry_count"] > 0
+                },
+                "retry_count": result.get("retry_count", 0),
+                "quality_gate_results": {
+                    "quality_score": result.get("quality_score", 0.0),
+                    "threshold": 0.7,
+                    "passed": result.get("quality_score", 0.0) >= 0.7
+                },
+                "total_duration_ms": int(duration * 1000)
+            })
 
             # Update status - analyzing
             quality_score = result.get("quality_score", 0.0)
@@ -321,6 +340,23 @@ class LangGraphHandlers:
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
 
+            # Trace LangGraph workflow execution
+            trace = RequestTrace("langgraph_consensus", user_id)
+            trace.langgraph_execution({
+                "workflow": "consensus",
+                "nodes_executed": ["generate", "consensus"],
+                "state_transitions": {
+                    "candidates_generated": len(result.get("candidate_answers", [])),
+                    "judge_decision_made": True
+                },
+                "retry_count": 0,
+                "quality_gate_results": {
+                    "consensus_method": "judge",
+                    "candidates_evaluated": len(result.get("candidate_answers", []))
+                },
+                "total_duration_ms": int(duration * 1000)
+            })
+
             # Build response
             final_answer = result.get("final_answer", "No answer selected")
 
@@ -451,6 +487,23 @@ class LangGraphHandlers:
             })
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
+
+            # Trace LangGraph workflow execution
+            trace = RequestTrace("langgraph_supervisor", user_id)
+            trace.langgraph_execution({
+                "workflow": "supervisor",
+                "nodes_executed": ["supervise", "delegate"],
+                "state_transitions": {
+                    "teams_selected": result.get("supervisor_decision", {}).get("teams", []),
+                    "teams_executed": [r["team"] for r in result.get("delegated_results", [])]
+                },
+                "retry_count": 0,
+                "quality_gate_results": {
+                    "supervisor_decision": result.get("supervisor_decision", {}),
+                    "teams_completed": len(result.get("delegated_results", []))
+                },
+                "total_duration_ms": int(duration * 1000)
+            })
 
             # Build response
             final_answer = result.get("final_answer", "No results")

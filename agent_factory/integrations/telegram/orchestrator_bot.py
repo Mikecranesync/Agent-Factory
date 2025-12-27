@@ -87,6 +87,35 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def cmd_trace(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Toggle trace verbosity level (Step 6/6 enhancement)."""
+    import os
+
+    args = context.args
+
+    if not args:
+        # Show current setting
+        level = os.getenv("TRACE_LEVEL", "normal")
+        await update.message.reply_text(f"Current trace level: {level}")
+        return
+
+    level = args[0].lower()
+    if level not in ["minimal", "normal", "verbose", "debug"]:
+        await update.message.reply_text(
+            "Usage: /trace [minimal|normal|verbose|debug]\n\n"
+            "Levels:\n"
+            "  minimal - Only errors and route taken\n"
+            "  normal - Basic routing decisions (default)\n"
+            "  verbose - Include KB retrieval and agent reasoning\n"
+            "  debug - Full trace with all decision points"
+        )
+        return
+
+    # Update environment variable (persists for session)
+    os.environ["TRACE_LEVEL"] = level
+    await update.message.reply_text(f"✓ Trace level set to: {level}")
+
+
 # BATCH 1: Extracted functions with @traceable decorators
 
 @traceable(run_type="tool", project_name="rivet-ceo-bot", name="format_user_response")
@@ -180,18 +209,146 @@ async def send_to_user(update: Update, response: str, trace: RequestTrace):
 
 @traceable(run_type="tool", project_name="rivet-ceo-bot", name="send_admin_trace")
 async def send_admin_trace(context: ContextTypes.DEFAULT_TYPE, trace: RequestTrace, result):
-    """Send formatted trace to admin chat (8445149012)."""
-    admin_message = trace.format_admin_message(
-        route=result.route_taken.value if result.route_taken else "unknown",
-        confidence=result.confidence or 0.0,
-        kb_atoms=len(result.cited_documents) if result.cited_documents else 0,
-        llm_model=result.trace.get("llm_model") if result.trace else None,
-        kb_coverage="high" if result.confidence and result.confidence > 0.8 else "low"
-    )
+    """Send comprehensive debug trace to admin (Step 5/6 enhancement)."""
+    sections = []
+
+    # Section 1: Request Info
+    sections.extend([
+        "=" * 50,
+        f"TRACE [{trace.trace_id[:8]}]",
+        "=" * 50,
+        "",
+        "📥 REQUEST",
+        f"  Type: {trace.message_type}",
+        f"  User: {trace.username} ({trace.user_id})",
+        f"  Time: {trace.start_time}",
+        f"  Query: {trace.content[:100]}{'...' if len(trace.content) > 100 else ''}",
+        ""
+    ])
+
+    # Section 2: Routing Decision
+    sections.extend([
+        "🔀 ROUTING DECISION",
+        f"  Route: {result.route_taken.value if result.route_taken else 'unknown'}",
+        f"  Confidence: {result.confidence:.2%}" if result.confidence else "  Confidence: 0%",
+        ""
+    ])
+
+    # Add decision trace details
+    decisions = trace.get_decisions()
+    if decisions:
+        for decision in decisions:
+            sections.extend([
+                f"  Decision Point: {decision.get('decision_point')}",
+                f"    → Outcome: {decision.get('outcome')}",
+                f"    → Reasoning: {decision.get('reasoning')}",
+            ])
+            if decision.get('alternatives'):
+                sections.append("    → Alternatives:")
+                for alt_name, alt_reason in decision.get('alternatives', {}).items():
+                    sections.append(f"        • {alt_name}: {alt_reason}")
+            sections.append("")
+
+    # Section 3: KB Coverage Details
+    kb_retrieval = trace.get_kb_retrieval_info()
+    if kb_retrieval:
+        sections.extend([
+            "📚 KNOWLEDGE BASE",
+            f"  Coverage: {kb_retrieval.get('coverage', 0):.2%}",
+            f"  Atoms Found: {kb_retrieval.get('atoms_found', 0)}",
+        ])
+        if kb_retrieval.get('top_matches'):
+            sections.append("  Top Matches:")
+            for atom_id, score in kb_retrieval['top_matches'][:5]:
+                sections.append(f"    - {atom_id}: {score:.2%}")
+        sections.append("")
+
+    # Section 4: Agent Reasoning
+    agent_reasoning = trace.get_agent_reasoning()
+    if agent_reasoning:
+        sections.extend([
+            f"🤖 AGENT: {agent_reasoning.get('agent', 'Unknown')}",
+            f"  Atoms Used: {len(agent_reasoning.get('kb_atoms_used', []))}",
+        ])
+        if agent_reasoning.get('reasoning_steps'):
+            sections.append("  Reasoning Steps:")
+            for step in agent_reasoning['reasoning_steps']:
+                sections.append(f"    {step}")
+        sections.append("")
+
+    # Section 5: Research Pipeline
+    if result.research_triggered:
+        research_status = trace.get_research_pipeline_status()
+        if research_status:
+            sections.extend([
+                "🔍 RESEARCH PIPELINE",
+                f"  Triggered: YES",
+                f"  Sources Found: {len(research_status.get('sources_found', []))}",
+                f"  Sources Queued: {research_status.get('sources_queued', 0)}",
+                f"  Estimated Completion: {research_status.get('estimated_completion', 'unknown')}",
+            ])
+            if research_status.get('sources_found'):
+                sections.append("  URLs:")
+                for url in research_status['sources_found'][:5]:
+                    sections.append(f"    - {url}")
+            sections.append("")
+
+    # Section 6: LangGraph Execution
+    langgraph_trace = trace.get_langgraph_trace()
+    if langgraph_trace:
+        sections.extend([
+            "🔗 LANGGRAPH WORKFLOW",
+            f"  Workflow: {langgraph_trace.get('workflow', 'unknown')}",
+            f"  Nodes: {' → '.join(langgraph_trace.get('nodes_executed', []))}",
+            f"  Duration: {langgraph_trace.get('total_duration_ms', 0)}ms",
+            f"  Retries: {langgraph_trace.get('retry_count', 0)}",
+            ""
+        ])
+
+    # Section 7: Performance Timing
+    timings = trace.get_all_timings()
+    if timings:
+        sections.append("⏱️ PERFORMANCE")
+        for operation, duration_ms in timings.items():
+            sections.append(f"  {operation}: {duration_ms}ms")
+        sections.extend(["", f"  TOTAL: {trace.total_duration_ms}ms", ""])
+
+    # Section 8: VPS Logs
+    try:
+        from agent_factory.integrations.telegram.log_monitor import VPSLogMonitor
+        log_monitor = VPSLogMonitor()
+        recent_errors = log_monitor.tail_recent_errors(last_n_lines=5)
+        if recent_errors and any(e.strip() for e in recent_errors):
+            sections.append("⚠️ VPS RECENT ERRORS")
+            for error_line in recent_errors:
+                if error_line.strip():
+                    sections.append(f"  {error_line}")
+            sections.append("")
+    except Exception as e:
+        logger.warning(f"VPS log check failed: {e}")
+        sections.extend([f"⚠️ VPS log check failed: {e}", ""])
+
+    # Section 9: Errors
+    errors = trace.get_errors()
+    if errors:
+        sections.append("❌ ERRORS")
+        for error in errors:
+            sections.extend([
+                f"  Type: {error.get('error_type', 'unknown')}",
+                f"  Message: {error.get('message', 'N/A')}",
+                f"  Location: {error.get('location', 'N/A')}",
+                ""
+            ])
+
+    sections.append("=" * 50)
+
+    # Send to admin chat
+    message = "\n".join(sections)
+
     try:
         await context.bot.send_message(
             chat_id=8445149012,  # Admin chat ID
-            text=admin_message,
+            text=f"```\n{message}\n```",
             parse_mode="Markdown"
         )
     except Exception as admin_error:
@@ -840,6 +997,7 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("status", status))
+    app.add_handler(CommandHandler("trace", cmd_trace))  # Trace verbosity control (Step 6/6)
 
     # Machine Library - Personal equipment library for technicians
     app.add_handler(CommandHandler("library", library.library_command))

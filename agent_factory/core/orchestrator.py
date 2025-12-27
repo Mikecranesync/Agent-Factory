@@ -26,6 +26,7 @@ from agent_factory.llm.types import LLMConfig, LLMProvider, LLMResponse
 from agent_factory.core.kb_gap_logger import KBGapLogger
 from agent_factory.core.gap_detector import GapDetector
 from agent_factory.core.performance import timed_operation, PerformanceTracker
+from agent_factory.core.trace_logger import RequestTrace
 import logging
 
 logger = logging.getLogger(__name__)
@@ -138,11 +139,12 @@ class RivetOrchestrator:
         }
 
     @timed_operation("route_query_total")
-    async def route_query(self, request: RivetRequest) -> RivetResponse:
+    async def route_query(self, request: RivetRequest, trace: Optional[RequestTrace] = None) -> RivetResponse:
         """Main routing logic - evaluates query and routes to appropriate handler.
 
         Args:
             request: User query request
+            trace: Optional RequestTrace for debugging (Step 1/6 enhancement)
 
         Returns:
             RivetResponse from appropriate route handler
@@ -150,29 +152,58 @@ class RivetOrchestrator:
         # Step 1: Detect vendor from query
         vendor_detection = self.vendor_detector.detect(request.text or "")
 
+        # Trace vendor detection decision
+        if trace:
+            trace.decision(
+                decision_point="vendor_detection",
+                outcome=vendor_detection.vendor.value,
+                reasoning=f"Keywords matched: {', '.join(vendor_detection.keywords_matched)}",
+                confidence=vendor_detection.confidence,
+                keywords_matched=vendor_detection.keywords_matched
+            )
+
         # Step 2: Evaluate KB coverage for detected vendor (async to avoid blocking)
         kb_coverage = await self.kb_evaluator.evaluate_async(request, vendor_detection.vendor)
 
+        # Trace KB coverage evaluation
+        if trace:
+            trace.decision(
+                decision_point="kb_coverage_evaluation",
+                outcome=kb_coverage.level.value,
+                reasoning=f"Found {kb_coverage.atom_count} atoms, avg relevance {kb_coverage.avg_relevance:.2f}",
+                alternatives={
+                    "strong": "atom_count >= 3 AND relevance >= 0.05",
+                    "thin": "1-2 atoms OR relevance 0.0-0.05",
+                    "none": "0 atoms OR relevance < 0.0"
+                },
+                confidence=kb_coverage.confidence,
+                atom_count=kb_coverage.atom_count,
+                avg_relevance=kb_coverage.avg_relevance,
+                top_atom_scores=[(doc.get('atom_id', 'unknown'), doc.get('score', 0.0))
+                                 for doc in kb_coverage.retrieved_docs[:5]]
+            )
+
         # Step 3: Make routing decision based on coverage
         routing_decision = self._make_routing_decision(
-            request, vendor_detection, kb_coverage
+            request, vendor_detection, kb_coverage, trace
         )
 
         # Step 4: Execute appropriate route
         if routing_decision.route == RouteType.ROUTE_A:
-            return await self._route_a_strong_kb(request, routing_decision)
+            return await self._route_a_strong_kb(request, routing_decision, trace)
         elif routing_decision.route == RouteType.ROUTE_B:
-            return await self._route_b_thin_kb(request, routing_decision)
+            return await self._route_b_thin_kb(request, routing_decision, trace)
         elif routing_decision.route == RouteType.ROUTE_C:
-            return await self._route_c_no_kb(request, routing_decision)
+            return await self._route_c_no_kb(request, routing_decision, trace)
         else:  # ROUTE_D
-            return await self._route_d_unclear(request, routing_decision)
+            return await self._route_d_unclear(request, routing_decision, trace)
 
     def _make_routing_decision(
         self,
         request: RivetRequest,
         vendor_detection: VendorDetection,
         kb_coverage: KBCoverage,
+        trace: Optional[RequestTrace] = None,
     ) -> RoutingDecision:
         """Determine which route to take based on KB coverage.
 
@@ -180,6 +211,7 @@ class RivetOrchestrator:
             request: User query request
             vendor_detection: Detected vendor with confidence
             kb_coverage: KB coverage metrics
+            trace: Optional RequestTrace for debugging
 
         Returns:
             RoutingDecision with route, reasoning, and SME agent
@@ -187,6 +219,16 @@ class RivetOrchestrator:
         # Route D: Unclear intent (highest priority)
         if self.kb_evaluator.is_unclear(kb_coverage):
             self._route_counts[RouteType.ROUTE_D] += 1
+
+            # Trace route selection decision
+            if trace:
+                trace.decision(
+                    decision_point="route_selection",
+                    outcome="route_d",
+                    reasoning="Query intent is unclear - requesting clarification",
+                    confidence=kb_coverage.confidence
+                )
+
             return RoutingDecision(
                 route=RouteType.ROUTE_D,
                 vendor_detection=vendor_detection,
@@ -202,6 +244,22 @@ class RivetOrchestrator:
         # Route A: Strong KB coverage → direct answer
         if self.kb_evaluator.is_strong_coverage(kb_coverage):
             self._route_counts[RouteType.ROUTE_A] += 1
+
+            # Trace route selection decision
+            if trace:
+                trace.decision(
+                    decision_point="route_selection",
+                    outcome="route_a",
+                    reasoning=f"Strong KB coverage ({kb_coverage.atom_count} atoms, {kb_coverage.avg_relevance:.2f} relevance) - routing to SME agent",
+                    confidence=kb_coverage.confidence,
+                    alternatives={
+                        "route_b": "Would be used if coverage 0.05-0.3",
+                        "route_c": "Would be used if no coverage < 0.05"
+                    },
+                    selected_agent=sme_agent,
+                    threshold_met="coverage >= 0.3 AND avg_relevance >= 0.05"
+                )
+
             return RoutingDecision(
                 route=RouteType.ROUTE_A,
                 vendor_detection=vendor_detection,
@@ -215,6 +273,21 @@ class RivetOrchestrator:
         # Route B: Thin KB coverage → answer + enrichment
         if self.kb_evaluator.is_thin_coverage(kb_coverage):
             self._route_counts[RouteType.ROUTE_B] += 1
+
+            # Trace route selection decision
+            if trace:
+                trace.decision(
+                    decision_point="route_selection",
+                    outcome="route_b",
+                    reasoning=f"Thin KB coverage ({kb_coverage.atom_count} atoms, {kb_coverage.avg_relevance:.2f} relevance) - routing with enrichment trigger",
+                    confidence=kb_coverage.confidence,
+                    alternatives={
+                        "route_a": "Would be used if coverage >= 3 atoms",
+                        "route_c": "Would be used if no coverage < 1 atom"
+                    },
+                    selected_agent=sme_agent
+                )
+
             return RoutingDecision(
                 route=RouteType.ROUTE_B,
                 vendor_detection=vendor_detection,
@@ -227,6 +300,21 @@ class RivetOrchestrator:
 
         # Route C: No KB coverage → research pipeline
         self._route_counts[RouteType.ROUTE_C] += 1
+
+        # Trace route selection decision
+        if trace:
+            trace.decision(
+                decision_point="route_selection",
+                outcome="route_c",
+                reasoning=f"No KB coverage ({kb_coverage.atom_count} atoms, {kb_coverage.avg_relevance:.2f} relevance) - triggering research pipeline",
+                confidence=kb_coverage.confidence,
+                alternatives={
+                    "route_a": "Not applicable - insufficient atoms",
+                    "route_b": "Not applicable - no coverage"
+                },
+                will_trigger_research=True
+            )
+
         return RoutingDecision(
             route=RouteType.ROUTE_C,
             vendor_detection=vendor_detection,
@@ -289,7 +377,7 @@ class RivetOrchestrator:
         return route_map.get(route, ModelRouteType.ROUTE_C)
 
     async def _route_a_strong_kb(
-        self, request: RivetRequest, decision: RoutingDecision
+        self, request: RivetRequest, decision: RoutingDecision, trace: Optional[RequestTrace] = None
     ) -> RivetResponse:
         """Route A: Strong KB coverage → direct answer from SME agent.
 
@@ -299,6 +387,7 @@ class RivetOrchestrator:
         Args:
             request: User query request
             decision: Routing decision with vendor and coverage info
+            trace: Optional RequestTrace for debugging
 
         Returns:
             RivetResponse with direct answer and citations
@@ -333,6 +422,24 @@ class RivetOrchestrator:
         # Get answer from SME agent with KB coverage + optional few-shot context
         response = await agent.handle_query(request, decision.kb_coverage, fewshot_context)
 
+        # Trace agent reasoning
+        if trace:
+            trace.agent_reasoning(
+                agent=agent.__class__.__name__,
+                query=request.text or "",
+                kb_atoms_used=[doc.get('atom_id', 'unknown') for doc in decision.kb_coverage.retrieved_docs],
+                kb_retrieval_scores=[(doc.get('atom_id', 'unknown'), doc.get('score', 0.0))
+                                     for doc in decision.kb_coverage.retrieved_docs[:5]],
+                reasoning_steps=[
+                    f"Detected vendor: {decision.vendor_detection.vendor.value}",
+                    f"Retrieved {len(decision.kb_coverage.retrieved_docs)} KB atoms",
+                    f"Selected top atoms for prompt injection",
+                    f"Generated response using {fewshot_cases_count} few-shot examples" if fewshot_cases_count else "Generated response without few-shot examples"
+                ],
+                confidence=response.confidence,
+                response_length=len(response.text)
+            )
+
         # Update response with routing metadata
         response.route_taken = self._get_model_route_type(RouteType.ROUTE_A)
         response.trace["routing_decision"] = decision.reasoning
@@ -344,13 +451,14 @@ class RivetOrchestrator:
         return response
 
     async def _route_b_thin_kb(
-        self, request: RivetRequest, decision: RoutingDecision
+        self, request: RivetRequest, decision: RoutingDecision, trace: Optional[RequestTrace] = None
     ) -> RivetResponse:
         """Route B: Thin KB coverage → answer + enrichment trigger.
 
         Args:
             request: User query request
             decision: Routing decision with vendor and coverage info
+            trace: Optional RequestTrace for debugging
 
         Returns:
             RivetResponse with answer and enrichment flag set
@@ -360,6 +468,22 @@ class RivetOrchestrator:
 
         # Get answer from SME agent with KB coverage
         response = await agent.handle_query(request, decision.kb_coverage)
+
+        # Trace agent reasoning
+        if trace:
+            trace.agent_reasoning(
+                agent=agent.__class__.__name__,
+                query=request.text or "",
+                kb_atoms_used=[doc.get('atom_id', 'unknown') for doc in decision.kb_coverage.retrieved_docs],
+                reasoning_steps=[
+                    f"Detected vendor: {decision.vendor_detection.vendor.value}",
+                    f"Retrieved {len(decision.kb_coverage.retrieved_docs)} KB atoms (thin coverage)",
+                    f"Generated answer from partial KB coverage",
+                    f"Flagged for enrichment pipeline"
+                ],
+                confidence=response.confidence,
+                will_enrich=True
+            )
 
         # Update response with routing metadata
         response.route_taken = self._get_model_route_type(RouteType.ROUTE_B)
@@ -376,7 +500,7 @@ class RivetOrchestrator:
 
     @timed_operation("route_c_handler")
     async def _route_c_no_kb(
-        self, request: RivetRequest, decision: RoutingDecision
+        self, request: RivetRequest, decision: RoutingDecision, trace: Optional[RequestTrace] = None
     ) -> RivetResponse:
         """Route C: No KB coverage → Gap detection + LLM fallback + Ingestion trigger.
 
@@ -388,6 +512,7 @@ class RivetOrchestrator:
         Args:
             request: User query request
             decision: Routing decision with vendor and coverage info
+            trace: Optional RequestTrace for debugging
 
         Returns:
             RivetResponse with LLM-generated answer + ingestion trigger
@@ -406,6 +531,22 @@ class RivetOrchestrator:
         ingestion_trigger, (response_text, confidence) = await asyncio.gather(
             gap_task, llm_task
         )
+
+        # Trace agent reasoning
+        if trace:
+            trace.agent_reasoning(
+                agent="llm_fallback",
+                query=request.text or "",
+                kb_atoms_used=[],
+                reasoning_steps=[
+                    f"KB coverage insufficient ({decision.kb_coverage.atom_count} atoms)",
+                    f"Analyzed knowledge gap for research trigger",
+                    f"Generated LLM response (Groq fallback)",
+                    f"Research pipeline triggered for ingestion" if ingestion_trigger else "No research trigger needed"
+                ],
+                confidence=confidence,
+                research_triggered=bool(ingestion_trigger)
+            )
 
         # Append ingestion trigger marker to response (if generated)
         if ingestion_trigger:
@@ -438,7 +579,7 @@ class RivetOrchestrator:
         )
 
     async def _route_d_unclear(
-        self, request: RivetRequest, decision: RoutingDecision
+        self, request: RivetRequest, decision: RoutingDecision, trace: Optional[RequestTrace] = None
     ) -> RivetResponse:
         """Route D: Unclear intent → Groq LLM fallback.
 
@@ -447,6 +588,7 @@ class RivetOrchestrator:
         Args:
             request: User query request
             decision: Routing decision with vendor and coverage info
+            trace: Optional RequestTrace for debugging
 
         Returns:
             RivetResponse with LLM-generated clarification or hardcoded fallback
@@ -457,6 +599,21 @@ class RivetOrchestrator:
             route_type=RouteType.ROUTE_D,
             vendor=decision.vendor_detection.vendor
         )
+
+        # Trace agent reasoning
+        if trace:
+            trace.agent_reasoning(
+                agent="llm_fallback_clarification",
+                query=request.text or "",
+                kb_atoms_used=[],
+                reasoning_steps=[
+                    f"Intent classification: unclear (confidence {decision.kb_coverage.confidence:.2f})",
+                    f"Generated clarification request",
+                    f"Asking user for: equipment type, symptoms, troubleshooting steps"
+                ],
+                confidence=confidence,
+                requires_clarification=True
+            )
 
         return RivetResponse(
             text=response_text,
