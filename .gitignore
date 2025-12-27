@@ -109,3 +109,7 @@ logs/
 output/
 render-env-vars.txt
 render-env-vars-template.txt
+
+# Secret files
+langsmith info.txt
+docs/FIXES_APPLIED_2025-12-23.md
