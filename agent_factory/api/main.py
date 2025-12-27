@@ -78,11 +78,30 @@ app.include_router(work_orders_router, prefix="/api", tags=["Work Orders"])
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Health check endpoint with database status."""
+    from agent_factory.rivet_pro.database import RIVETProDatabase
+
+    # Check database connection
+    db_healthy = False
+    db_provider = None
+    try:
+        db = RIVETProDatabase()
+        db_provider = db.provider
+        # Simple query to verify connection
+        db._execute_one("SELECT 1 as test")
+        db_healthy = True
+        db.close()
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}")
+
     return {
-        "status": "healthy",
+        "status": "healthy" if db_healthy else "degraded",
         "service": "rivet-api",
         "stripe_configured": bool(settings.stripe_secret_key),
+        "database": {
+            "healthy": db_healthy,
+            "provider": db_provider
+        }
     }
 
 
