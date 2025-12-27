@@ -37,6 +37,9 @@ from . import fieldeye_handlers
 from . import management_handlers
 from . import rivet_orchestrator_handler
 from . import library
+from .voice.handler import VoiceHandler
+from .voice.transcriber import WhisperTranscriber
+from .rivet_pro_handlers import RIVETProHandlers
 
 
 class TelegramBot:
@@ -69,6 +72,18 @@ class TelegramBot:
         self.config = config
         self.session_manager = TelegramSessionManager()
         self.factory = AgentFactory(verbose=False)
+
+        # Initialize RIVET Pro handlers (for voice message routing)
+        self.rivet_handlers = RIVETProHandlers()
+
+        # Initialize voice components
+        self.transcriber = WhisperTranscriber()
+        self.voice_handler = VoiceHandler(
+            transcriber=self.transcriber,
+            intent_detector=self.rivet_handlers.intent_detector,
+            conversation_manager=self.rivet_handlers.conversation_manager,
+            rivet_handlers=self.rivet_handlers
+        )
 
         # Build application
         self.app = Application.builder().token(config.bot_token).build()
@@ -147,6 +162,14 @@ class TelegramBot:
 
         # Callback handler (inline buttons)
         self.app.add_handler(CallbackQueryHandler(self._unified_callback_handler))
+
+        # Voice message handler (NEW - WS3)
+        self.app.add_handler(
+            MessageHandler(
+                filters.VOICE,
+                self.voice_handler.handle_voice
+            )
+        )
 
         # Message handler (text messages, NOT commands)
         self.app.add_handler(
