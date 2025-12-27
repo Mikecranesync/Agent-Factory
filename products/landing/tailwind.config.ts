@@ -11,6 +11,12 @@ const config: Config = {
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
+        rivet: {
+          orange: "#FF6B35",  // Primary CTA, highlights
+          dark: "#1a1a2e",    // Main background
+          gray: "#16213e",    // Secondary background
+          light: "#e8e8e8",   // Hover states
+        },
       },
     },
   },
