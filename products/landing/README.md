@@ -151,6 +151,14 @@ The frontend communicates with the FastAPI backend at `/api/checkout`:
 }
 ```
 
+## Live Deployment
+
+**Production URL:** https://landing-zeta-plum.vercel.app
+
+**Deployed:** 2025-12-27
+
+**Status:** ✅ All pages live and functional
+
 ## Success Criteria
 
 - [x] Landing page loads at localhost:3000
@@ -158,7 +166,7 @@ The frontend communicates with the FastAPI backend at `/api/checkout`:
 - [x] Checkout redirects to Stripe (when backend is running)
 - [x] Success page shows next steps
 - [x] Mobile responsive
-- [ ] Deployed to Vercel (pending)
+- [x] Deployed to Vercel
 
 ## Notes
 

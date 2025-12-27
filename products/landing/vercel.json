@@ -30,12 +30,5 @@
         }
       ]
     }
-  ],
-  "env": {
-    "NEXT_PUBLIC_STRIPE_PRICE_BASIC": "@stripe-price-basic",
-    "NEXT_PUBLIC_STRIPE_PRICE_PRO": "@stripe-price-pro",
-    "NEXT_PUBLIC_STRIPE_PRICE_ENTERPRISE": "@stripe-price-enterprise",
-    "API_URL": "@api-url",
-    "NEXT_PUBLIC_API_URL": "@api-url"
-  }
+  ]
 }

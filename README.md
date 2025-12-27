@@ -168,6 +168,14 @@ Agent Factory is not just a framework—it's the **orchestration engine** poweri
 
 ---
 
+## 🚀 Live Deployments
+
+### RIVET Products
+- **Landing Page**: https://landing-zeta-plum.vercel.app ✅ (WS-2 Complete - Dec 27, 2025)
+  - Next.js 15 with TypeScript
+  - Stripe checkout integration
+  - 3 pricing tiers (Beta/Pro/Team)
+  - Fully responsive design
 
 ---
 
