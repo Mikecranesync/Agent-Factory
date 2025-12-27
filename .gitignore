@@ -110,7 +110,59 @@ output/
 render-env-vars.txt
 render-env-vars-template.txt
 
-# Secret files
+# API Keys & Credentials (CRITICAL - Never commit these!)
+# Specific known files
 langsmith info.txt
+*langsmith*.txt
+*api-key*.txt
+*api_key*.txt
+*apikey*.txt
+credentials.txt
+secrets.txt
+keys.txt
+
+# Pattern-based exclusions for credential files
+**/credentials/*
+**/secrets/*
+**/keys/*
+**/*credentials*.txt
+**/*secrets*.txt
+**/*keys*.txt
+**/*password*.txt
+**/*token*.txt
+**/*auth*.txt
+
+# Info files that might contain sensitive data
+*info.txt
+*_info.txt
+*-info.txt
+
+# Backup files that might contain sensitive data
+*.bak
+*.backup
+*.old
+*~
+
+# Configuration files that might contain secrets
+config.local.json
+settings.local.json
+*local.config*
+*secret.config*
+
+# Stripe keys
+stripe_*.txt
+*stripe_key*.txt
+
+# Database credentials
+database.txt
+db_credentials.txt
+*connection_string*.txt
+
+# Supabase & Neon credentials
+supabase_*.txt
+neon_*.txt
+*supabase_key*.txt
+*neon_key*.txt
+
+# Other sensitive files
 docs/FIXES_APPLIED_2025-12-23.md
-langsmith info.txt
