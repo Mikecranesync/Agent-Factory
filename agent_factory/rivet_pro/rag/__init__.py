@@ -1,28 +1,35 @@
-"""RAG (Retrieval-Augmented Generation) layer for RIVET Pro.
+"""
+RIVET Pro RAG Layer
 
-Provides semantic search over knowledge base with vendor/equipment filtering
-and KB coverage estimation for routing decisions.
+Retrieval-Augmented Generation (RAG) infrastructure for knowledge base queries.
+
+Components:
+- config: Collection definitions and search configuration
+- retriever: Knowledge base search and coverage estimation
+- filters: Supabase filter building from RivetIntent
+
+Usage:
+    from agent_factory.rivet_pro.rag import search_docs, estimate_coverage
+    
+    docs = search_docs(intent, agent_id="siemens", top_k=8)
+    coverage = estimate_coverage(intent)
 """
 
-# Lazy imports to avoid loading database dependencies unless needed
-def __getattr__(name):
-    if name == "search_docs":
-        from agent_factory.rivet_pro.rag.retriever import search_docs
-        return search_docs
-    elif name == "estimate_coverage":
-        from agent_factory.rivet_pro.rag.retriever import estimate_coverage
-        return estimate_coverage
-    elif name == "RetrievedDoc":
-        from agent_factory.rivet_pro.rag.retriever import RetrievedDoc
-        return RetrievedDoc
-    elif name == "RAGConfig":
-        from agent_factory.rivet_pro.rag.config import RAGConfig
-        return RAGConfig
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+from agent_factory.rivet_pro.rag.retriever import search_docs, estimate_coverage
+from agent_factory.rivet_pro.rag.config import (
+    RAGConfig,
+    RetrievedDoc,
+    COLLECTION_NAME,
+    DEFAULT_TOP_K,
+    COVERAGE_THRESHOLDS
+)
 
 __all__ = [
     "search_docs",
     "estimate_coverage",
-    "RetrievedDoc",
     "RAGConfig",
+    "RetrievedDoc",
+    "COLLECTION_NAME",
+    "DEFAULT_TOP_K",
+    "COVERAGE_THRESHOLDS"
 ]

@@ -1,383 +1,220 @@
 """
-Document Retriever for RIVET Pro RAG
+RAG Retriever for RIVET Pro
 
-Semantic search over knowledge base with vendor/equipment filtering
-and coverage estimation for routing decisions.
+Knowledge base search and coverage estimation.
 
-Author: Agent Factory
-Created: 2025-12-17
-Phase: 2/8 (RAG Layer)
+Phase 2/8 of RIVET Pro Multi-Agent Backend.
 """
 
-import logging
 from typing import List, Optional, Dict, Any
-from dataclasses import dataclass
-from datetime import datetime
+import logging
 
 from agent_factory.rivet_pro.models import RivetIntent, KBCoverage
-from agent_factory.rivet_pro.rag.config import RAGConfig
-from agent_factory.rivet_pro.rag.filters import build_filters, build_keyword_filters
-from agent_factory.core.database_manager import DatabaseManager
+from agent_factory.rivet_pro.rag.config import (
+    RetrievedDoc,
+    RAGConfig,
+    AGENT_CONFIGS,
+    COLLECTION_NAME,
+    COVERAGE_THRESHOLDS,
+    DEFAULT_TOP_K
+)
+from agent_factory.rivet_pro.rag.filters import (
+    build_metadata_filter,
+    build_atom_type_filter,
+    combine_filters,
+    extract_search_keywords
+)
 
-# LangSmith tracing
-try:
-    from langsmith import traceable
-    from langsmith.run_helpers import get_current_run_tree
-    LANGSMITH_AVAILABLE = True
-except ImportError:
-    # Graceful degradation if langsmith not installed
-    def traceable(*args, **kwargs):
-        def decorator(func):
-            return func
-        return decorator
-    def get_current_run_tree():
-        return None
-    LANGSMITH_AVAILABLE = False
-
-# Set up logging
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class RetrievedDoc:
-    """
-    Single retrieved document from knowledge base.
-
-    Attributes:
-        atom_id: Unique atom identifier
-        title: Document title
-        summary: Brief summary (1-2 sentences)
-        content: Full content text
-        atom_type: Type of atom (concept, procedure, fault, etc.)
-        vendor: Equipment vendor
-        equipment_type: Equipment type
-        similarity: Similarity score (0.0-1.0)
-        source: Source document/URL
-        page_number: Page number in source (if applicable)
-        created_at: When atom was created
-    """
-    atom_id: int
-    title: str
-    summary: str
-    content: str
-    atom_type: str
-    vendor: str
-    equipment_type: str
-    similarity: float
-    source: Optional[str] = None
-    page_number: Optional[int] = None
-    created_at: Optional[datetime] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for serialization"""
-        return {
-            "atom_id": self.atom_id,
-            "title": self.title,
-            "summary": self.summary,
-            "content": self.content,
-            "atom_type": self.atom_type,
-            "vendor": self.vendor,
-            "equipment_type": self.equipment_type,
-            "similarity": self.similarity,
-            "source": self.source,
-            "page_number": self.page_number,
-            "created_at": self.created_at.isoformat() if self.created_at else None
-        }
+def get_supabase_client():
+    """Get Supabase client for knowledge base queries."""
+    try:
+        from agent_factory.rivet_pro.database import RIVETProDatabase
+        db = RIVETProDatabase()
+        return db.client
+    except Exception as e:
+        logger.error(f"Failed to get Supabase client: {e}")
+        return None
 
 
-@traceable(
-    run_type="retriever",
-    name="KB.search_docs_with_model_filter",
-    tags=["kb-search", "model-filtering"]
-)
 def search_docs(
     intent: RivetIntent,
-    rag_config: Optional[RAGConfig] = None,
-    db: Optional[DatabaseManager] = None,
-    model_number: Optional[str] = None,
-    part_number: Optional[str] = None
+    agent_id: str = "generic_plc",
+    top_k: int = DEFAULT_TOP_K,
+    config: Optional[RAGConfig] = None
 ) -> List[RetrievedDoc]:
     """
-    Search knowledge base for relevant documents.
-
-    Performs keyword search with vendor/equipment/model filtering.
-    Returns top-k most relevant documents sorted by text relevance.
-
+    Search knowledge base using RivetIntent.
+    
     Args:
-        intent: Parsed user intent with vendor/equipment/symptom info
-        rag_config: RAG configuration (uses default if not provided)
-        db: DatabaseManager instance (creates new if not provided)
-        model_number: Equipment model number from OCR (e.g., "G120C", "PowerFlex 525")
-        part_number: Equipment part number from OCR (e.g., "6SL3244-0BB13-1PA0")
-
+        intent: Classified user intent
+        agent_id: Which SME agent is requesting
+        top_k: Number of documents to retrieve
+        config: Optional custom RAG configuration
+    
     Returns:
-        List of RetrievedDoc objects sorted by similarity (highest first)
-
-    Examples:
-        >>> from agent_factory.rivet_pro.models import RivetIntent, VendorType, EquipmentType
-        >>> intent = RivetIntent(
-        ...     vendor=VendorType.SIEMENS,
-        ...     equipment_type=EquipmentType.VFD,
-        ...     symptom="F3002 overvoltage fault",
-        ...     raw_summary="Siemens VFD F3002 troubleshooting",
-        ...     context_source="text_only",
-        ...     confidence=0.9,
-        ...     kb_coverage="strong"
-        ... )
-        >>> docs = search_docs(intent, model_number="G120C")
-        >>> len(docs)
-        8
-        >>> docs[0].similarity > 0.75
-        True
+        List of retrieved documents
     """
-    # Use default config if not provided
-    if rag_config is None:
-        rag_config = RAGConfig()
+    if config is None:
+        config = AGENT_CONFIGS.get(agent_id, RAGConfig())
 
-    # Use default DatabaseManager if not provided
-    if db is None:
-        db = DatabaseManager()
+    if config.vendor_filter is None and agent_id in AGENT_CONFIGS:
+        config.vendor_filter = AGENT_CONFIGS[agent_id].vendor_filter
 
-    # Build filters from intent
-    filters = build_filters(intent)
-    keywords = build_keyword_filters(intent)
-
-    logger.info(
-        f"Searching with filters: {filters}, keywords: {keywords[:5]}, "
-        f"model_number: {model_number}, part_number: {part_number}"
-    )
+    client = get_supabase_client()
+    if not client:
+        logger.warning("No database client available")
+        return []
 
     try:
-        # Get search text from intent
-        query_text = intent.raw_summary
+        metadata_filter = build_metadata_filter(intent)
 
-        # Build SQL query with filters
-        where_clauses = []
-        params = []
+        if config.vendor_filter:
+            metadata_filter["vendor"] = {"$eq": config.vendor_filter}
+        if config.equipment_filter:
+            metadata_filter["equipment_filter"] = {"$eq": config.equipment_filter}
 
-        # Add manufacturer filter (maps from vendor detection)
-        if "manufacturer" in filters:
-            where_clauses.append("manufacturer = %s")
-            params.append(filters["manufacturer"])
+        atom_type_filter = build_atom_type_filter(config.atom_type_filter)
+        full_filter = combine_filters(metadata_filter, atom_type_filter)
 
-        # Add model number filter (normalized - remove hyphens/spaces)
-        if model_number:
-            # Normalize: "G-120C" -> "G120C", "S7 1200" -> "S71200"
-            normalized_model = model_number.replace("-", "").replace(" ", "").upper()
-            where_clauses.append(
-                "REPLACE(REPLACE(UPPER(product_family), '-', ''), ' ', '') LIKE %s"
-            )
-            params.append(f"%{normalized_model}%")
-            logger.info(f"Model filter applied: {model_number} (normalized: {normalized_model})")
-
-        # Add part number filter (exact match if provided)
-        if part_number:
-            where_clauses.append(
-                "(source_document ILIKE %s OR content ILIKE %s)"
-            )
-            part_pattern = f"%{part_number}%"
-            params.extend([part_pattern, part_pattern])
-            logger.info(f"Part number filter applied: {part_number}")
-
-        # Note: equipment_type column does not exist in knowledge_atoms table
-        # Filtering by equipment type removed until schema is updated
-
-        # Add text search with PostgreSQL full-text ranking
-        search_query_tsquery = None
-        if keywords:
-            # Filter out English stop words before building ts_query
-            stop_words = {
-                'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
-                'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the',
-                'to', 'was', 'will', 'with', 'what', 'when', 'where', 'who', 'why'
-            }
-            filtered_keywords = [kw for kw in keywords[:5] if kw.lower() not in stop_words]
-
-            # Build ts_query for ranking (use filtered keywords)
-            if filtered_keywords:
-                search_query_tsquery = " | ".join(filtered_keywords[:3])  # OR operator
-            else:
-                search_query_tsquery = None
-
-            # Add tsquery filter to WHERE clause (replaces ILIKE - fixes ts_rank returning 0.0)
-            if search_query_tsquery:
-                where_clauses.append(
-                    "to_tsvector('english', title || ' ' || summary || ' ' || content) @@ to_tsquery('english', %s)"
-                )
-                params.append(search_query_tsquery)
-
-        # Build complete query
-        where_sql = " AND ".join(where_clauses) if where_clauses else "TRUE"
-
-        # Use ts_rank for text relevance scoring
-        if search_query_tsquery:
-            sql = f"""
-                SELECT
-                    atom_id,
-                    title,
-                    summary,
-                    content,
-                    atom_type,
-                    manufacturer,
-                    source_document as source,
-                    source_pages,
-                    created_at,
-                    ts_rank(
-                        to_tsvector('english', title || ' ' || summary || ' ' || content),
-                        to_tsquery('english', %s)
-                    ) as similarity
-                FROM knowledge_atoms
-                WHERE {where_sql}
-                ORDER BY similarity DESC, created_at DESC
-                LIMIT {rag_config.search.top_k}
-            """
-            params.append(search_query_tsquery)
+        if config.use_hybrid_search and intent.raw_summary:
+            docs = _hybrid_search(client, intent, full_filter, top_k, config)
         else:
-            # No valid keywords after stop word filtering - use default relevance
-            sql = f"""
-                SELECT
-                    atom_id,
-                    title,
-                    summary,
-                    content,
-                    atom_type,
-                    manufacturer,
-                    source_document as source,
-                    source_pages,
-                    created_at,
-                    0.5 as similarity  -- Default relevance when no keywords
-                FROM knowledge_atoms
-                WHERE {where_sql}
-                ORDER BY created_at DESC
-                LIMIT {rag_config.search.top_k}
-            """
+            docs = _keyword_search(client, intent, full_filter, top_k)
 
-        # Execute query
-        logger.info(f"Executing search with {len(params)} params, search_query: '{search_query_tsquery if search_query_tsquery else 'NONE'}'")
-        result = db.execute_query(sql, tuple(params))
-
-        if not result:
-            logger.warning(f"No documents found for intent: {intent.raw_summary}")
-            return []
-
-        # Convert to RetrievedDoc objects
-        docs = []
-        similarity_scores = []
-        for row in result:
-            similarity_scores.append(float(row[9]))
-            # Extract first page number from source_pages array (if it exists)
-            source_pages = row[7]  # source_pages array
-            page_number = source_pages[0] if source_pages and len(source_pages) > 0 else None
-
-            doc = RetrievedDoc(
-                atom_id=row[0],
-                title=row[1],
-                summary=row[2],
-                content=row[3],
-                atom_type=row[4],
-                vendor=row[5],  # manufacturer from DB
-                equipment_type="unknown",  # Column doesn't exist in schema yet
-                source=row[6],
-                page_number=page_number,  # First page from source_pages array
-                created_at=row[8],
-                similarity=row[9]
-            )
-            docs.append(doc)
-
-        if similarity_scores:
-            avg_sim = sum(similarity_scores) / len(similarity_scores)
-            logger.info(f"Retrieved {len(docs)} documents, similarity scores: min={min(similarity_scores):.3f}, max={max(similarity_scores):.3f}, avg={avg_sim:.3f}")
-        else:
-            logger.info(f"Retrieved {len(docs)} documents (no similarity scores)")
-
-        # Add LangSmith trace metadata
-        if LANGSMITH_AVAILABLE:
-            run_tree = get_current_run_tree()
-            if run_tree:
-                run_tree.metadata.update({
-                    "vendor": filters.get("manufacturer"),
-                    "model_number": model_number,
-                    "model_filter_applied": model_number is not None,
-                    "part_number": part_number,
-                    "part_filter_applied": part_number is not None,
-                    "results_count": len(docs),
-                    "avg_similarity": avg_sim if similarity_scores else 0.0,
-                    "min_similarity": min(similarity_scores) if similarity_scores else 0.0,
-                    "max_similarity": max(similarity_scores) if similarity_scores else 0.0,
-                    "keywords_used": keywords[:5] if keywords else [],
-                    "search_query_tsquery": search_query_tsquery if search_query_tsquery else None,
-                })
-
-                # Add tags for vendor and model
-                if filters.get("manufacturer"):
-                    run_tree.tags.append(f"vendor:{filters.get('manufacturer')}")
-                if model_number:
-                    run_tree.tags.append(f"model:{model_number.replace(' ', '_').replace('-', '_')}")
-
+        logger.info(f"Retrieved {len(docs)} documents for agent '{agent_id}'")
         return docs
 
     except Exception as e:
-        logger.error(f"Search failed: {e}")
+        logger.error(f"Search failed: {e}", exc_info=True)
         return []
 
 
 def estimate_coverage(
     intent: RivetIntent,
-    config: Optional[RAGConfig] = None,
-    db: Optional[DatabaseManager] = None,
-    model_number: Optional[str] = None
+    agent_id: str = "generic_plc"
 ) -> KBCoverage:
     """
-    Estimate knowledge base coverage for a given intent.
-
-    Used by orchestrator to decide routing (A/B/C/D).
-
+    Estimate knowledge base coverage.
+    
     Args:
-        intent: Parsed user intent
-        config: RAG configuration (uses default if not provided)
-        db: DatabaseManager instance (creates new if not provided)
-        model_number: Equipment model number for filtering (optional)
-
+        intent: Classified user intent
+        agent_id: Which SME agent is requesting
+    
     Returns:
-        KBCoverage enum (strong/thin/none)
-
-    Examples:
-        >>> from agent_factory.rivet_pro.models import RivetIntent, VendorType, EquipmentType
-        >>> intent = RivetIntent(
-        ...     vendor=VendorType.SIEMENS,
-        ...     equipment_type=EquipmentType.VFD,
-        ...     symptom="F3002 overvoltage fault",
-        ...     raw_summary="Siemens VFD F3002 troubleshooting",
-        ...     context_source="text_only",
-        ...     confidence=0.9,
-        ...     kb_coverage="strong"  # Will be updated by this function
-        ... )
-        >>> coverage = estimate_coverage(intent, model_number="G120C")
-        >>> coverage in [KBCoverage.STRONG, KBCoverage.THIN, KBCoverage.NONE]
-        True
+        KBCoverage enum (STRONG, THIN, NONE)
     """
-    # Use default config if not provided
-    if rag_config is None:
-        rag_config = RAGConfig()
+    docs = search_docs(intent, agent_id=agent_id, top_k=20)
+    doc_count = len(docs)
 
-    # Search for relevant docs (with model filtering if provided)
-    docs = search_docs(intent, config=config, db=db, model_number=model_number)
-
-    # Calculate average similarity
-    if not docs:
-        avg_similarity = 0.0
+    if doc_count >= COVERAGE_THRESHOLDS["strong"]:
+        return KBCoverage.STRONG
+    elif doc_count >= COVERAGE_THRESHOLDS["thin"]:
+        return KBCoverage.THIN
     else:
-        avg_similarity = sum(doc.similarity for doc in docs) / len(docs)
+        return KBCoverage.NONE
 
-    # Assess coverage using config thresholds
-    coverage = rag_config.assess_coverage(
-        num_docs=len(docs),
-        avg_similarity=avg_similarity
+
+def _hybrid_search(
+    client: Any,
+    intent: RivetIntent,
+    metadata_filter: Dict[str, Any],
+    top_k: int,
+    config: RAGConfig
+) -> List[RetrievedDoc]:
+    """Hybrid semantic + keyword search."""
+    query_text = intent.raw_summary or ""
+    keywords = extract_search_keywords(intent)
+    keyword_query = " ".join(keywords) if keywords else query_text
+
+    try:
+        response = client.rpc(
+            "match_knowledge_atoms",
+            {
+                "query_embedding": None,
+                "query_text": keyword_query,
+                "match_threshold": config.min_similarity,
+                "match_count": top_k,
+                "filter": metadata_filter
+            }
+        ).execute()
+
+        docs = []
+        for row in response.data[:top_k]:
+            try:
+                doc = _parse_db_row(row)
+                docs.append(doc)
+            except Exception as e:
+                logger.warning(f"Failed to parse document: {e}")
+                continue
+
+        return docs
+
+    except Exception as e:
+        logger.warning(f"Hybrid search failed, falling back: {e}")
+        return _keyword_search(client, intent, metadata_filter, top_k)
+
+
+def _keyword_search(
+    client: Any,
+    intent: RivetIntent,
+    metadata_filter: Dict[str, Any],
+    top_k: int
+) -> List[RetrievedDoc]:
+    """Keyword-only search fallback."""
+    keywords = extract_search_keywords(intent)
+
+    try:
+        query = client.from_(COLLECTION_NAME).select("*")
+
+        for key, condition in metadata_filter.items():
+            if "$eq" in condition:
+                query = query.eq(key, condition["$eq"])
+            elif "$in" in condition:
+                query = query.in_(key, condition["$in"])
+            elif "$contains" in condition:
+                query = query.contains(key, condition["$contains"])
+
+        if keywords and len(keywords) > 0:
+            search_term = " | ".join(keywords)
+            query = query.textSearch("keywords", search_term)
+
+        response = query.limit(top_k).execute()
+
+        docs = []
+        for row in response.data:
+            try:
+                doc = _parse_db_row(row)
+                docs.append(doc)
+            except Exception as e:
+                logger.warning(f"Failed to parse document: {e}")
+                continue
+
+        return docs
+
+    except Exception as e:
+        logger.error(f"Keyword search failed: {e}")
+        return []
+
+
+def _parse_db_row(row: Dict[str, Any]) -> RetrievedDoc:
+    """Parse database row into RetrievedDoc model."""
+    return RetrievedDoc(
+        atom_id=row.get("atom_id", ""),
+        title=row.get("title", ""),
+        summary=row.get("summary", ""),
+        content=row.get("content", ""),
+        atom_type=row.get("type", "concept"),
+        vendor=row.get("vendor"),
+        equipment_type=row.get("equipment_type"),
+        similarity_score=row.get("similarity", 0.0),
+        keywords=row.get("keywords", []),
+        source=row.get("source"),
+        page_number=row.get("page_number"),
+        difficulty=row.get("difficulty"),
+        safety_level=row.get("safety_level"),
+        fault_codes=row.get("fault_codes", []),
+        models=row.get("models", [])
     )
-
-    logger.info(
-        f"Coverage assessment: {coverage.value} "
-        f"(docs={len(docs)}, avg_similarity={avg_similarity:.2f})"
-    )
-
-    return coverage

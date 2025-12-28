@@ -1,156 +1,170 @@
 """
-Intent-to-Filter Mapping for RIVET Pro RAG
+Supabase Filter Builder for RIVET Pro RAG
 
-Converts RivetIntent objects into Supabase filter expressions for
-knowledge_atoms table queries.
+Constructs Supabase query filters from RivetIntent metadata.
 
-Author: Agent Factory
-Created: 2025-12-17
-Phase: 2/8 (RAG Layer)
+Phase 2/8 of RIVET Pro Multi-Agent Backend.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, List, Optional, Any
 from agent_factory.rivet_pro.models import RivetIntent, VendorType, EquipmentType
 
-
-# Map VendorType enum values to database manufacturer column values
-VENDOR_TO_MANUFACTURER = {
-    VendorType.SIEMENS: "siemens",
-    VendorType.ROCKWELL: "rockwell",
-    VendorType.ABB: "abb",
-    VendorType.MITSUBISHI: "mitsubishi",
-    VendorType.SCHNEIDER: "schneider",
-    VendorType.OMRON: "omron",
-    VendorType.ALLEN_BRADLEY: "allen_bradley",
-    VendorType.GENERIC: None,  # Don't filter by manufacturer for generic queries
-    VendorType.UNKNOWN: None,  # Don't filter if vendor unknown
-}
-
-
-def build_filters(intent: RivetIntent) -> Dict[str, Any]:
+def build_metadata_filter(intent: RivetIntent) -> Dict[str, Any]:
     """
-    Build Supabase filter dict from RivetIntent.
-
-    Filters by vendor, equipment type, fault codes, and model numbers
-    to retrieve relevant documentation.
+    Build Supabase metadata filter from RivetIntent.
 
     Args:
-        intent: Parsed intent with vendor/equipment/fault info
+        intent: Classified user intent with vendor, equipment, etc.
 
     Returns:
-        Dict suitable for Supabase .match() or .filter() operations
-
-    Examples:
-        >>> intent = RivetIntent(
-        ...     vendor=VendorType.SIEMENS,
-        ...     equipment_type=EquipmentType.VFD,
-        ...     detected_model="G120C",
-        ...     detected_fault_codes=["F3002"],
-        ...     raw_summary="VFD fault troubleshooting",
-        ...     context_source="text_only",
-        ...     confidence=0.9,
-        ...     kb_coverage="strong"
-        ... )
-        >>> filters = build_filters(intent)
-        >>> filters
-        {'manufacturer': 'siemens'}
+        Dictionary of Supabase query filters
     """
     filters = {}
 
-    # Map vendor to manufacturer column (database uses "manufacturer" not "vendor")
-    manufacturer = VENDOR_TO_MANUFACTURER.get(intent.vendor)
-    if manufacturer:
-        filters["manufacturer"] = manufacturer
+    # Vendor filter
+    if intent.vendor and intent.vendor != VendorType.UNKNOWN:
+        filters["vendor"] = {
+            "$eq": intent.vendor.value
+        }
 
-    # Note: equipment_type column does not exist in knowledge_atoms table
-    # Equipment type filtering removed until database schema is updated
+    # Equipment type filter
+    if intent.equipment_type and intent.equipment_type != EquipmentType.UNKNOWN:
+        filters["equipment_type"] = {
+            "$eq": intent.equipment_type.value
+        }
+
+    # Fault code filter (if detected)
+    if intent.detected_fault_codes:
+        filters["fault_codes"] = {
+            "$contains": intent.detected_fault_codes
+        }
+
+    # Equipment model filter (if detected)
+    if intent.detected_model:
+        filters["models"] = {
+            "$contains": [intent.detected_model]
+        }
 
     return filters
 
 
-def build_keyword_filters(intent: RivetIntent) -> List[str]:
+def build_atom_type_filter(atom_types: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
     """
-    Extract keywords from intent for full-text search.
-
-    Used in hybrid search mode to boost results containing specific
-    model numbers, fault codes, or application keywords.
+    Build filter for atom types (fault, procedure, concept, etc.).
 
     Args:
-        intent: Parsed intent
+        atom_types: List of atom types to include. If None, no filter.
 
     Returns:
-        List of keywords to search for
+        Supabase filter or None
+    """
+    if not atom_types:
+        return None
 
-    Examples:
-        >>> intent = RivetIntent(
-        ...     vendor=VendorType.SIEMENS,
-        ...     equipment_type=EquipmentType.VFD,
-        ...     detected_model="G120C",
-        ...     detected_fault_codes=["F3002"],
-        ...     application="overhead_crane",
-        ...     raw_summary="VFD fault troubleshooting",
-        ...     context_source="text_only",
-        ...     confidence=0.9,
-        ...     kb_coverage="strong"
-        ... )
-        >>> build_keyword_filters(intent)
-        ['G120C', 'F3002', 'overhead_crane', 'VFD', 'fault', 'troubleshooting']
+    return {
+        "atom_type": {
+            "$in": atom_types
+        }
+    }
+
+
+def build_safety_filter(min_safety_level: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    Build filter for safety level (info, caution, warning, danger).
+
+    Args:
+        min_safety_level: Minimum safety level to include
+
+    Returns:
+        Supabase filter or None
+    """
+    if not min_safety_level:
+        return None
+
+    # Safety levels in order of severity
+    safety_order = ["info", "caution", "warning", "danger"]
+
+    if min_safety_level not in safety_order:
+        return None
+
+    # Include all levels >= min_safety_level
+    min_index = safety_order.index(min_safety_level)
+    included_levels = safety_order[min_index:]
+
+    return {
+        "safety_level": {
+            "$in": included_levels
+        }
+    }
+
+
+def combine_filters(*filter_dicts: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Combine multiple filter dictionaries using AND logic.
+
+    Args:
+        *filter_dicts: Variable number of filter dictionaries
+
+    Returns:
+        Combined filter dictionary
+    """
+    combined = {}
+
+    for filter_dict in filter_dicts:
+        if filter_dict:
+            combined.update(filter_dict)
+
+    return combined if combined else {}
+
+
+# ============================================================================
+# Keyword Extraction for Hybrid Search
+# ============================================================================
+
+def extract_search_keywords(intent: RivetIntent) -> List[str]:
+    """
+    Extract searchable keywords from RivetIntent.
+
+    Used for keyword search component of hybrid search.
+
+    Args:
+        intent: Classified user intent
+
+    Returns:
+        List of keywords to search
     """
     keywords = []
 
-    # Add detected model
-    if intent.detected_model:
-        keywords.append(intent.detected_model)
+    # Add vendor name
+    if intent.vendor and intent.vendor != VendorType.UNKNOWN:
+        keywords.append(intent.vendor.value)
+
+    # Add equipment type
+    if intent.equipment_type and intent.equipment_type != EquipmentType.UNKNOWN:
+        keywords.append(intent.equipment_type.value)
 
     # Add fault codes
     if intent.detected_fault_codes:
         keywords.extend(intent.detected_fault_codes)
 
+    # Add equipment model
+    if intent.detected_model:
+        keywords.append(intent.detected_model)
+
     # Add application context
     if intent.application:
-        keywords.append(intent.application)
+        keywords.append(intent.application.value)
 
-    # Extract keywords from raw_summary (simple tokenization)
+    # Add symptom keywords (extract nouns from raw_summary)
     if intent.raw_summary:
-        # Split by spaces and filter out short words
-        words = [
-            word.strip().lower()
-            for word in intent.raw_summary.split()
-            if len(word.strip()) >= 3
-        ]
-        keywords.extend(words)
+        # Simple noun extraction: words longer than 4 chars, not common stopwords
+        stopwords = {"this", "that", "with", "from", "what", "when", "where", "have", "been"}
+        words = intent.raw_summary.lower().split()
+        keywords.extend([
+            word.strip(".,!?;:")
+            for word in words
+            if len(word) > 4 and word.lower() not in stopwords
+        ])
 
-    # Remove duplicates while preserving order
-    seen = set()
-    unique_keywords = []
-    for keyword in keywords:
-        if keyword.lower() not in seen:
-            seen.add(keyword.lower())
-            unique_keywords.append(keyword)
-
-    return unique_keywords
-
-
-def build_part_number_filter(part_number: Optional[str]) -> Optional[Dict[str, Any]]:
-    """
-    Build filter for exact part number match.
-
-    When a part number is detected (e.g., from nameplate OCR),
-    we want exact matches first before falling back to general docs.
-
-    Args:
-        part_number: Detected part number (e.g., "6SL3244-0BB13-1PA0")
-
-    Returns:
-        Filter dict or None if no part number
-
-    Examples:
-        >>> build_part_number_filter("6SL3244-0BB13-1PA0")
-        {'part_number': '6SL3244-0BB13-1PA0'}
-        >>> build_part_number_filter(None)
-        None
-    """
-    if not part_number:
-        return None
-
-    return {"part_number": part_number}
+    # Deduplicate and filter
+    return list(set(k.lower() for k in keywords if k))
