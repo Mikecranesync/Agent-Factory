@@ -57,9 +57,9 @@ try:
     # Initialize Phoenix (assumes server running on port 6006)
     init_phoenix(project_name="rivet_evals", launch_app=False)
     PHOENIX_AVAILABLE = True
-    logger.info("✅ Phoenix tracing enabled")
+    logger.info("[OK] Phoenix tracing enabled")
 except ImportError as e:
-    logger.warning(f"⚠️  Phoenix tracing not available: {e}")
+    logger.warning(f"[WARN] Phoenix tracing not available: {e}")
     # Fallback no-op decorators
     def traced(agent_name="", route=""):
         def decorator(func):
@@ -168,7 +168,7 @@ Respond ONLY with valid JSON."""
             client = wrap_client(client)  # Wrap for Phoenix tracing
 
             response = client.chat.completions.create(
-                model="llama-3.1-70b-versatile",
+                model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
                 temperature=0.3,
@@ -590,7 +590,7 @@ def main():
         from openai import OpenAI
         client = OpenAI()
         client = wrap_client(client)  # Wrap for Phoenix tracing
-        logger.info("✅ OpenAI client initialized (Phoenix tracing enabled)")
+        logger.info("[OK] OpenAI client initialized (Phoenix tracing enabled)")
     except Exception as e:
         logger.error(f"Failed to initialize OpenAI client: {e}")
         logger.error("Set OPENAI_API_KEY in your environment")
@@ -632,8 +632,8 @@ def main():
             "summary": summary,
             "results": results
         }, f, indent=2)
-    
-    logger.info(f"\n✅ Results saved to {args.output}")
+
+    logger.info(f"\n[OK] Results saved to {args.output}")
     
     # Print summary
     print("\n" + "=" * 60)
@@ -641,19 +641,19 @@ def main():
     print("=" * 60)
     
     for eval_name, stats in summary.get("by_eval", {}).items():
-        status = "✅ PASS" if stats["passed"] else "❌ FAIL"
+        status = "[PASS]" if stats["passed"] else "[FAIL]"
         blocking = " [BLOCKING]" if stats["blocking"] else ""
         print(f"  {eval_name}:")
         print(f"    {status} {stats['pass_rate']*100:.1f}% >= {stats['threshold']*100:.0f}%{blocking}")
         print(f"    Counts: {stats['counts']}")
-    
+
     print("=" * 60)
-    
+
     if summary.get("gate_passed"):
-        print("🎉 GATE PASSED: All blocking thresholds met")
+        print("[SUCCESS] GATE PASSED: All blocking thresholds met")
         exit(0)
     else:
-        print("🚫 GATE FAILED: Fix regressions before merging")
+        print("[FAILED] GATE FAILED: Fix regressions before merging")
         exit(1)
 
 
