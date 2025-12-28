@@ -25,9 +25,14 @@ def test_database():
     db = RIVETProDatabase()
     print("  [DEBUG] Database instance created!")
 
+    # Test user creation first (required for foreign key)
+    print("  [DEBUG] Creating test user...")
+    user = db.create_user(email="test@example.com", tier="beta")
+    test_user_id = user['id']
+    print(f"  [OK] Created user: {test_user_id}")
+
     # Test machine creation
-    import uuid
-    test_user_id = str(uuid.uuid4())
+    print("  [DEBUG] Creating test machine...")
     machine = db.create_machine(
         test_user_id,
         "Test Lathe",
