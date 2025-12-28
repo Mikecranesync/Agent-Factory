@@ -95,6 +95,8 @@ paramiko = "^4.0.0"
 pdfplumber = "^0.11.8"
 chromadb = "^1.4.0"
 sentence-transformers = "^5.2.0"
+openai = "^2.14.0"
+arize-phoenix = {extras = ["evals"], version = "^12.27.0"}
 
 [tool.poetry.group.dev.dependencies]
 # Development tools
