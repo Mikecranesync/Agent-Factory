@@ -209,9 +209,10 @@ def source_acquisition_node(state: IngestionState) -> IngestionState:
                 # Continue processing anyway (deduplication is optional)
 
         # Determine source type
+        pdf_metadata = {}
         if url.endswith('.pdf') or 'pdf' in url.lower():
             state["source_type"] = "pdf"
-            raw_content = _download_pdf(url)
+            raw_content, pdf_metadata = _download_pdf(url)
         elif 'youtube.com' in url or 'youtu.be' in url:
             state["source_type"] = "youtube"
             raw_content = _fetch_youtube_transcript(url)
@@ -225,7 +226,9 @@ def source_acquisition_node(state: IngestionState) -> IngestionState:
             "url_hash": url_hash,
             "source_type": state["source_type"],
             "acquired_at": datetime.utcnow().isoformat(),
-            "content_length": len(raw_content) if raw_content else 0
+            "content_length": len(raw_content) if raw_content else 0,
+            # PDF-specific metadata
+            **pdf_metadata
         }
 
         # Store fingerprint to prevent re-processing
@@ -254,14 +257,55 @@ def source_acquisition_node(state: IngestionState) -> IngestionState:
     return state
 
 
-def _download_pdf(url: str) -> str:
-    """Download PDF and extract text (basic implementation)"""
+def _download_pdf(url: str) -> tuple[str, Dict[str, Any]]:
+    """
+    Download PDF and extract text + quality metadata.
+
+    Returns: (text, metadata_dict)
+
+    Metadata includes:
+    - is_direct_pdf: bool (True if direct PDF, False if redirect)
+    - page_count: int
+    - file_size_kb: int
+    - redirect_url: Optional[str] (if redirected)
+    """
+    metadata = {
+        "is_direct_pdf": True,
+        "page_count": 0,
+        "file_size_kb": 0,
+        "redirect_url": None
+    }
+
     try:
-        # Download PDF
-        response = requests.get(url, timeout=30)
+        # STEP 1: Check for redirects (HEAD request first)
+        try:
+            head_response = requests.head(url, timeout=10, allow_redirects=False)
+
+            # Detect redirect status codes
+            if head_response.status_code in [301, 302, 303, 307, 308]:
+                metadata["is_direct_pdf"] = False
+                metadata["redirect_url"] = head_response.headers.get('Location', 'Unknown')
+                logger.warning(f"URL is a redirect ({head_response.status_code}): {url} -> {metadata['redirect_url']}")
+        except Exception as e:
+            logger.warning(f"HEAD request failed, proceeding with GET: {e}")
+
+        # STEP 2: Download PDF
+        response = requests.get(url, timeout=30, allow_redirects=True)
         response.raise_for_status()
 
-        # Save to temp directory
+        # Check if final URL is different (redirect happened)
+        if response.url != url:
+            metadata["is_direct_pdf"] = False
+            metadata["redirect_url"] = response.url
+            logger.warning(f"Redirect detected: {url} -> {response.url}")
+
+        # Check Content-Type
+        content_type = response.headers.get('Content-Type', '')
+        if 'application/pdf' not in content_type and 'pdf' not in content_type.lower():
+            logger.warning(f"Content-Type is not PDF: {content_type}")
+            metadata["is_direct_pdf"] = False
+
+        # STEP 3: Save to temp directory
         output_dir = Path("data/sources/pdfs")
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -271,18 +315,26 @@ def _download_pdf(url: str) -> str:
         with open(output_path, 'wb') as f:
             f.write(response.content)
 
-        # Extract text using PyPDF2 (basic)
+        metadata["file_size_kb"] = len(response.content) // 1024
+
+        # STEP 4: Extract text + page count using PyPDF2
         from PyPDF2 import PdfReader
 
         reader = PdfReader(output_path)
+        metadata["page_count"] = len(reader.pages)
+
         text = "\n\n".join([page.extract_text() for page in reader.pages])
 
-        logger.info(f"Extracted {len(text)} chars from PDF: {filename}")
-        return text
+        logger.info(
+            f"Extracted {len(text)} chars from PDF: {filename} "
+            f"(pages={metadata['page_count']}, size={metadata['file_size_kb']}KB, "
+            f"direct={metadata['is_direct_pdf']})"
+        )
+        return text, metadata
 
     except Exception as e:
         logger.error(f"PDF download failed: {e}")
-        return ""
+        return "", metadata
 
 
 def _fetch_youtube_transcript(url: str) -> str:
@@ -380,6 +432,8 @@ def content_extraction_node(state: IngestionState) -> IngestionState:
     - procedure (step-by-step)
     - example (code + explanation)
     - fault_diagnosis (troubleshooting)
+
+    NEW: Calculate manual quality score (0-100)
     """
     logger.info("[Stage 2] Extracting content structure")
     state["current_stage"] = "extraction"
@@ -405,13 +459,147 @@ def content_extraction_node(state: IngestionState) -> IngestionState:
             })
 
         state["chunks"] = chunks
-        logger.info(f"[Stage 2] Extracted {len(chunks)} content chunks")
+
+        # CALCULATE MANUAL QUALITY SCORE
+        metadata = state.get("source_metadata", {})
+        quality_score = _calculate_manual_quality_score(raw_content, metadata)
+
+        # Store quality data in metadata
+        state["source_metadata"]["manual_quality_score"] = quality_score["overall_score"]
+        state["source_metadata"]["quality_signals"] = quality_score["signals"]
+        state["source_metadata"]["manual_type"] = quality_score["manual_type"]
+
+        logger.info(
+            f"[Stage 2] Extracted {len(chunks)} content chunks | "
+            f"Quality: {quality_score['overall_score']}/100 ({quality_score['manual_type']})"
+        )
 
     except Exception as e:
         logger.error(f"[Stage 2] Extraction failed: {e}")
         state["errors"].append(f"Extraction error: {str(e)}")
 
     return state
+
+
+def _calculate_manual_quality_score(content: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Calculate manual quality score (0-100) based on comprehensiveness indicators.
+
+    Scoring criteria:
+    - Page count (0-30 points): More pages = more comprehensive
+    - Parameter tables (0-20 points): Presence of parameter/function code tables
+    - Fault codes (0-15 points): Presence of error/fault code tables
+    - Specifications (0-15 points): Presence of technical specifications
+    - Diagrams/Wiring (0-10 points): Presence of wiring diagrams, schematics
+    - Table of Contents (0-10 points): Presence of structured TOC
+
+    Manual types:
+    - comprehensive_manual (90-100): Full user manual with all sections
+    - technical_doc (70-89): Specific technical information
+    - partial_doc (50-69): Incomplete or narrow focus
+    - marketing (0-49): Marketing material, redirects, or very limited content
+    """
+    content_lower = content.lower()
+    signals = {}
+    score = 0
+
+    # SIGNAL 1: Page count (0-30 points)
+    page_count = metadata.get("page_count", 0)
+    if page_count >= 200:
+        signals["page_count"] = 30
+    elif page_count >= 100:
+        signals["page_count"] = 25
+    elif page_count >= 50:
+        signals["page_count"] = 15
+    elif page_count >= 20:
+        signals["page_count"] = 5
+    else:
+        signals["page_count"] = 0
+    score += signals["page_count"]
+
+    # SIGNAL 2: Parameter tables (0-20 points)
+    parameter_keywords = ['parameter', 'function code', 'setting', 'configuration', 'p.', 'f.']
+    parameter_matches = sum(1 for kw in parameter_keywords if kw in content_lower)
+    if parameter_matches >= 10:
+        signals["has_parameters"] = 20
+    elif parameter_matches >= 5:
+        signals["has_parameters"] = 10
+    elif parameter_matches >= 2:
+        signals["has_parameters"] = 5
+    else:
+        signals["has_parameters"] = 0
+    score += signals["has_parameters"]
+
+    # SIGNAL 3: Fault codes (0-15 points)
+    fault_keywords = ['fault', 'error code', 'alarm', 'e.', 'err', 'fault code', 'troubleshooting']
+    fault_matches = sum(1 for kw in fault_keywords if kw in content_lower)
+    if fault_matches >= 5:
+        signals["has_fault_codes"] = 15
+    elif fault_matches >= 3:
+        signals["has_fault_codes"] = 10
+    elif fault_matches >= 1:
+        signals["has_fault_codes"] = 5
+    else:
+        signals["has_fault_codes"] = 0
+    score += signals["has_fault_codes"]
+
+    # SIGNAL 4: Specifications (0-15 points)
+    spec_keywords = ['specification', 'rating', 'voltage', 'current', 'frequency', 'capacity', 'dimension']
+    spec_matches = sum(1 for kw in spec_keywords if kw in content_lower)
+    if spec_matches >= 5:
+        signals["has_specifications"] = 15
+    elif spec_matches >= 3:
+        signals["has_specifications"] = 10
+    elif spec_matches >= 1:
+        signals["has_specifications"] = 5
+    else:
+        signals["has_specifications"] = 0
+    score += signals["has_specifications"]
+
+    # SIGNAL 5: Diagrams/Wiring (0-10 points)
+    diagram_keywords = ['wiring', 'diagram', 'schematic', 'connection', 'terminal']
+    diagram_matches = sum(1 for kw in diagram_keywords if kw in content_lower)
+    if diagram_matches >= 5:
+        signals["has_diagrams"] = 10
+    elif diagram_matches >= 2:
+        signals["has_diagrams"] = 5
+    else:
+        signals["has_diagrams"] = 0
+    score += signals["has_diagrams"]
+
+    # SIGNAL 6: Table of Contents (0-10 points)
+    toc_keywords = ['table of contents', 'contents', 'chapter', 'section']
+    if any(kw in content_lower[:5000] for kw in toc_keywords):  # Check first 5000 chars
+        signals["has_toc"] = 10
+    else:
+        signals["has_toc"] = 0
+    score += signals["has_toc"]
+
+    # PENALTY: Redirect detected (-30 points)
+    if not metadata.get("is_direct_pdf", True):
+        score -= 30
+        signals["redirect_penalty"] = -30
+    else:
+        signals["redirect_penalty"] = 0
+
+    # Clamp score to 0-100
+    score = max(0, min(100, score))
+
+    # Determine manual type
+    if score >= 90:
+        manual_type = "comprehensive_manual"
+    elif score >= 70:
+        manual_type = "technical_doc"
+    elif score >= 50:
+        manual_type = "partial_doc"
+    else:
+        manual_type = "marketing"
+
+    return {
+        "overall_score": score,
+        "signals": signals,
+        "manual_type": manual_type
+    }
 
 
 def _infer_content_type(text: str) -> str:
@@ -597,6 +785,12 @@ Focus on clarity, accuracy, and educational value. Return only valid JSON."""
         atom_dict["status"] = "draft"
         atom_dict["created_at"] = datetime.utcnow().isoformat()
         atom_dict["updated_at"] = datetime.utcnow().isoformat()
+
+        # Add manual quality metadata (NEW)
+        atom_dict["manual_quality_score"] = source_metadata.get("manual_quality_score", 0)
+        atom_dict["page_count"] = source_metadata.get("page_count", 0)
+        atom_dict["is_direct_pdf"] = source_metadata.get("is_direct_pdf", True)
+        atom_dict["manual_type"] = source_metadata.get("manual_type", "unknown")
 
         return atom_dict
 
@@ -784,7 +978,12 @@ def storage_node(state: IngestionState) -> IngestionState:
                     "embedding": atom.get("embedding"),
                     "embedding_model": atom.get("embedding_model"),
                     "created_at": atom.get("created_at"),
-                    "updated_at": atom.get("updated_at")
+                    "updated_at": atom.get("updated_at"),
+                    # Manual quality metadata (NEW)
+                    "manual_quality_score": atom.get("manual_quality_score", 0),
+                    "page_count": atom.get("page_count", 0),
+                    "is_direct_pdf": atom.get("is_direct_pdf", True),
+                    "manual_type": atom.get("manual_type", "unknown")
                 }).execute()
 
                 atoms_created += 1

@@ -88,6 +88,24 @@ ABB_URLS = [
 ]
 
 # =============================================================================
+# FUJI ELECTRIC
+# =============================================================================
+FUJI_ELECTRIC_URLS = [
+    # FRENIC-Mini Series (Variable Frequency Drives)
+    "https://www.fujielectric.com/products/manuals/doc/INV/ND286131E.pdf",  # FRENIC-Mini User Manual
+    "https://www.fujielectric.com/products/manuals/doc/INV/ND286131E_10.pdf",  # FRENIC-Mini Ver 10
+
+    # FRENIC-Mega Series
+    "https://www.fujielectric.com/products/manuals/doc/INV/ND286141E.pdf",  # FRENIC-Mega User Manual
+
+    # FRENIC-HVAC Series
+    "https://www.fujielectric.com/products/manuals/doc/INV/ND286151E.pdf",  # FRENIC-HVAC User Manual
+
+    # FRENIC-Ace Series
+    "https://www.fujielectric.com/products/manuals/doc/INV/ND286161E.pdf",  # FRENIC-Ace User Manual
+]
+
+# =============================================================================
 # COMBINED LIST
 # =============================================================================
 SEED_URLS = (
@@ -96,7 +114,8 @@ SEED_URLS = (
     MITSUBISHI_URLS +
     OMRON_URLS +
     SCHNEIDER_URLS +
-    ABB_URLS
+    ABB_URLS +
+    FUJI_ELECTRIC_URLS
 )
 
 # Metadata for tracking
@@ -107,6 +126,7 @@ URL_METADATA = {
     "omron": len(OMRON_URLS),
     "schneider": len(SCHNEIDER_URLS),
     "abb": len(ABB_URLS),
+    "fuji_electric": len(FUJI_ELECTRIC_URLS),
     "total": len(SEED_URLS),
 }
 
