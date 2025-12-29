@@ -4,6 +4,7 @@ Base SME Agent for RIVET Pro
 Abstract base class for all Subject Matter Expert agents.
 
 Phase 3/8 of RIVET Pro Multi-Agent Backend.
+Updated 2025-12-28: Integrated with LLMRouter for Phase 4 orchestrator compatibility.
 """
 
 from abc import ABC, abstractmethod
@@ -19,6 +20,8 @@ from agent_factory.rivet_pro.models import (
     RouteType
 )
 from agent_factory.rivet_pro.rag import search_docs, RetrievedDoc
+from agent_factory.llm.router import LLMRouter
+from agent_factory.llm.types import LLMConfig, LLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -26,30 +29,28 @@ logger = logging.getLogger(__name__)
 class BaseSMEAgent(ABC):
     """
     Abstract base class for SME agents.
-    
+
     All agent implementations must inherit from this class.
+
+    Updated 2025-12-28: Uses LLMRouter for model selection and fallbacks.
     """
-    
-    def __init__(self, agent_id: AgentID):
+
+    def __init__(self, agent_id: AgentID, llm_router: Optional[LLMRouter] = None):
         """
         Initialize SME agent.
-        
+
         Args:
             agent_id: Unique agent identifier
+            llm_router: LLMRouter instance (creates new if None)
         """
         self.agent_id = agent_id
-        self.llm_client = self._init_llm_client()
-    
-    @abstractmethod
-    def _init_llm_client(self):
-        """Initialize LLM client (Groq, OpenAI, etc.)."""
-        pass
-    
+        self.llm_router = llm_router if llm_router else LLMRouter()
+
     @abstractmethod
     def _build_system_prompt(self) -> str:
         """Build system prompt with SME persona."""
         pass
-    
+
     @abstractmethod
     def _build_user_prompt(
         self,
@@ -58,7 +59,7 @@ class BaseSMEAgent(ABC):
     ) -> str:
         """Build user prompt from intent and retrieved docs."""
         pass
-    
+
     def handle(
         self,
         request: RivetRequest,
@@ -67,22 +68,22 @@ class BaseSMEAgent(ABC):
     ) -> RivetResponse:
         """
         Handle user request and generate response.
-        
+
         Args:
             request: Original user request
             intent: Classified intent
             route: Orchestrator route taken
-        
+
         Returns:
             RivetResponse with answer
         """
         try:
             # Query knowledge base
             docs = self._query_kb(intent)
-            
+
             # Generate answer
             answer_text = self._generate_answer(intent, docs)
-            
+
             # Build response
             response = RivetResponse(
                 text=answer_text,
@@ -92,13 +93,13 @@ class BaseSMEAgent(ABC):
                 cited_documents=[doc.source for doc in docs if doc.source],
                 confidence=self._estimate_confidence(intent, docs)
             )
-            
+
             return response
-            
+
         except Exception as e:
             logger.error(f"Error in {self.agent_id}: {e}", exc_info=True)
             return self._error_response(str(e))
-    
+
     def _query_kb(self, intent: RivetIntent) -> List[RetrievedDoc]:
         """Query knowledge base using RAG layer."""
         try:
@@ -112,32 +113,42 @@ class BaseSMEAgent(ABC):
         except Exception as e:
             logger.warning(f"{self.agent_id}: KB query failed: {e}")
             return []
-    
+
     def _generate_answer(
         self,
         intent: RivetIntent,
         docs: List[RetrievedDoc]
     ) -> str:
-        """Generate answer using LLM."""
+        """Generate answer using LLM via LLMRouter.
+
+        Uses LLMRouter for automatic model selection, retries, and fallbacks.
+        """
         system_prompt = self._build_system_prompt()
         user_prompt = self._build_user_prompt(intent, docs)
-        
-        # Call LLM (implementation varies by client)
+
+        # Call LLM via router (handles retries and fallbacks)
         try:
-            response = self.llm_client.chat.completions.create(
+            # Prefer Groq for fast, cheap responses
+            config = LLMConfig(
+                provider=LLMProvider.GROQ,
                 model="llama-3.3-70b-versatile",
+                temperature=0.3,
+                max_tokens=1500
+            )
+
+            response = self.llm_router.generate(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.3,
-                max_tokens=1500
+                config=config
             )
-            return response.choices[0].message.content
+
+            return response.content
         except Exception as e:
             logger.error(f"{self.agent_id}: LLM generation failed: {e}")
             return f"I encountered an error generating a response: {str(e)}"
-    
+
     def _extract_links(self, docs: List[RetrievedDoc]) -> List[str]:
         """Extract documentation links from retrieved docs."""
         links = []
@@ -145,7 +156,7 @@ class BaseSMEAgent(ABC):
             if doc.source and doc.source.startswith("http"):
                 links.append(doc.source)
         return list(set(links))[:5]  # Max 5 unique links
-    
+
     def _estimate_confidence(
         self,
         intent: RivetIntent,
@@ -153,7 +164,7 @@ class BaseSMEAgent(ABC):
     ) -> float:
         """Estimate response confidence based on intent and docs."""
         base_confidence = intent.confidence
-        
+
         # Adjust based on number of docs
         if len(docs) >= 5:
             doc_bonus = 0.1
@@ -161,9 +172,9 @@ class BaseSMEAgent(ABC):
             doc_bonus = 0.05
         else:
             doc_bonus = -0.1
-        
+
         return min(0.95, max(0.3, base_confidence + doc_bonus))
-    
+
     def _error_response(self, error_msg: str) -> RivetResponse:
         """Generate error response."""
         return RivetResponse(

@@ -12,7 +12,6 @@ Phase: 3/8 (SME Agents)
 import logging
 import re
 from typing import List, Optional, Dict, Any
-from groq import Groq
 
 from agent_factory.rivet_pro.models import (
     RivetRequest,
@@ -39,37 +38,14 @@ class SiemensAgent(BaseSMEAgent):
     - PROFINET and PROFIBUS networks
     """
 
-    def __init__(self, groq_api_key: Optional[str] = None):
+    def __init__(self, llm_router: Optional['LLMRouter'] = None):
         """Initialize Siemens agent.
 
         Args:
-            groq_api_key: Groq API key for LLM inference (reads from env if None)
+            llm_router: LLMRouter instance (creates new if None)
         """
-        self._groq_api_key = groq_api_key
-        super().__init__(agent_id=AgentID.SIEMENS)
+        super().__init__(agent_id=AgentID.SIEMENS, llm_router=llm_router)
         logger.info(f"Initialized Siemens SME Agent (agent_id={self.agent_id})")
-
-    def _init_llm_client(self) -> Groq:
-        """Initialize Groq client for LLM inference.
-
-        Returns:
-            Groq client instance
-
-        Raises:
-            ValueError: If GROQ_API_KEY not found in environment
-        """
-        try:
-            import os
-            api_key = self._groq_api_key or os.getenv("GROQ_API_KEY")
-            if not api_key:
-                raise ValueError("GROQ_API_KEY not found in environment")
-
-            client = Groq(api_key=api_key)
-            logger.info("Groq client initialized successfully")
-            return client
-        except Exception as e:
-            logger.error(f"Failed to initialize Groq client: {e}")
-            raise
 
     def _build_system_prompt(self) -> str:
         """Build Siemens-specific system prompt for LLM.

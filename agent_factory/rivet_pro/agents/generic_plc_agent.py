@@ -5,12 +5,12 @@ Focuses on fundamental PLC principles, common troubleshooting approaches, and cr
 
 Author: Agent Factory
 Created: 2025-12-28
+Updated: 2025-12-28
 Phase: 3/8 (SME Agents)
 """
 
 import logging
 from typing import List, Optional
-from groq import Groq
 
 from agent_factory.rivet_pro.models import (
     RivetRequest,
@@ -34,26 +34,14 @@ class GenericPLCAgent(BaseSMEAgent):
     - Question spans multiple vendors
     """
 
-    def __init__(self, groq_api_key: Optional[str] = None):
-        """Initialize Generic PLC agent."""
-        self._groq_api_key = groq_api_key
-        super().__init__(agent_id=AgentID.GENERIC_PLC)
+    def __init__(self, llm_router: Optional['LLMRouter'] = None):
+        """Initialize Generic PLC agent.
+
+        Args:
+            llm_router: LLMRouter instance (creates new if None)
+        """
+        super().__init__(agent_id=AgentID.GENERIC_PLC, llm_router=llm_router)
         logger.info(f"Initialized Generic PLC SME Agent")
-
-    def _init_llm_client(self) -> Groq:
-        """Initialize Groq client."""
-        try:
-            import os
-            api_key = self._groq_api_key or os.getenv("GROQ_API_KEY")
-            if not api_key:
-                raise ValueError("GROQ_API_KEY not found in environment")
-
-            client = Groq(api_key=api_key)
-            logger.info("Groq client initialized")
-            return client
-        except Exception as e:
-            logger.error(f"Failed to initialize Groq client: {e}")
-            raise
 
     def _build_system_prompt(self) -> str:
         """Build generic PLC system prompt."""
