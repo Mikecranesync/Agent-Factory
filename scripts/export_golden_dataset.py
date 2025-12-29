@@ -376,8 +376,8 @@ def validate_golden_dataset(path: str) -> dict:
         "no_safety_warnings": [],
         "short_content": [],
     }
-    
-    with open(path) as f:
+
+    with open(path, encoding='utf-8') as f:
         for i, line in enumerate(f, 1):
             case = json.loads(line)
             case_id = case.get("test_case_id", f"line_{i}")
