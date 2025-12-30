@@ -1,13 +1,14 @@
 """
-RIVET Orchestrator with Phoenix Tracing Integration
+RIVET Orchestrator with Phoenix Tracing Integration & Slack Supervision
 
 Routes industrial maintenance queries to manufacturer-specific SME agents
-with full observability via Phoenix/OpenTelemetry.
+with full observability via Phoenix/OpenTelemetry and Slack supervision.
 """
 
 import os
 import time
 import json
+import asyncio
 from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
 
@@ -27,6 +28,9 @@ from phoenix_integration.phoenix_tracer import (
     log_route_decision,
     log_knowledge_retrieval
 )
+
+# Import Slack Supervisor
+from agent_factory.observability import agent_task, SlackSupervisor
 
 # Initialize Phoenix (connect to existing server, don't launch)
 init_phoenix(project_name="rivet_production", launch_app=False)
@@ -128,7 +132,7 @@ class RivetOrchestrator:
         return all_routes
 
     @traced(agent_name="rivet_orchestrator", route="main")
-    def diagnose(
+    async def diagnose_async(
         self,
         fault_code: str,
         equipment_type: str,
@@ -137,7 +141,7 @@ class RivetOrchestrator:
         context: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Diagnose an industrial maintenance issue.
+        Diagnose an industrial maintenance issue (async with Slack supervision).
 
         Args:
             fault_code: Error/alarm code (e.g., "F47", "E001")
@@ -155,71 +159,122 @@ class RivetOrchestrator:
                 - selected_route: Which SME was used
                 - confidence: Route confidence score
         """
-        start_time = time.time()
-
-        # Step 1: Determine route
         query = f"Fault code {fault_code} on {equipment_type}"
         if context:
             query += f". Context: {context}"
 
-        selected_route = self._detect_manufacturer(query, equipment_type, manufacturer)
-        all_routes = self._calculate_route_confidence(selected_route, query, equipment_type)
-        confidence = all_routes.get(selected_route, 0.5)
+        # Slack supervision wrapper
+        async with agent_task(
+            agent_id=f"rivet-diagnose-{int(time.time())}",
+            task_name=f"Diagnose {fault_code} on {equipment_type}",
+            repo_scope="agent-factory",
+        ) as ctx:
+            await ctx.checkpoint(f"Starting diagnosis: {query}", progress=10)
 
-        # Step 2: Log route decision to Phoenix
-        log_route_decision(
-            query=query,
-            selected_route=selected_route,
-            confidence=confidence,
-            all_routes=all_routes
-        )
+            start_time = time.time()
 
-        # Step 3: Build manufacturer-specific prompt
-        prompt = self._build_sme_prompt(
-            selected_route,
-            fault_code,
-            equipment_type,
-            sensor_data,
-            context
-        )
+            # Step 1: Determine route
+            selected_route = self._detect_manufacturer(query, equipment_type, manufacturer)
+            all_routes = self._calculate_route_confidence(selected_route, query, equipment_type)
+            confidence = all_routes.get(selected_route, 0.5)
 
-        # Step 4: Call LLM for diagnosis
-        try:
-            response = self.client.chat.completions.create(
-                model=self.default_model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": f"You are a {selected_route.upper()} industrial maintenance expert. Provide structured fault diagnosis."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                response_format={"type": "json_object"},
-                max_tokens=1000
+            await ctx.checkpoint(f"Routed to {selected_route} SME (confidence: {confidence:.0%})", progress=30)
+
+            # Step 2: Log route decision to Phoenix
+            log_route_decision(
+                query=query,
+                selected_route=selected_route,
+                confidence=confidence,
+                all_routes=all_routes
             )
 
-            # Parse response
-            result_text = response.choices[0].message.content
-            result = json.loads(result_text)
+            # Step 3: Build manufacturer-specific prompt
+            prompt = self._build_sme_prompt(
+                selected_route,
+                fault_code,
+                equipment_type,
+                sensor_data,
+                context
+            )
 
-        except Exception as e:
-            # Fallback error response
-            result = {
-                "root_cause": f"Error generating diagnosis: {str(e)}",
-                "safety_warnings": [],
-                "repair_steps": [],
-                "manual_citations": []
-            }
+            await ctx.checkpoint(f"Calling {self.default_model} LLM", progress=50)
 
-        # Step 5: Add metadata
-        result["selected_route"] = selected_route
-        result["confidence"] = confidence
-        result["latency_ms"] = (time.time() - start_time) * 1000
+            # Step 4: Call LLM for diagnosis
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.default_model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": f"You are a {selected_route.upper()} industrial maintenance expert. Provide structured fault diagnosis."
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    response_format={"type": "json_object"},
+                    max_tokens=1000
+                )
 
-        return result
+                # Parse response
+                result_text = response.choices[0].message.content
+                result = json.loads(result_text)
+
+                await ctx.checkpoint(f"Diagnosis complete: {result.get('root_cause', 'Unknown')[:50]}", progress=90)
+
+            except Exception as e:
+                await ctx.checkpoint(f"LLM error: {str(e)[:100]}", progress=90)
+                # Fallback error response
+                result = {
+                    "root_cause": f"Error generating diagnosis: {str(e)}",
+                    "safety_warnings": [],
+                    "repair_steps": [],
+                    "manual_citations": []
+                }
+
+            # Step 5: Add metadata
+            result["selected_route"] = selected_route
+            result["confidence"] = confidence
+            result["latency_ms"] = (time.time() - start_time) * 1000
+
+            ctx.add_artifact(f"Route: {selected_route} ({confidence:.0%})")
+            ctx.add_artifact(f"Latency: {result['latency_ms']:.0f}ms")
+            await ctx.checkpoint("Returning diagnosis", progress=100)
+
+            return result
+
+    def diagnose(
+        self,
+        fault_code: str,
+        equipment_type: str,
+        manufacturer: Optional[str] = None,
+        sensor_data: Optional[Dict[str, Any]] = None,
+        context: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Diagnose an industrial maintenance issue (sync wrapper).
+
+        This is a synchronous wrapper around diagnose_async for backward compatibility.
+        For new code, prefer using diagnose_async directly with asyncio.
+
+        Args:
+            fault_code: Error/alarm code (e.g., "F47", "E001")
+            equipment_type: Equipment model (e.g., "S7-1200", "CompactLogix")
+            manufacturer: Manufacturer name (optional, will be detected)
+            sensor_data: Sensor readings (optional)
+            context: Additional context (optional)
+
+        Returns:
+            Dict with keys:
+                - root_cause: Identified root cause
+                - safety_warnings: List of safety warnings
+                - repair_steps: List of repair steps
+                - manual_citations: List of manual references
+                - selected_route: Which SME was used
+                - confidence: Route confidence score
+        """
+        return asyncio.run(self.diagnose_async(fault_code, equipment_type, manufacturer, sensor_data, context))
 
     def _build_sme_prompt(
         self,
