@@ -205,7 +205,7 @@ class RivetOrchestrator:
         if trace:
             trace.decision(
                 decision_point="vendor_detection",
-                outcome=vendor_detection.vendor.value,
+                outcome=(vendor_detection.vendor if isinstance(vendor_detection.vendor, str) else vendor_detection.vendor.value),
                 reasoning=f"Keywords matched: {', '.join(vendor_detection.keywords_matched)}",
                 confidence=vendor_detection.confidence,
                 keywords_matched=vendor_detection.keywords_matched
@@ -245,11 +245,11 @@ class RivetOrchestrator:
         if routing_decision.route == RouteType.ROUTE_A:
             response = await self._route_a_strong_kb(request, routing_decision, trace)
             route_str = "A_direct_sme"
-            agent_id_str = routing_decision.sme_agent.value if routing_decision.sme_agent else "siemens_agent"
+            agent_id_str = (routing_decision.sme_agent if isinstance(routing_decision.sme_agent, str) else routing_decision.sme_agent.value) if routing_decision.sme_agent else "siemens_agent"
         elif routing_decision.route == RouteType.ROUTE_B:
             response = await self._route_b_thin_kb(request, routing_decision, trace)
             route_str = "B_sme_enrich"
-            agent_id_str = routing_decision.sme_agent.value if routing_decision.sme_agent else "siemens_agent"
+            agent_id_str = (routing_decision.sme_agent if isinstance(routing_decision.sme_agent, str) else routing_decision.sme_agent.value) if routing_decision.sme_agent else "siemens_agent"
         elif routing_decision.route == RouteType.ROUTE_C:
             response = await self._route_c_no_kb(request, routing_decision, trace)
             route_str = "C_research"
@@ -335,7 +335,7 @@ class RivetOrchestrator:
                 vendor_detection=vendor_detection,
                 kb_coverage=kb_coverage,
                 reasoning=f"Strong KB coverage ({kb_coverage.atom_count} atoms, "
-                f"{kb_coverage.avg_relevance:.2f} relevance) for {vendor_detection.vendor.value} query. "
+                f"{kb_coverage.avg_relevance:.2f} relevance) for {(vendor_detection.vendor if isinstance(vendor_detection.vendor, str) else vendor_detection.vendor.value)} query. "
                 f"Routing to {sme_agent} for direct answer with citations.",
                 sme_agent=sme_agent,
             )
@@ -363,7 +363,7 @@ class RivetOrchestrator:
                 vendor_detection=vendor_detection,
                 kb_coverage=kb_coverage,
                 reasoning=f"Thin KB coverage ({kb_coverage.atom_count} atoms, "
-                f"{kb_coverage.avg_relevance:.2f} relevance) for {vendor_detection.vendor.value} query. "
+                f"{kb_coverage.avg_relevance:.2f} relevance) for {(vendor_detection.vendor if isinstance(vendor_detection.vendor, str) else vendor_detection.vendor.value)} query. "
                 f"Routing to {sme_agent} for answer, then triggering enrichment pipeline.",
                 sme_agent=sme_agent,
             )
@@ -390,7 +390,7 @@ class RivetOrchestrator:
             vendor_detection=vendor_detection,
             kb_coverage=kb_coverage,
             reasoning=f"No KB coverage ({kb_coverage.atom_count} atoms, "
-            f"{kb_coverage.avg_relevance:.2f} relevance) for {vendor_detection.vendor.value} query. "
+            f"{kb_coverage.avg_relevance:.2f} relevance) for {(vendor_detection.vendor if isinstance(vendor_detection.vendor, str) else vendor_detection.vendor.value)} query. "
             f"Triggering research pipeline (Phase 5) to gather knowledge.",
             sme_agent=None,
         )
@@ -501,7 +501,7 @@ class RivetOrchestrator:
                 kb_retrieval_scores=[(doc.get('atom_id', 'unknown'), doc.get('score', 0.0))
                                      for doc in decision.kb_coverage.retrieved_docs[:5]],
                 reasoning_steps=[
-                    f"Detected vendor: {decision.vendor_detection.vendor.value}",
+                    f"Detected vendor: {(decision.vendor_detection.vendor if isinstance(decision.vendor_detection.vendor, str) else decision.vendor_detection.vendor.value)}",
                     f"Retrieved {len(decision.kb_coverage.retrieved_docs)} KB atoms",
                     f"Selected top atoms for prompt injection",
                     f"Generated response using {fewshot_cases_count} few-shot examples" if fewshot_cases_count else "Generated response without few-shot examples"
@@ -515,7 +515,7 @@ class RivetOrchestrator:
         response.trace["routing_decision"] = decision.reasoning
         response.trace["route"] = "A"
         response.trace["vendor"] = vendor.value
-        response.trace["kb_coverage"] = decision.kb_coverage.level.value
+        response.trace["kb_coverage"] = (decision.kb_coverage.level if isinstance(decision.kb_coverage.level, str) else decision.kb_coverage.level.value)
         response.trace["fewshot_cases_retrieved"] = fewshot_cases_count
 
         # TAB 3 Phase 2: Apply Response Synthesizer enhancements
@@ -586,7 +586,7 @@ class RivetOrchestrator:
                 query=request.text or "",
                 kb_atoms_used=[doc.get('atom_id', 'unknown') for doc in decision.kb_coverage.retrieved_docs],
                 reasoning_steps=[
-                    f"Detected vendor: {decision.vendor_detection.vendor.value}",
+                    f"Detected vendor: {(decision.vendor_detection.vendor if isinstance(decision.vendor_detection.vendor, str) else decision.vendor_detection.vendor.value)}",
                     f"Retrieved {len(decision.kb_coverage.retrieved_docs)} KB atoms (thin coverage)",
                     f"Generated answer from partial KB coverage",
                     f"Searched web for manuals (found {len(manuals)})",
@@ -601,7 +601,7 @@ class RivetOrchestrator:
         response.trace["routing_decision"] = decision.reasoning
         response.trace["route"] = "B"
         response.trace["vendor"] = vendor.value
-        response.trace["kb_coverage"] = decision.kb_coverage.level.value
+        response.trace["kb_coverage"] = (decision.kb_coverage.level if isinstance(decision.kb_coverage.level, str) else decision.kb_coverage.level.value)
         response.kb_enrichment_triggered = True
 
         # TAB 3 Phase 2: Apply Response Synthesizer enhancements
@@ -721,8 +721,8 @@ class RivetOrchestrator:
             trace={
                 "routing_decision": decision.reasoning,
                 "route": "C",
-                "vendor": decision.vendor_detection.vendor.value,
-                "kb_coverage": decision.kb_coverage.level.value,
+                "vendor": (decision.vendor_detection.vendor if isinstance(decision.vendor_detection.vendor, str) else decision.vendor_detection.vendor.value),
+                "kb_coverage": (decision.kb_coverage.level if isinstance(decision.kb_coverage.level, str) else decision.kb_coverage.level.value),
                 "llm_fallback": True,
                 "llm_generated": confidence > 0.0,
                 "web_search_performed": len(manuals) > 0,
@@ -792,8 +792,8 @@ class RivetOrchestrator:
             trace={
                 "routing_decision": decision.reasoning,
                 "route": "D",
-                "vendor": decision.vendor_detection.vendor.value,
-                "kb_coverage": decision.kb_coverage.level.value,
+                "vendor": (decision.vendor_detection.vendor if isinstance(decision.vendor_detection.vendor, str) else decision.vendor_detection.vendor.value),
+                "kb_coverage": (decision.kb_coverage.level if isinstance(decision.kb_coverage.level, str) else decision.kb_coverage.level.value),
                 "llm_fallback": True,
                 "llm_generated": confidence > 0.0,
             }
@@ -921,7 +921,7 @@ class RivetOrchestrator:
                 intent=intent,
                 search_filters={
                     "vendor": vendor.value,
-                    "kb_coverage": decision.kb_coverage.level.value
+                    "kb_coverage": (decision.kb_coverage.level if isinstance(decision.kb_coverage.level, str) else decision.kb_coverage.level.value)
                 },
                 user_id=request.user_id
             )
@@ -1160,12 +1160,12 @@ class RivetOrchestrator:
         try:
             gap_entry = {
                 "user_query": request.text,
-                "vendor": decision.vendor_detection.vendor.value,
+                "vendor": (decision.vendor_detection.vendor if isinstance(decision.vendor_detection.vendor, str) else decision.vendor_detection.vendor.value),
                 "equipment_type": "unknown",  # Could enhance with NER
                 "symptom": request.text[:200] if request.text else "",
                 "route": "B_sme_enrich",
                 "confidence": response.confidence,
-                "kb_coverage": decision.kb_coverage.level.value,
+                "kb_coverage": (decision.kb_coverage.level if isinstance(decision.kb_coverage.level, str) else decision.kb_coverage.level.value),
                 "atom_count": decision.kb_coverage.atom_count,
                 "avg_relevance": decision.kb_coverage.avg_relevance,
                 "priority_score": self._calculate_enrichment_priority(decision),
@@ -1173,7 +1173,7 @@ class RivetOrchestrator:
             }
 
             await self.kb_gap_logger.log_gap_async(gap_entry)
-            logger.info(f"Enrichment gap logged: {decision.vendor_detection.vendor.value}")
+            logger.info(f"Enrichment gap logged: {(decision.vendor_detection.vendor if isinstance(decision.vendor_detection.vendor, str) else decision.vendor_detection.vendor.value)}")
         except Exception as e:
             logger.warning(f"Failed to log enrichment gap: {e}")
 
@@ -1193,7 +1193,7 @@ class RivetOrchestrator:
         confidence_boost = int(decision.kb_coverage.confidence * 20)
 
         # Boost for popular vendors
-        vendor_boost = 10 if decision.vendor_detection.vendor.value in ["siemens", "rockwell"] else 0
+        vendor_boost = 10 if (decision.vendor_detection.vendor if isinstance(decision.vendor_detection.vendor, str) else decision.vendor_detection.vendor.value) in ["siemens", "rockwell"] else 0
 
         # Penalty for very low relevance (might not be useful)
         relevance_penalty = -10 if decision.kb_coverage.avg_relevance < 0.05 else 0
@@ -1226,8 +1226,8 @@ class RivetOrchestrator:
             from agent_factory.core.gap_detector import log_every_interaction
 
             # Extract data
-            vendor = decision.vendor_detection.vendor.value
-            kb_coverage = decision.kb_coverage.level.value
+            vendor = (decision.vendor_detection.vendor if isinstance(decision.vendor_detection.vendor, str) else decision.vendor_detection.vendor.value)
+            kb_coverage = (decision.kb_coverage.level if isinstance(decision.kb_coverage.level, str) else decision.kb_coverage.level.value)
             atoms_found = decision.kb_coverage.atom_count
             confidence = response.confidence
 
