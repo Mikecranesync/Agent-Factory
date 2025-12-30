@@ -15,7 +15,14 @@ from typing import Optional, Dict, List, Any
 from enum import Enum
 from dataclasses import dataclass
 
-from agent_factory.rivet_pro.models import RivetRequest, RivetIntent, VendorType, EquipmentType
+from agent_factory.rivet_pro.models import (
+    RivetRequest,
+    RivetIntent,
+    VendorType,
+    EquipmentType,
+    ChannelType,
+    MessageType
+)
 from agent_factory.routers.kb_evaluator import KBCoverageEvaluator
 from agent_factory.schemas.routing import CoverageLevel
 
@@ -493,7 +500,13 @@ async def log_every_interaction(
 
     try:
         # Build RivetRequest
-        request = RivetRequest(text=user_query, source="aggressive_mode")
+        request = RivetRequest(
+            user_id="system",
+            channel=ChannelType.API,
+            message_type=MessageType.TEXT,
+            text=user_query,
+            metadata={"source": "aggressive_mode"}
+        )
 
         # Build RivetIntent
         try:

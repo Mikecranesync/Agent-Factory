@@ -98,6 +98,9 @@ sentence-transformers = "^5.2.0"
 openai = "^2.14.0"
 arize-phoenix = {extras = ["evals"], version = "^12.27.0"}
 slowapi = "^0.1.9"
+asyncpg = "^0.31.0"
+httpx = "^0.28.1"
+aiosqlite = "^0.22.1"
 
 [tool.poetry.group.dev.dependencies]
 # Development tools

@@ -76,6 +76,7 @@ class DatabaseProvider:
         self.name = name
         self.connection_string = connection_string
         self._pool = None
+        self._async_pool = None  # asyncpg connection pool
         self._last_health_check = 0
         self._health_check_ttl = 60  # Cache health status for 60 seconds
         self._is_healthy = False
@@ -217,6 +218,78 @@ class DatabaseProvider:
             self._pool.close()
             logger.info(f"Closed connection pool for {self.name}")
 
+    async def get_async_pool(self):
+        """
+        Get or create async connection pool using asyncpg.
+
+        Returns:
+            asyncpg connection pool
+
+        Raises:
+            ImportError: If asyncpg not installed
+            Exception: If pool creation fails
+        """
+        if self._async_pool is None:
+            try:
+                import asyncpg
+            except ImportError:
+                raise ImportError(
+                    "asyncpg required for async database connections. "
+                    "Install with: poetry add asyncpg"
+                )
+
+            self._async_pool = await asyncpg.create_pool(
+                self.connection_string,
+                min_size=2,
+                max_size=20,
+                timeout=15.0,
+                command_timeout=60.0
+            )
+            logger.info(f"Created async connection pool for {self.name}")
+
+        return self._async_pool
+
+    async def execute_query_async(
+        self,
+        query: str,
+        params: Optional[Tuple] = None,
+        fetch_mode: str = "all"
+    ) -> Any:
+        """
+        Execute query asynchronously using asyncpg.
+
+        Args:
+            query: SQL query string
+            params: Query parameters (tuple)
+            fetch_mode: 'all', 'one', 'none' (for INSERT/UPDATE/DELETE)
+
+        Returns:
+            Query results based on fetch_mode (as dicts for rows)
+
+        Raises:
+            Exception: If query execution fails
+        """
+        pool = await self.get_async_pool()
+
+        async with pool.acquire() as conn:
+            if fetch_mode == "all":
+                result = await conn.fetch(query, *(params or ()))
+                return [dict(row) for row in result]
+            elif fetch_mode == "one":
+                result = await conn.fetchrow(query, *(params or ()))
+                return dict(result) if result else None
+            elif fetch_mode == "none":
+                await conn.execute(query, *(params or ()))
+                return None
+            else:
+                raise ValueError(f"Invalid fetch_mode: {fetch_mode}")
+
+    async def close_async(self):
+        """Close async connection pool."""
+        if self._async_pool:
+            await self._async_pool.close()
+            logger.info(f"Closed async connection pool for {self.name}")
+
 
 class LocalDatabaseProvider(DatabaseProvider):
     """
@@ -328,6 +401,60 @@ class LocalDatabaseProvider(DatabaseProvider):
         finally:
             if conn:
                 self.release_connection(conn)
+
+    async def execute_query_async(
+        self,
+        query: str,
+        params: Optional[Tuple] = None,
+        fetch_mode: str = "all"
+    ) -> Any:
+        """
+        Execute query on SQLite asynchronously using aiosqlite.
+
+        Args:
+            query: SQL query string
+            params: Query parameters (tuple)
+            fetch_mode: 'all', 'one', 'none'
+
+        Returns:
+            Query results based on fetch_mode (as dicts for rows)
+
+        Raises:
+            Exception: If query execution fails
+        """
+        try:
+            import aiosqlite
+        except ImportError:
+            raise ImportError(
+                "aiosqlite required for async SQLite operations. "
+                "Install with: poetry add aiosqlite"
+            )
+
+        # Convert PostgreSQL placeholders ($1, $2, ...) to SQLite (?, ?)
+        sqlite_query = query
+        for i in range(20, 0, -1):
+            sqlite_query = sqlite_query.replace(f"${i}", "?")
+
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute(sqlite_query, params or ())
+
+            if fetch_mode == "all":
+                rows = await cursor.fetchall()
+                columns = [d[0] for d in cursor.description] if cursor.description else []
+                await conn.commit()  # Commit any writes
+                return [dict(zip(columns, row)) for row in rows]
+            elif fetch_mode == "one":
+                row = await cursor.fetchone()
+                await conn.commit()  # Commit any writes (e.g., INSERT...RETURNING)
+                if row and cursor.description:
+                    columns = [d[0] for d in cursor.description]
+                    return dict(zip(columns, row))
+                return None
+            elif fetch_mode == "none":
+                await conn.commit()
+                return None
+            else:
+                raise ValueError(f"Invalid fetch_mode: {fetch_mode}")
 
 
 class DatabaseManager:
@@ -539,6 +666,112 @@ class DatabaseManager:
 
         # Should never reach here, but just in case
         raise Exception(f"All database providers failed. Last error: {last_error}")
+
+    async def execute_query_async(
+        self,
+        query: str,
+        params: Optional[Tuple] = None,
+        fetch_mode: str = "all"
+    ) -> Any:
+        """
+        Execute query asynchronously with automatic failover.
+
+        Tries primary provider first, then failover providers in order
+        if failover is enabled.
+
+        Args:
+            query: SQL query string
+            params: Query parameters (tuple)
+            fetch_mode: 'all', 'one', 'none'
+
+        Returns:
+            Query results based on fetch_mode (as dicts for rows)
+
+        Raises:
+            Exception: If all providers fail
+        """
+        # Determine which providers to try
+        if self.failover_enabled:
+            providers_to_try = [
+                p for p in self.failover_order
+                if p in self.providers
+            ]
+        else:
+            providers_to_try = [self.primary_provider]
+
+        last_error = None
+
+        # Try each provider in order
+        for provider_name in providers_to_try:
+            provider = self.providers[provider_name]
+
+            try:
+                logger.debug(f"Executing async query on {provider_name}")
+                result = await provider.execute_query_async(query, params, fetch_mode)
+
+                # Log if we failed over to non-primary
+                if provider_name != self.primary_provider:
+                    logger.warning(
+                        f"Executed on failover provider '{provider_name}' "
+                        f"(primary '{self.primary_provider}' unavailable)"
+                    )
+
+                return result
+
+            except Exception as e:
+                last_error = e
+                logger.error(f"Async query failed on {provider_name}: {str(e)}")
+
+                # If this was the last provider, raise
+                if provider_name == providers_to_try[-1]:
+                    raise
+
+                # Otherwise, continue to next provider
+                logger.info(f"Failing over to next provider...")
+                continue
+
+        # Should never reach here, but just in case
+        raise Exception(f"All database providers failed. Last error: {last_error}")
+
+    async def execute_async(self, query: str, *params) -> None:
+        """
+        Execute write query (INSERT/UPDATE/DELETE) asynchronously.
+
+        Args:
+            query: SQL query string
+            *params: Query parameters
+
+        Raises:
+            Exception: If query execution fails
+        """
+        await self.execute_query_async(query, params, fetch_mode="none")
+
+    async def fetch_all_async(self, query: str, *params) -> List[Dict]:
+        """
+        Fetch all rows asynchronously as list of dicts.
+
+        Args:
+            query: SQL query string
+            *params: Query parameters
+
+        Returns:
+            List of dicts (one per row)
+        """
+        result = await self.execute_query_async(query, params, fetch_mode="all")
+        return result or []
+
+    async def fetch_one_async(self, query: str, *params) -> Optional[Dict]:
+        """
+        Fetch single row asynchronously as dict.
+
+        Args:
+            query: SQL query string
+            *params: Query parameters
+
+        Returns:
+            Dict for single row, or None if no rows
+        """
+        return await self.execute_query_async(query, params, fetch_mode="one")
 
     def get_provider_stats(self) -> Dict[str, Dict[str, Any]]:
         """
