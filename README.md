@@ -15,6 +15,33 @@ Agent Factory is not just a framework—it's the **orchestration engine** poweri
 
 ## 📝 Latest Updates
 
+**2025-12-30 15:40:17 UTC**
+- Added Slack Supervisor production deployment complete
+- Real-time agent observability via Slack checkpoints
+- PostgreSQL audit trail (4 tables: tasks, checkpoints, interventions, artifacts)
+- FastAPI webhook server for Slack events/commands
+- Async context managers (agent_task) and decorators (@supervised_agent)
+- Graceful degradation (works without Slack/DB)
+- Auto-restart systemd service
+- RivetOrchestrator instrumented with 5 checkpoints
+- All 8 exports available in agent_factory.observability
+- Backward compatible sync wrappers
+- Service running on port 3001
+- All dependencies installed (asyncpg, uvicorn, fastapi, pydantic)
+- Auto-start enabled (systemctl)
+- Health endpoint: http://localhost:3001/health
+- agent_factory/observability/supervisor.py (10KB)
+- agent_factory/observability/instrumentation.py (8KB)
+- agent_factory/observability/supervisor_db.py (9KB)
+- agent_factory/observability/server.py (13KB)
+- sql/supervisor_schema.sql (3KB)
+- rivet/supervisor.service (systemd unit)
+- docs/SLACK_SUPERVISOR_*.md (18KB docs)
+- examples/slack_supervisor_demo.py (8 examples)
+- smoke_test_slack_supervisor.py (16 tests, all passing)
+- **Metrics:** Files: 18 | Lines: +4172/-62 | KB Atoms: (unavailable)
+
+
 **2025-12-30 07:14:13 UTC**
 - Fixed Fix orchestrator routing validation errors (simulator)
 - base_sme_agent.py: Added complete RivetIntent creation with all required fields
