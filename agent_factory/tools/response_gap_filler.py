@@ -674,7 +674,7 @@ class KnowledgeGapFiller:
             sql,
             (
                 atom.id,  # $1: atom_id (string)
-                'research',  # $2: atom_type
+                'concept',  # $2: atom_type (changed from 'research' to satisfy Neon CHECK constraint)
                 atom.title,  # $3: title
                 summary,  # $4: summary
                 atom.content,  # $5: content

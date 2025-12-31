@@ -47,6 +47,7 @@ async def test_single_insert():
         sources=["Manual Test"],
         confidence_score=0.95
     )
+    # Note: Using 'concept' atom_type instead of 'research' to satisfy Neon CHECK constraint
     print(f"[OK] Test atom created: {atom_id}")
     print()
     
