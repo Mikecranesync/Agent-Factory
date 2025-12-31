@@ -84,7 +84,8 @@ async def test_single_insert():
     # Step 5: Verify in database
     print("[Step 5] Verifying atom in database...")
     try:
-        db = DatabaseManager()
+        # Reuse the same DatabaseManager from filler (avoid creating second instance)
+        db = filler.db_manager
         result = db.execute_query(
             "SELECT atom_id, title, manufacturer, product_family, quality_score FROM knowledge_atoms WHERE atom_id = %s",
             (atom_id,)
