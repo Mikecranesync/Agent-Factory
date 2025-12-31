@@ -185,6 +185,11 @@ class DatabaseProvider:
         try:
             conn = self.get_connection()
             with conn.cursor() as cur:
+                # DEBUG: Log query and params before execution
+                logger.info(f"[PostgresProvider] query type: {type(query)}, length: {len(query) if query else 0}")
+                logger.info(f"[PostgresProvider] query preview: {repr(query[:100]) if query else 'None'}")
+                logger.info(f"[PostgresProvider] params: {params}")
+
                 if params:
                     cur.execute(query, params)
                 else:
@@ -533,6 +538,22 @@ class DatabaseManager:
         else:
             logger.warning("Neon credentials incomplete, skipping provider")
 
+        # VPS KB provider (Hostinger VPS for knowledge base)
+        vps_host = os.getenv("VPS_KB_HOST")
+        vps_port = os.getenv("VPS_KB_PORT", "5432")
+        vps_user = os.getenv("VPS_KB_USER")
+        vps_password = os.getenv("VPS_KB_PASSWORD")
+        vps_database = os.getenv("VPS_KB_DATABASE")
+
+        if vps_host and vps_user and vps_password and vps_database:
+            # Build PostgreSQL connection string
+            encoded_password = quote(vps_password, safe='')
+            vps_conn_str = f"postgresql://{vps_user}:{encoded_password}@{vps_host}:{vps_port}/{vps_database}"
+            self.providers["vps"] = DatabaseProvider("vps", vps_conn_str)
+            logger.info(f"Initialized VPS provider ({vps_host})")
+        else:
+            logger.warning("VPS credentials incomplete, skipping provider")
+
         # Local SQLite provider (always available as final fallback)
         local_db_path = os.getenv("LOCAL_DB_PATH", "data/local.db")
         try:
@@ -541,11 +562,19 @@ class DatabaseManager:
         except Exception as e:
             logger.warning(f"Failed to initialize local provider: {e}")
 
+        # Atlas CMMS PostgreSQL provider (for local development with Atlas Docker)
+        atlas_db_url = os.getenv("ATLAS_DB_URL")
+        if atlas_db_url:
+            self.providers["atlas"] = DatabaseProvider("atlas", atlas_db_url)
+            logger.info("Initialized Atlas CMMS PostgreSQL provider")
+        else:
+            logger.warning("Atlas CMMS credentials not found, skipping provider")
+
         # Validate at least one provider available
         if not self.providers:
             raise ValueError(
                 "No database providers configured. "
-                "Set at least one of: SUPABASE_URL, RAILWAY_DB_URL, NEON_DB_URL"
+                "Set at least one of: SUPABASE_URL, RAILWAY_DB_URL, NEON_DB_URL, ATLAS_DB_URL"
             )
 
     def set_provider(self, provider_name: str):

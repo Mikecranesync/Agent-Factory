@@ -619,7 +619,7 @@ class KnowledgeGapFiller:
             db = self.db_manager
 
             # Use atom_id column (not id which is UUID)
-            sql = "SELECT atom_id FROM knowledge_atoms WHERE atom_id = $1 LIMIT 1"
+            sql = "SELECT atom_id FROM knowledge_atoms WHERE atom_id = %s LIMIT 1"
             result = await asyncio.to_thread(db.execute_query, sql, (atom_id,))
 
             # DatabaseManager returns list of dicts or None
@@ -650,7 +650,7 @@ class KnowledgeGapFiller:
                 quality_score,
                 embedding,
                 created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         # Generate summary if not provided
@@ -699,11 +699,11 @@ class KnowledgeGapFiller:
 
         sql = """
             UPDATE knowledge_atoms
-            SET content = $1,
-                quality_score = $2,
-                embedding = $3,
-                updated_at = $4
-            WHERE atom_id = $5
+            SET content = %s,
+                quality_score = %s,
+                embedding = %s,
+                updated_at = %s
+            WHERE atom_id = %s
         """
 
         # Convert embedding
