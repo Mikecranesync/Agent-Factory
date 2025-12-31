@@ -185,11 +185,6 @@ class DatabaseProvider:
         try:
             conn = self.get_connection()
             with conn.cursor() as cur:
-                # DEBUG: Log query and params before execution
-                logger.info(f"[PostgresProvider] query type: {type(query)}, length: {len(query) if query else 0}")
-                logger.info(f"[PostgresProvider] query preview: {repr(query[:100]) if query else 'None'}")
-                logger.info(f"[PostgresProvider] params: {params}")
-
                 if params:
                     cur.execute(query, params)
                 else:
