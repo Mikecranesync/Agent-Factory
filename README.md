@@ -15,6 +15,57 @@ Agent Factory is not just a framework—it's the **orchestration engine** poweri
 
 ## 📝 Latest Updates
 
+**2026-01-01 18:19:30 UTC**
+- Added Phase 2.3 - MachineStateManager (Background Polling Engine) (platform)
+- **CircuitBreaker**: Resilience pattern with exponential backoff (5s â†’ 30s)
+- State machine: CLOSED â†’ OPEN â†’ HALF_OPEN
+- Auto-recovery when Factory.io comes back online
+- Escalating penalty for flapping connections
+- **MachineState**: State caching with change detection
+- In-memory dict of tag_name â†’ IOTagStatus
+- Only notifies subscribers when values actually change
+- First poll: all tags are "changed" (initial state)
+- **Subscription**: Observer pattern for notifications
+- Callback signature: async def(machine_id, changed_tags)
+- Optional tag filtering (subscribe to specific tags only)
+- Error isolation (one bad callback doesn't affect others)
+- **MachineStateManager**: Main orchestrator
+- Background polling (one asyncio.Task per machine)
+- ThreadPoolExecutor (4 workers) for sync Factory.io tools
+- Per-machine poll intervals (1-60 seconds configurable)
+- Graceful shutdown (cancels tasks, cleans up executor)
+- Updated lifespan() to start/stop MachineStateManager
+- Added get_state_manager() dependency for routes
+- Graceful degradation (Factory.io optional)
+- Unit Tests (mocked):**
+- Circuit breaker state machine (7 tests)
+- Change detection (5 tests)
+- Subscriptions (3 tests)
+- MachineStateManager (7 tests)
+- Integration Tests (real Factory.io):**
+- Real polling with Factory.io running
+- State populated after poll cycle
+- Multiple machines polling simultaneously
+- Phase 2.3:** 22/22 passed (100%)
+- Backward Compatibility:** 80/80 passed (100%)
+- Phase 1 (Factory.io tools): 13 passed, 1 skipped
+- Phase 2.1 (Universal types): 22 passed
+- Phase 2.2 (Configuration): 23 passed
+- Phase 2.3 (MachineStateManager): 22 passed
+- Created:**
+- agent_factory/platform/state/machine_state_manager.py (600 lines)
+- tests/test_machine_state_manager.py (480 lines)
+- Modified:**
+- agent_factory/api/main.py (+50 lines) - Lifespan integration
+- TelegramAdapter** (6 hours)
+- Format PlatformMessage â†’ Telegram markdown
+- Generate inline keyboard from ControlButtons
+- Parse callback data (button clicks)
+- Handle emergency stop logic
+- Tests with real Telegram bot
+- **Metrics:** Files: 3 | Lines: +1297/-4 | KB Atoms: (unavailable)
+
+
 **2026-01-01 17:37:19 UTC**
 - Added Phase 2.1 & 2.2 - Universal Types + Configuration Loader (platform)
 - **IOTagStatus**: I/O tag state (tag_name, value, type, last_updated)
