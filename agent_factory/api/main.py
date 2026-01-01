@@ -24,12 +24,13 @@ settings = get_settings()
 
 # Global MachineStateManager instance (initialized in lifespan)
 state_manager: Optional["MachineStateManager"] = None
+telegram_adapter: Optional["TelegramAdapter"] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
-    global state_manager
+    global state_manager, telegram_adapter
 
     # Startup
     logger.info("Starting Rivet API...")
@@ -50,17 +51,46 @@ async def lifespan(app: FastAPI):
         state_manager = MachineStateManager(machine_config.machines)
         await state_manager.start()
         logger.info(f"Factory.io polling started ({len(machine_config.machines)} machine(s))")
+
+        # Initialize TelegramAdapter (if bot token is configured)
+        import os
+        bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+        if bot_token:
+            try:
+                from telegram import Bot
+                from agent_factory.platform.telegram import TelegramAdapter
+                from agent_factory.tools.factoryio.readwrite_tool import FactoryIOReadWriteTool
+
+                bot = Bot(token=bot_token)
+                readwrite_tool = FactoryIOReadWriteTool()
+                telegram_adapter = TelegramAdapter(state_manager, bot, machine_config, readwrite_tool)
+                await telegram_adapter.start()
+                logger.info("TelegramAdapter started")
+            except Exception as e:
+                logger.error(f"Failed to initialize TelegramAdapter: {e}", exc_info=True)
+                telegram_adapter = None
+        else:
+            logger.info("TELEGRAM_BOT_TOKEN not set - Telegram integration disabled")
+            telegram_adapter = None
+
     except FileNotFoundError:
         logger.info("No machines.yaml found - Factory.io integration disabled")
         state_manager = None
+        telegram_adapter = None
     except Exception as e:
         logger.error(f"Failed to initialize Factory.io integration: {e}", exc_info=True)
         state_manager = None
+        telegram_adapter = None
 
     yield
 
     # Shutdown
     logger.info("Shutting down Rivet API...")
+
+    # Stop TelegramAdapter
+    if telegram_adapter:
+        await telegram_adapter.stop()
+        logger.info("TelegramAdapter stopped")
 
     # Stop Factory.io polling
     if state_manager:
