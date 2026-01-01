@@ -46,7 +46,7 @@ import logging
 import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 
 from dotenv import load_dotenv
 
@@ -509,7 +509,9 @@ class DatabaseManager:
 
         if supabase_url and supabase_db_password and supabase_db_host:
             # Build connection string for direct PostgreSQL access
-            conn_str = f"postgresql://postgres:{supabase_db_password}@{supabase_db_host}:5432/postgres"
+            # URL-encode password to handle special characters ($, !, #, etc.)
+            encoded_password = quote(supabase_db_password, safe='')
+            conn_str = f"postgresql://postgres:{encoded_password}@{supabase_db_host}:5432/postgres"
             self.providers["supabase"] = DatabaseProvider("supabase", conn_str)
             logger.info("Initialized Supabase provider")
         else:
@@ -531,6 +533,22 @@ class DatabaseManager:
         else:
             logger.warning("Neon credentials incomplete, skipping provider")
 
+        # VPS KB provider (Hostinger VPS for knowledge base)
+        vps_host = os.getenv("VPS_KB_HOST")
+        vps_port = os.getenv("VPS_KB_PORT", "5432")
+        vps_user = os.getenv("VPS_KB_USER")
+        vps_password = os.getenv("VPS_KB_PASSWORD")
+        vps_database = os.getenv("VPS_KB_DATABASE")
+
+        if vps_host and vps_user and vps_password and vps_database:
+            # Build PostgreSQL connection string
+            encoded_password = quote(vps_password, safe='')
+            vps_conn_str = f"postgresql://{vps_user}:{encoded_password}@{vps_host}:{vps_port}/{vps_database}"
+            self.providers["vps"] = DatabaseProvider("vps", vps_conn_str)
+            logger.info(f"Initialized VPS provider ({vps_host})")
+        else:
+            logger.warning("VPS credentials incomplete, skipping provider")
+
         # Local SQLite provider (always available as final fallback)
         local_db_path = os.getenv("LOCAL_DB_PATH", "data/local.db")
         try:
@@ -539,11 +557,19 @@ class DatabaseManager:
         except Exception as e:
             logger.warning(f"Failed to initialize local provider: {e}")
 
+        # Atlas CMMS PostgreSQL provider (for local development with Atlas Docker)
+        atlas_db_url = os.getenv("ATLAS_DB_URL")
+        if atlas_db_url:
+            self.providers["atlas"] = DatabaseProvider("atlas", atlas_db_url)
+            logger.info("Initialized Atlas CMMS PostgreSQL provider")
+        else:
+            logger.warning("Atlas CMMS credentials not found, skipping provider")
+
         # Validate at least one provider available
         if not self.providers:
             raise ValueError(
                 "No database providers configured. "
-                "Set at least one of: SUPABASE_URL, RAILWAY_DB_URL, NEON_DB_URL"
+                "Set at least one of: SUPABASE_URL, RAILWAY_DB_URL, NEON_DB_URL, ATLAS_DB_URL"
             )
 
     def set_provider(self, provider_name: str):
