@@ -15,6 +15,11 @@ Agent Factory is not just a framework—it's the **orchestration engine** poweri
 
 ## 📝 Latest Updates
 
+**2026-01-02 01:26:12 UTC**
+- Updated 'NoneType' object has no attribute 'strip'
+- **Metrics:** KB Atoms: (unavailable)
+
+
 **2026-01-01 18:19:30 UTC**
 - Added Phase 2.3 - MachineStateManager (Background Polling Engine) (platform)
 - **CircuitBreaker**: Resilience pattern with exponential backoff (5s â†’ 30s)
