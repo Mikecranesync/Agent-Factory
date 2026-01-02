@@ -28,8 +28,11 @@ Integrates with:
 
 import os
 import json
+import logging
 from typing import Optional, Dict, Any
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -253,11 +256,11 @@ class RIVETProHandlers:
         bot_response = ""
         if quality.answer_action == AnswerAction.AUTO_RESPOND:
             # High confidence - send answer
-            bot_response = await self._send_answer(update, question, matched_atoms, intent, quality)
+            bot_response = await self._send_answer(update, question, matched_atoms, intent, quality, session_id)
 
         elif quality.answer_action == AnswerAction.SUGGEST_UPGRADE:
             # Medium confidence - send answer + upsell
-            bot_response = await self._send_answer(update, question, matched_atoms, intent, quality)
+            bot_response = await self._send_answer(update, question, matched_atoms, intent, quality, session_id)
             if quality.should_upsell:
                 await self._send_upsell(update, quality)
 
@@ -736,7 +739,7 @@ Need help? Reply /help
             print(f"Error creating session: {e}")
             return "mock_session_id"
 
-    async def _send_answer(self, update: Update, question: str, atoms: list, intent: Any, quality: Any) -> str:
+    async def _send_answer(self, update: Update, question: str, atoms: list, intent: Any, quality: Any, session_id: int) -> str:
         """
         Send detailed answer with citations to user.
 
@@ -745,6 +748,7 @@ Need help? Reply /help
         - Step-by-step instructions (if available)
         - Source citations with page numbers
         - Follow-up suggestions
+        - Feedback buttons (thumbs up/down)
         """
         if not atoms:
             # No results - suggest alternatives
@@ -831,9 +835,19 @@ Need help? Reply /help
         answer_text += "• \"What are the next steps?\"\n"
         answer_text += "• \"Show me related issues\"\n"
 
+        # Add feedback buttons
+        keyboard = [
+            [
+                InlineKeyboardButton("👍 Helpful", callback_data=f"feedback:positive:{session_id}"),
+                InlineKeyboardButton("👎 Not Helpful", callback_data=f"feedback:negative:{session_id}"),
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
         await update.message.reply_text(
             text=answer_text,
             parse_mode=ParseMode.MARKDOWN,
+            reply_markup=reply_markup,
         )
 
         return answer_text  # Return for conversation history
@@ -1200,6 +1214,70 @@ You can ask other questions while we research this one.
                 parse_mode=ParseMode.MARKDOWN
             )
 
+    async def handle_feedback_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Handle feedback button clicks (👍/👎).
+
+        Stores feedback in work_orders table and updates knowledge atom success_rate.
+        """
+        query = update.callback_query
+        await query.answer()
+
+        user = update.effective_user
+        user_id = str(user.id)
+
+        # Parse callback data (format: "feedback:positive:session_id" or "feedback:negative:session_id")
+        data = query.data
+        parts = data.split(":")
+
+        if len(parts) != 3:
+            await query.answer(text="Invalid feedback data", show_alert=True)
+            return
+
+        _, feedback_type, session_id = parts
+
+        # Store feedback in work_orders table
+        try:
+            # Update work_orders table with feedback
+            cited_atoms = await self.work_order_service.update_feedback(
+                session_id=int(session_id),
+                feedback_type=feedback_type
+            )
+
+            # Acknowledge the feedback
+            response_emoji = "👍" if feedback_type == "positive" else "👎"
+            await query.answer(
+                text=f"Thanks for your feedback! {response_emoji}",
+                show_alert=False
+            )
+
+            # Update button text to show feedback was recorded
+            edited_text = query.message.text + f"\n\n✅ Feedback recorded: {response_emoji}"
+            await query.edit_message_text(
+                text=edited_text,
+                parse_mode=ParseMode.MARKDOWN
+            )
+
+            # Update atom success_rate and trigger research if needed
+            if cited_atoms:
+                from agent_factory.rivet_pro.feedback_handler import process_feedback
+
+                triggered_research = await process_feedback(cited_atoms, feedback_type)
+
+                if triggered_research:
+                    logger.info(
+                        f"Feedback triggered research for low-quality atoms: {triggered_research}"
+                    )
+
+            logger.info(f"Feedback recorded: {feedback_type} for session {session_id}, cited_atoms: {cited_atoms}")
+
+        except Exception as e:
+            logger.error(f"Failed to record feedback: {e}", exc_info=True)
+            await query.answer(
+                text=f"Failed to record feedback: {str(e)}",
+                show_alert=True
+            )
+
     async def handle_onboarding_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
         Handle inline button callbacks for onboarding flow.
@@ -1214,6 +1292,11 @@ You can ask other questions while we research this one.
         user_sub = await self._get_or_create_user(user_id, user.username or "unknown")
 
         data = query.data
+
+        # Route to feedback handler
+        if data.startswith("feedback:"):
+            await self.handle_feedback_callback(update, context)
+            return
 
         # Route to research request handler
         if data.startswith("request_research:"):

@@ -129,7 +129,7 @@ class WorkOrderService:
             # 5. Calculate priority from confidence + fault severity + safety warnings
             priority = self._calculate_priority(
                 confidence=response.confidence,
-                route=response.route_taken.value if hasattr(response.route_taken, 'value') else response.route_taken,
+                route=(response.route_taken.value if hasattr(response.route_taken, 'value') else response.route_taken)[0],  # Extract just the letter (A/B/C/D)
                 fault_codes=equipment.get("fault_codes", []),
                 safety_warnings=response.safety_warnings or []
             )
@@ -180,7 +180,7 @@ class WorkOrderService:
                 self._extract_symptoms(request.text),
                 response.text,
                 response.confidence,
-                response.route_taken.value if hasattr(response.route_taken, 'value') else response.route_taken,
+                (response.route_taken.value if hasattr(response.route_taken, 'value') else response.route_taken)[0],  # Extract just the letter (A/B/C/D)
                 response.suggested_actions or [],
                 response.safety_warnings or [],
                 [doc.get("id") for doc in (response.cited_documents or [])] if hasattr(response, 'cited_documents') else [],
@@ -299,6 +299,169 @@ class WorkOrderService:
 
         except Exception as e:
             logger.error(f"Failed to update work order status: {e}", exc_info=True)
+            raise
+
+    async def update_feedback(
+        self,
+        session_id: int,
+        feedback_type: str  # 'positive' or 'negative'
+    ) -> Optional[List[str]]:
+        """
+        Update work order feedback and return cited knowledge atom IDs.
+
+        Args:
+            session_id: Troubleshooting session ID
+            feedback_type: 'positive' or 'negative'
+
+        Returns:
+            List of cited knowledge atom IDs (for updating atom success_rate)
+        """
+        try:
+            # Update work_orders table with feedback
+            import asyncio
+
+            result = await asyncio.to_thread(
+                self.db.execute_query,
+                """
+                UPDATE work_orders
+                SET
+                    user_feedback = $1,
+                    feedback_at = NOW(),
+                    updated_at = NOW()
+                WHERE id::text = $2
+                RETURNING cited_kb_atoms
+                """,
+                (feedback_type, str(session_id)),
+                fetch_mode="one"
+            )
+
+            if result:
+                cited_atoms = result[0] if isinstance(result, tuple) else result.get('cited_kb_atoms', [])
+                logger.info(f"Updated work order {session_id} feedback to: {feedback_type}, cited atoms: {cited_atoms}")
+                return cited_atoms or []
+            else:
+                logger.warning(f"No work order found with session_id: {session_id}")
+                return []
+
+        except Exception as e:
+            logger.error(f"Failed to update work order feedback: {e}", exc_info=True)
+            return []
+
+    async def create_with_equipment(
+        self,
+        equipment_id: UUID,
+        request,  # RivetRequest
+        response  # RivetResponse
+    ) -> Dict[str, Any]:
+        """
+        Create work order with existing equipment ID (used by simulator).
+
+        Simpler version of create_from_telegram_interaction() that skips
+        equipment matching and directly uses provided equipment_id.
+
+        Args:
+            equipment_id: UUID of existing equipment in cmms_equipment table
+            request: RivetRequest with user query
+            response: RivetResponse from orchestrator
+
+        Returns:
+            Dictionary with work order details
+
+        Example:
+            >>> work_order = await service.create_with_equipment(
+            ...     equipment_id=equipment_id,
+            ...     request=request,
+            ...     response=response
+            ... )
+        """
+        try:
+            # Get equipment details for denormalization
+            equipment_record = await self.equipment_matcher.get_equipment_by_id(equipment_id)
+            if not equipment_record:
+                raise ValueError(f"Equipment {equipment_id} not found")
+
+            equipment_number = equipment_record["equipment_number"]
+            manufacturer = equipment_record.get("manufacturer", "Unknown")
+            model_number = equipment_record.get("model_number")
+            equipment_type = equipment_record.get("equipment_type")
+
+            # Generate title
+            title = f"{manufacturer} {equipment_type or ''} - {request.text[:50]}".strip()
+            if len(request.text) > 50:
+                title += "..."
+
+            # Build description
+            description = f"User query: {request.text}\n\nAI Response: {response.text}"
+
+            # Calculate priority
+            priority = "medium"  # Simplified for simulator
+            if response.confidence < 0.7:
+                priority = "high"
+            elif response.confidence > 0.9:
+                priority = "low"
+
+            # Determine source type from request
+            from agent_factory.rivet_pro.models import MessageType
+            source = "telegram_text"
+            if request.message_type == MessageType.IMAGE:
+                source = "telegram_photo"
+            elif request.message_type == MessageType.AUDIO:
+                source = "telegram_voice"
+
+            # Insert work order
+            work_order_result = await self.db.execute_query_async("""
+                INSERT INTO work_orders (
+                    equipment_id,
+                    equipment_number,
+                    manufacturer,
+                    model_number,
+                    equipment_type,
+                    user_id,
+                    title,
+                    description,
+                    answer_text,
+                    route_taken,
+                    confidence_score,
+                    status,
+                    priority,
+                    source
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                RETURNING id, work_order_number, created_at
+            """,
+                (str(equipment_id),
+                equipment_number,
+                manufacturer,
+                model_number,
+                equipment_type,
+                request.user_id,
+                title,
+                description,
+                response.text,
+                (response.route_taken.value if hasattr(response.route_taken, 'value') else str(response.route_taken))[0],  # Extract just the letter (A/B/C/D)
+                response.confidence,
+                'open',
+                priority,
+                source),
+                fetch_mode="one"
+            )
+
+            work_order = work_order_result
+
+            logger.info(
+                f"Work order created: {work_order['work_order_number']} "
+                f"for user {request.user_id} (equipment: {equipment_number})"
+            )
+
+            return {
+                "id": work_order["id"],
+                "work_order_number": work_order["work_order_number"],
+                "equipment_id": str(equipment_id),
+                "equipment_number": equipment_number,
+                "created_at": work_order["created_at"]
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to create work order with equipment: {e}", exc_info=True)
             raise
 
     def _extract_equipment_info(
