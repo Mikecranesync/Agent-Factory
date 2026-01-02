@@ -47,6 +47,166 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# Force Provider (PLC HMI-style Force Controls)
+# ============================================================================
+
+
+class ForceProvider:
+    """
+    Manages forced tag values for PLC HMI-style force controls.
+
+    Forces are stored in-memory and cleared on restart (safety feature).
+    All force operations are logged for audit trail.
+
+    Usage:
+        provider = ForceProvider()
+        provider.set_force("machine1", "conveyor", True, "user123")
+        is_forced = provider.is_forced("machine1", "conveyor")
+        provider.clear_force("machine1", "conveyor", "user123")
+
+    Attributes:
+        _forced_tags: Dict mapping machine_id → {tag_name: forced_value}
+        _force_log: Audit log of all force operations
+    """
+
+    def __init__(self):
+        """Initialize ForceProvider with empty state."""
+        self._forced_tags: Dict[str, Dict[str, bool]] = {}  # machine_id → {tag_name: value}
+        self._force_log: List[Dict] = []  # Audit log
+
+    def set_force(self, machine_id: str, tag_name: str, value: bool, user: str) -> None:
+        """
+        Set a tag to forced value.
+
+        Args:
+            machine_id: ID of machine containing the tag
+            tag_name: Name of tag to force
+            value: Value to force (True/False)
+            user: Username or ID of user who set the force
+
+        Example:
+            provider.set_force("scene1_sorting", "conveyor_running", True, "john_doe")
+        """
+        if machine_id not in self._forced_tags:
+            self._forced_tags[machine_id] = {}
+        self._forced_tags[machine_id][tag_name] = value
+
+        # Audit log
+        log_entry = {
+            "timestamp": datetime.now(),
+            "machine_id": machine_id,
+            "tag_name": tag_name,
+            "value": value,
+            "user": user,
+            "action": "set_force"
+        }
+        self._force_log.append(log_entry)
+        logger.warning(f"FORCE: {user} forced {machine_id}.{tag_name} = {value}")
+
+    def clear_force(self, machine_id: str, tag_name: str, user: str) -> None:
+        """
+        Remove force from a tag (return to normal operation).
+
+        Args:
+            machine_id: ID of machine containing the tag
+            tag_name: Name of tag to clear force from
+            user: Username or ID of user who cleared the force
+
+        Example:
+            provider.clear_force("scene1_sorting", "conveyor_running", "john_doe")
+        """
+        if machine_id in self._forced_tags and tag_name in self._forced_tags[machine_id]:
+            del self._forced_tags[machine_id][tag_name]
+
+            # Audit log
+            log_entry = {
+                "timestamp": datetime.now(),
+                "machine_id": machine_id,
+                "tag_name": tag_name,
+                "user": user,
+                "action": "clear_force"
+            }
+            self._force_log.append(log_entry)
+            logger.info(f"CLEAR FORCE: {user} cleared force on {machine_id}.{tag_name}")
+
+    def get_forced_value(self, machine_id: str, tag_name: str) -> Optional[bool]:
+        """
+        Get forced value if tag is forced, else None.
+
+        Args:
+            machine_id: ID of machine containing the tag
+            tag_name: Name of tag to check
+
+        Returns:
+            Forced value (True/False) if forced, None if not forced
+
+        Example:
+            value = provider.get_forced_value("scene1_sorting", "conveyor_running")
+            if value is not None:
+                print(f"Tag is forced to {value}")
+        """
+        return self._forced_tags.get(machine_id, {}).get(tag_name)
+
+    def is_forced(self, machine_id: str, tag_name: str) -> bool:
+        """
+        Check if a tag is currently forced.
+
+        Args:
+            machine_id: ID of machine containing the tag
+            tag_name: Name of tag to check
+
+        Returns:
+            True if tag is forced, False otherwise
+
+        Example:
+            if provider.is_forced("scene1_sorting", "conveyor_running"):
+                print("Conveyor is under force control")
+        """
+        return tag_name in self._forced_tags.get(machine_id, {})
+
+    def get_all_forced(self, machine_id: str) -> Dict[str, bool]:
+        """
+        Get all forced tags for a machine.
+
+        Args:
+            machine_id: ID of machine
+
+        Returns:
+            Dict of {tag_name: forced_value} for all forced tags
+
+        Example:
+            forced_tags = provider.get_all_forced("scene1_sorting")
+            for tag, value in forced_tags.items():
+                print(f"{tag} forced to {value}")
+        """
+        return self._forced_tags.get(machine_id, {}).copy()
+
+    def get_force_log(self, machine_id: Optional[str] = None, limit: int = 100) -> List[Dict]:
+        """
+        Get force audit log.
+
+        Args:
+            machine_id: Optional filter by machine ID
+            limit: Maximum number of entries to return (default: 100)
+
+        Returns:
+            List of log entries (most recent first)
+
+        Example:
+            log = provider.get_force_log("scene1_sorting", limit=10)
+            for entry in log:
+                print(f"{entry['timestamp']}: {entry['user']} {entry['action']} {entry['tag_name']}")
+        """
+        if machine_id:
+            filtered = [entry for entry in self._force_log if entry.get("machine_id") == machine_id]
+        else:
+            filtered = self._force_log
+
+        # Return most recent first
+        return list(reversed(filtered[-limit:]))
+
+
+# ============================================================================
 # Message Tracking
 # ============================================================================
 
@@ -71,7 +231,7 @@ class MessageTracker:
     chat_id: int
     message_id: Optional[int] = None
     last_sent_at: Optional[datetime] = None
-    edit_threshold_seconds: int = 5
+    edit_threshold_seconds: int = 3600  # 1 hour (effectively always edit for Factory.io HMI)
 
     def should_edit(self) -> bool:
         """
@@ -142,6 +302,7 @@ class TelegramAdapter:
         self.subscriptions: Dict[str, str] = {}  # machine_id → subscription_id
         self.message_trackers: Dict[str, MessageTracker] = {}  # machine_id → MessageTracker
         self.last_write_time: Dict[int, datetime] = {}  # chat_id → datetime
+        self.force_provider = ForceProvider()  # PLC HMI-style force controls
         self._running = False
 
         logger.info("TelegramAdapter initialized with %d machines", len(machine_config.machines))
@@ -214,6 +375,16 @@ class TelegramAdapter:
 
             # Log state change
             logger.debug(f"State change for {machine_id}: {len(changed_tags)} tags changed")
+
+            # Apply forced values (PLC HMI force controls)
+            forced_tags = self.force_provider.get_all_forced(machine_id)
+            if forced_tags:
+                logger.debug(f"Applying {len(forced_tags)} forced tag(s) for {machine_id}")
+                for tag_name, forced_value in forced_tags.items():
+                    try:
+                        await self._write_tag_async(machine_id, tag_name, forced_value)
+                    except Exception as e:
+                        logger.error(f"Failed to apply force to {tag_name}: {e}")
 
             # Format message
             text, keyboard = self._format_message(machine_id)
@@ -295,63 +466,91 @@ class TelegramAdapter:
 
     def _to_markdown(self, message: PlatformMessage, machine_id: str) -> str:
         """
-        Convert PlatformMessage to Telegram Markdown V2 format.
+        Convert PlatformMessage to PLC HMI-style Telegram Markdown V2 format.
+
+        PLC HMI Format:
+            🟢 tag_name (Human-readable comment)          [Force buttons]
+            ⚫ tag_name (Human-readable comment) ⚠️ FORCED [Force buttons]
 
         Args:
             message: PlatformMessage to convert
-            machine_id: ID of machine (for health status)
+            machine_id: ID of machine (for health status and force checking)
 
         Returns:
-            Markdown-formatted message text
+            Markdown-formatted message text in PLC HMI style
         """
         # Get health status
         health_info = self.state_manager.get_health_status().get(machine_id, {})
         circuit_state = health_info.get("circuit_state", "closed")
 
-        # Determine status emoji
+        # Determine status text
         if circuit_state == "closed":
-            status_emoji = "🟢"
-            status_text = ""
+            status_text = "🟢 ONLINE"
         elif circuit_state == "half_open":
-            status_emoji = "🟡"
-            status_text = " (TESTING)"
+            status_text = "🟡 TESTING"
         else:  # open
-            status_emoji = "🔴"
-            status_text = " (OFFLINE)"
+            status_text = "🔴 OFFLINE"
+
+        # Get machine config for tag comments
+        machine = self.machine_config.get_machine(machine_id)
 
         # Build message parts
         parts = []
 
         # Header with status
         title = ResponseFormatter.escape_markdown(message.title.upper())
-        parts.append(f"{status_emoji} *{title}*{status_text}")
-
-        if message.description:
-            desc = ResponseFormatter.escape_markdown(message.description)
-            parts.append(desc)
-
+        status_part = ResponseFormatter.escape_markdown(f"({status_text})")
+        parts.append(f"*{title}* {status_part}")
         parts.append("")  # Blank line
 
-        # I/O Status - Inputs
+        # I/O Status - INPUTS (PLC HMI style)
         inputs = message.get_inputs()
         if inputs:
-            parts.append("📊 *INPUTS:*")
-            for tag_name, tag in inputs.items():
-                value_str = str(tag.value).upper() if isinstance(tag.value, bool) else str(tag.value)
-                value_str = ResponseFormatter.escape_markdown(value_str)
-                tag_name_escaped = ResponseFormatter.escape_markdown(tag_name)
-                parts.append(f"  • {tag_name_escaped}: {value_str}")
+            parts.append("📥 *INPUTS:*")
+            # Sort alphabetically
+            for tag_name in sorted(inputs.keys()):
+                tag = inputs[tag_name]
+
+                # Status indicator (🟢 = HIGH/TRUE, ⚫ = LOW/FALSE)
+                status_indicator = "🟢" if tag.value else "⚫"
+
+                # Get comment from config
+                comment = self._get_tag_comment(machine, tag_name) if machine else None
+                if comment:
+                    tag_display = f"{tag_name} ({comment})"
+                else:
+                    tag_display = tag_name
+                tag_display = ResponseFormatter.escape_markdown(tag_display)
+
+                # Check if forced
+                force_indicator = " ⚠️ *FORCED*" if self.force_provider.is_forced(machine_id, tag_name) else ""
+
+                parts.append(f"{status_indicator} {tag_display}{force_indicator}")
             parts.append("")
 
-        # I/O Status - Outputs
+        # I/O Status - OUTPUTS (PLC HMI style)
         outputs = message.get_outputs()
         if outputs:
-            parts.append("⚙️ *OUTPUTS:*")
-            for tag_name, tag in outputs.items():
-                value_str = "ON" if tag.value is True else "OFF" if tag.value is False else str(tag.value)
-                value_str = ResponseFormatter.escape_markdown(value_str)
-                tag_name_escaped = ResponseFormatter.escape_markdown(tag_name)
-                parts.append(f"  • {tag_name_escaped}: {value_str}")
+            parts.append("📤 *OUTPUTS:*")
+            # Sort alphabetically
+            for tag_name in sorted(outputs.keys()):
+                tag = outputs[tag_name]
+
+                # Status indicator (🟢 = HIGH/TRUE, ⚫ = LOW/FALSE)
+                status_indicator = "🟢" if tag.value else "⚫"
+
+                # Get comment from config
+                comment = self._get_tag_comment(machine, tag_name) if machine else None
+                if comment:
+                    tag_display = f"{tag_name} ({comment})"
+                else:
+                    tag_display = tag_name
+                tag_display = ResponseFormatter.escape_markdown(tag_display)
+
+                # Check if forced
+                force_indicator = " ⚠️ *FORCED*" if self.force_provider.is_forced(machine_id, tag_name) else ""
+
+                parts.append(f"{status_indicator} {tag_display}{force_indicator}")
             parts.append("")
 
         # Alerts
@@ -371,40 +570,70 @@ class TelegramAdapter:
 
     def _to_keyboard(self, message: PlatformMessage, machine_id: str) -> InlineKeyboardMarkup:
         """
-        Convert PlatformMessage controls to Telegram inline keyboard.
+        Generate PLC HMI-style force control buttons for outputs.
+
+        Layout:
+            [ON] [OFF] [Clear]  ← One row per output tag
+            [ON] [OFF] [Clear]
+            [⛔ EMERGENCY STOP]  ← Separate row
+            [🔄 Refresh]         ← Separate row
 
         Args:
-            message: PlatformMessage with controls
+            message: PlatformMessage with I/O status
             machine_id: ID of machine (for callback data)
 
         Returns:
-            InlineKeyboardMarkup with control buttons
+            InlineKeyboardMarkup with force control buttons
         """
-        if not message.controls:
-            return InlineKeyboardMarkup([])
-
-        # Separate emergency stop from regular controls
-        regular_controls = [c for c in message.controls if c.action != "emergency_stop"]
-        emergency_controls = [c for c in message.controls if c.action == "emergency_stop"]
-
         keyboard = []
 
-        # Add regular controls in 2-column layout
-        for i in range(0, len(regular_controls), 2):
-            row = []
-            for j in range(2):
-                if i + j < len(regular_controls):
-                    control = regular_controls[i + j]
-                    button_text = f"{control.emoji} {control.label}" if control.emoji else control.label
-                    callback_data = f"factoryio:{control.to_callback_data(machine_id)}"
-                    row.append(InlineKeyboardButton(button_text, callback_data=callback_data))
+        # Get machine config
+        machine = self.machine_config.get_machine(machine_id)
+        if not machine:
+            return InlineKeyboardMarkup([])
+
+        # Get outputs (sorted alphabetically to match message display)
+        outputs = sorted(message.get_outputs().items())
+
+        # Create force control buttons for each output
+        for tag_name, tag in outputs:
+            # Skip read-only tags
+            if tag_name in machine.read_only_tags:
+                continue
+
+            # One row per output: [ON] [OFF] [Clear]
+            row = [
+                InlineKeyboardButton(
+                    "ON",
+                    callback_data=f"force:{machine_id}:{tag_name}:1"
+                ),
+                InlineKeyboardButton(
+                    "OFF",
+                    callback_data=f"force:{machine_id}:{tag_name}:0"
+                ),
+                InlineKeyboardButton(
+                    "Clear",
+                    callback_data=f"clear:{machine_id}:{tag_name}"
+                )
+            ]
             keyboard.append(row)
 
-        # Add emergency stop button (full width)
-        for control in emergency_controls:
-            button_text = f"{control.emoji} {control.label}" if control.emoji else control.label
-            callback_data = f"factoryio:{control.to_callback_data(machine_id)}"
-            keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+        # Add emergency stop button (separate row, full width)
+        if machine.emergency_stop_tags:
+            keyboard.append([
+                InlineKeyboardButton(
+                    "⛔ EMERGENCY STOP",
+                    callback_data=f"estop:{machine_id}"
+                )
+            ])
+
+        # Add refresh button (separate row, full width)
+        keyboard.append([
+            InlineKeyboardButton(
+                "🔄 Refresh",
+                callback_data=f"refresh:{machine_id}"
+            )
+        ])
 
         return InlineKeyboardMarkup(keyboard)
 
@@ -514,131 +743,7 @@ class TelegramAdapter:
     # ========================================================================
     # Callback Handling (Button Clicks)
     # ========================================================================
-
-    async def handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """
-        Handle Telegram callback query (button click).
-
-        Parses callback_data, validates, executes write, and sends confirmation.
-
-        Args:
-            update: Telegram Update object
-            context: Telegram context
-        """
-        query = update.callback_query
-        if not query:
-            return
-
-        await query.answer()  # Acknowledge button click
-
-        # Parse callback data
-        parsed = self._validate_callback_data(query.data)
-        if not parsed:
-            await query.message.reply_text("❌ Invalid button action")
-            return
-
-        action = parsed["action"]
-        machine_id = parsed["machine_id"]
-        tag_name = parsed["tag_name"]
-        value = parsed["value"]
-
-        # Get machine
-        machine = self.machine_config.get_machine(machine_id)
-        chat_id = query.message.chat_id
-
-        # Check rate limiting
-        if not self._check_rate_limit(chat_id):
-            await query.answer("⏳ Please wait before pressing another button", show_alert=True)
-            return
-
-        # Get username for logging
-        username = query.from_user.username or query.from_user.first_name or "Unknown"
-
-        try:
-            if action == "toggle":
-                # Read current value
-                current_state = self.state_manager.get_state(machine_id)
-                current_tag = current_state.get(tag_name)
-
-                if current_tag is None:
-                    await query.message.reply_text(f"❌ Tag {tag_name} not found in state")
-                    return
-
-                # Toggle boolean value
-                new_value = not current_tag.value if isinstance(current_tag.value, bool) else False
-
-                # Execute write
-                success, message = await self._execute_write(machine_id, tag_name, new_value)
-
-                # Update rate limit
-                if success:
-                    self._update_write_time(chat_id)
-
-                # Send confirmation
-                confirmation = f"@{username} toggled {tag_name}\n{message}"
-                await query.message.reply_text(confirmation)
-
-            elif action == "write":
-                # Convert value string to appropriate type
-                if value.lower() == "true":
-                    write_value = True
-                elif value.lower() == "false":
-                    write_value = False
-                elif value.isdigit():
-                    write_value = int(value)
-                else:
-                    try:
-                        write_value = float(value)
-                    except ValueError:
-                        write_value = value  # Keep as string
-
-                # Execute write
-                success, message = await self._execute_write(machine_id, tag_name, write_value)
-
-                # Update rate limit
-                if success:
-                    self._update_write_time(chat_id)
-
-                # Send confirmation
-                confirmation = f"@{username} set {tag_name}\n{message}"
-                await query.message.reply_text(confirmation)
-
-            elif action == "emergency_stop":
-                # Emergency stop - set all emergency_stop_tags to False
-                if not machine.emergency_stop_tags:
-                    await query.message.reply_text("❌ No emergency stop tags configured")
-                    return
-
-                # Execute writes for all emergency stop tags
-                results = []
-                for stop_tag in machine.emergency_stop_tags:
-                    success, message = await self._execute_write(machine_id, stop_tag, False)
-                    results.append((stop_tag, success, message))
-
-                # Update rate limit
-                self._update_write_time(chat_id)
-
-                # Build confirmation message
-                success_count = sum(1 for _, success, _ in results if success)
-                confirmation_parts = [
-                    f"⚠️ *EMERGENCY STOP* activated by @{username}",
-                    f"",
-                    f"Results: {success_count}/{len(results)} tags stopped"
-                ]
-
-                for tag, success, message in results:
-                    status = "✅" if success else "❌"
-                    confirmation_parts.append(f"{status} {tag}")
-
-                confirmation = "\n".join(confirmation_parts)
-                await query.message.reply_text(
-                    ResponseFormatter.escape_markdown(confirmation),
-                    parse_mode=ParseMode.MARKDOWN_V2
-                )
-
-        except Exception as e:
-            logger.error(f"Error handling callback: {e}", exc_info=True)
-            await query.message.reply_text(f"❌ Error: {str(e)}")
+    # NOTE: handle_callback() is defined later at line ~1110 to match button format
 
     def _validate_callback_data(self, callback_data: str) -> Optional[dict]:
         """
@@ -800,3 +905,263 @@ class TelegramAdapter:
             chat_id: Telegram chat ID
         """
         self.last_write_time[chat_id] = datetime.now()
+
+    async def _write_tag_async(self, machine_id: str, tag_name: str, value: bool) -> None:
+        """
+        Force tag value in Factory.io (async wrapper for sync readwrite_tool).
+
+        Uses Factory.io native force API to hold output at specific value.
+        Critical for HMI manual control when no PLC logic is running.
+
+        Args:
+            machine_id: ID of machine containing the tag
+            tag_name: Name of tag to force
+            value: Value to force (True/False)
+
+        Raises:
+            Exception: If force fails
+        """
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            self.executor,
+            lambda: self.readwrite_tool._run("force", tag_values={tag_name: value})
+        )
+
+        # Check for errors
+        if "ERROR" in result:
+            logger.error(f"Failed to force {machine_id}.{tag_name} = {value}: {result}")
+            raise Exception(f"Factory.io write failed: {result}")
+        else:
+            logger.info(f"Wrote {machine_id}.{tag_name} = {value}")
+
+    def _get_tag_comment(self, machine: MachineConfig, tag_name: str) -> Optional[str]:
+        """
+        Get human-readable comment for a tag from config.
+
+        Args:
+            machine: Machine configuration
+            tag_name: Name of tag to look up
+
+        Returns:
+            Comment string if found, None otherwise
+
+        Example:
+            comment = self._get_tag_comment(machine, "conveyor_running")
+            # Returns: "Main Conveyor Motor"
+        """
+        # Check monitored_inputs
+        for tag_config in machine.monitored_inputs:
+            if tag_config.tag == tag_name:
+                return tag_config.comment if hasattr(tag_config, 'comment') else tag_config.label
+
+        # Check controllable_outputs
+        for tag_config in machine.controllable_outputs:
+            if tag_config.tag == tag_name:
+                return tag_config.comment if hasattr(tag_config, 'comment') else tag_config.label
+
+        return None
+
+    async def _send_or_edit_message_for_machine(self, machine_id: str) -> None:
+        """
+        Send/edit message for a specific machine (for manual refresh or button clicks).
+
+        Args:
+            machine_id: ID of machine to update
+
+        Raises:
+            ValueError: If machine not found in config
+        """
+        machine = self.machine_config.get_machine(machine_id)
+        if not machine:
+            raise ValueError(f"Machine {machine_id} not found in config")
+
+        # Format message
+        text, keyboard = self._format_message(machine_id)
+
+        # Send or edit
+        await self._send_or_edit_message(
+            chat_id=machine.telegram_chat_id,
+            text=text,
+            keyboard=keyboard,
+            machine_id=machine_id
+        )
+
+    # ========================================================================
+    # Callback Handlers (PLC HMI Force Controls)
+    # ========================================================================
+
+    async def handle_callback(self, update, context: ContextTypes.DEFAULT_TYPE = None):
+        """
+        Handle Telegram button callback queries (force controls, emergency stop, refresh).
+
+        Callback Data Format:
+            force:<machine_id>:<tag_name>:1    → Force tag ON
+            force:<machine_id>:<tag_name>:0    → Force tag OFF
+            clear:<machine_id>:<tag_name>      → Clear force
+            estop:<machine_id>                 → Emergency stop
+            refresh:<machine_id>               → Manual refresh
+
+        Args:
+            update: Telegram Update object containing callback_query
+            context: Telegram context (optional)
+
+        Example:
+            # Register with python-telegram-bot Application
+            application.add_handler(CallbackQueryHandler(telegram_adapter.handle_callback))
+        """
+        # Extract callback_query from Update object
+        query = update.callback_query
+        callback_data = query.data
+        user = query.from_user
+
+        try:
+            # Parse callback data
+            parts = callback_data.split(":")
+            if len(parts) < 2:
+                await query.answer("❌ Invalid callback data")
+                return
+
+            action = parts[0]
+            machine_id = parts[1]
+
+            logger.info(f"Callback from {user.username or user.id}: {callback_data}")
+
+            if action == "force":
+                # Force tag to value
+                if len(parts) < 4:
+                    await query.answer("❌ Invalid force command")
+                    return
+
+                tag_name = parts[2]
+                value = parts[3] == "1"
+
+                # Verify tag is controllable (not read-only)
+                machine = self.machine_config.get_machine(machine_id)
+                if machine and tag_name in machine.read_only_tags:
+                    await query.answer("❌ Cannot force read-only tag")
+                    return
+
+                # Set force
+                self.force_provider.set_force(
+                    machine_id=machine_id,
+                    tag_name=tag_name,
+                    value=value,
+                    user=f"{user.username or user.id}"
+                )
+
+                # Immediately write to Factory.io
+                try:
+                    await self._write_tag_async(machine_id, tag_name, value)
+                except Exception as e:
+                    logger.error(f"Failed to write forced value: {e}")
+                    await query.answer(f"⚠️ Force set but write failed: {str(e)[:30]}")
+                    return
+
+                # Update message
+                await self._send_or_edit_message_for_machine(machine_id)
+
+                # Acknowledge
+                await query.answer(f"✅ Forced {tag_name} = {'ON' if value else 'OFF'}")
+
+            elif action == "clear":
+                # Clear force
+                if len(parts) < 3:
+                    await query.answer("❌ Invalid clear command")
+                    return
+
+                tag_name = parts[2]
+
+                # Release forced tag using Factory.io API
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(
+                    self.executor,
+                    lambda: self.readwrite_tool._run("release", tag_names=[tag_name])
+                )
+
+                if "ERROR" in result:
+                    logger.error(f"Failed to release {machine_id}.{tag_name}: {result}")
+                    await query.answer(f"⚠️ Clear failed: {result[:40]}")
+                    return
+
+                # Clear application-level force tracking
+                self.force_provider.clear_force(
+                    machine_id=machine_id,
+                    tag_name=tag_name,
+                    user=f"{user.username or user.id}"
+                )
+
+                # Update message
+                await self._send_or_edit_message_for_machine(machine_id)
+
+                # Acknowledge
+                await query.answer(f"✅ Cleared force on {tag_name}")
+
+            elif action == "estop":
+                # Emergency stop
+                machine = self.machine_config.get_machine(machine_id)
+                if not machine:
+                    await query.answer("❌ Machine not found")
+                    return
+
+                if not machine.emergency_stop_tags:
+                    await query.answer("⚠️ No emergency stop tags configured")
+                    return
+
+                # Write all emergency stop tags to FALSE
+                for tag_name in machine.emergency_stop_tags:
+                    try:
+                        await self._write_tag_async(machine_id, tag_name, False)
+                        logger.warning(f"EMERGENCY STOP: {user.username or user.id} stopped {tag_name}")
+                    except Exception as e:
+                        logger.error(f"Emergency stop write failed for {tag_name}: {e}")
+
+                # Update message
+                await self._send_or_edit_message_for_machine(machine_id)
+
+                # Acknowledge
+                await query.answer("⛔ EMERGENCY STOP ACTIVATED")
+
+            elif action == "refresh":
+                # Get machine config
+                machine = self.machine_config.get_machine(machine_id)
+                if not machine:
+                    await query.answer("❌ Machine not found")
+                    return
+
+                # Get all output tag names
+                output_tags = [tag.tag for tag in machine.controllable_outputs]
+
+                # Release ALL forced tags using Factory.io API
+                if output_tags:
+                    loop = asyncio.get_event_loop()
+                    result = await loop.run_in_executor(
+                        self.executor,
+                        lambda: self.readwrite_tool._run("release", tag_names=output_tags)
+                    )
+
+                    if "ERROR" in result:
+                        logger.error(f"Failed to release forces for {machine_id}: {result}")
+                        await query.answer(f"⚠️ Refresh failed: {result[:40]}")
+                        return
+
+                # Clear application-level force tracking
+                if machine_id in self.force_provider._forced_tags:
+                    cleared_count = len(self.force_provider._forced_tags[machine_id])
+                    del self.force_provider._forced_tags[machine_id]
+                    logger.info(f"Cleared {cleared_count} forced tags for {machine_id}")
+
+                # Manual refresh display
+                await self._send_or_edit_message_for_machine(machine_id)
+                await query.answer("🔄 Refreshed - All forces cleared")
+
+            else:
+                # Unknown action
+                logger.warning(f"Unknown callback action: {action}")
+                await query.answer(f"❓ Unknown action: {action}")
+
+        except Exception as e:
+            logger.error(f"Error handling callback: {e}", exc_info=True)
+            try:
+                await query.answer(f"❌ Error: {str(e)[:40]}")
+            except:
+                pass  # Callback may have already timed out

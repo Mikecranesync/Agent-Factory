@@ -22,15 +22,15 @@ import os
 class FactoryIOReadWriteInput(BaseModel):
     """Input schema for FactoryIOReadWriteTool."""
     action: str = Field(
-        description="Action: 'read' or 'write'"
+        description="Action: 'read', 'write', 'force', or 'release'"
     )
     tag_names: Optional[List[str]] = Field(
         default=None,
-        description="List of tag names to read (for 'read' action)"
+        description="List of tag names to read (for 'read' action) or release (for 'release' action)"
     )
     tag_values: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Dict of tag_name: value to write (for 'write' action). Values can be bool (Bit), int (Int), or float (Float)"
+        description="Dict of tag_name: value to write (for 'write' action) or force (for 'force' action). Values can be bool (Bit), int (Int), or float (Float)"
     )
 
 
@@ -39,13 +39,15 @@ class FactoryIOReadWriteTool(BaseTool):
 
     name: ClassVar[str] = "factoryio_readwrite"
     description: ClassVar[str] = """
-    Read or write Factory.io tag values.
+    Read, write, force, or release Factory.io tag values.
 
     Actions:
     - read: Read current values of specified tags (by name)
     - write: Write values to specified tags (by name)
+    - force: Force tags to specific values (HMI manual control, bypasses PLC logic)
+    - release: Release forced tags back to normal operation
 
-    Returns JSON with tag values or write confirmation.
+    Returns JSON with tag values or operation confirmation.
 
     Important: Tags must be referenced by name. Use FactoryIOTagTool to discover available tag names first.
     """
@@ -60,7 +62,7 @@ class FactoryIOReadWriteTool(BaseTool):
         tag_names: Optional[List[str]] = None,
         tag_values: Optional[Dict[str, Any]] = None
     ) -> str:
-        """Execute read/write action."""
+        """Execute read/write/force/release action."""
         try:
             if action == "read":
                 if not tag_names:
@@ -70,8 +72,16 @@ class FactoryIOReadWriteTool(BaseTool):
                 if not tag_values:
                     return "ERROR: tag_values required for 'write' action"
                 return self._write_tags(tag_values)
+            elif action == "force":
+                if not tag_values:
+                    return "ERROR: tag_values required for 'force' action"
+                return self._force_tags(tag_values)
+            elif action == "release":
+                if not tag_names:
+                    return "ERROR: tag_names required for 'release' action"
+                return self._release_tags(tag_names)
             else:
-                return f"ERROR: Unknown action '{action}'. Valid actions: read, write"
+                return f"ERROR: Unknown action '{action}'. Valid actions: read, write, force, release"
         except requests.exceptions.ConnectionError:
             return f"ERROR: Cannot connect to Factory.io at {self.base_url}"
         except Exception as e:
@@ -146,4 +156,94 @@ class FactoryIOReadWriteTool(BaseTool):
                 "success": True,
                 "message": f"Successfully wrote {len(tag_values)} tag value(s)",
                 "tags": list(tag_values.keys())
+            }, indent=2)
+
+    def _force_tags(self, tag_values: Dict[str, Any]) -> str:
+        """Force tag values using Factory.io native force API.
+
+        Forces tags to specific values bypassing PLC logic. Useful for HMI
+        manual control when no PLC logic is running.
+
+        Args:
+            tag_values: Dict mapping tag name to forced value
+
+        Returns:
+            JSON result with success status and forced tags
+        """
+        # Convert dict to list of {name, value} objects for API
+        tag_value_list = [
+            {"name": name, "value": value}
+            for name, value in tag_values.items()
+        ]
+
+        # Factory.io Web API uses /api/tag/values-force/by-name for forcing by name
+        response = requests.put(
+            f"{self.base_url}/api/tag/values-force/by-name",
+            json=tag_value_list,
+            timeout=self.timeout
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        # Check for errors in response
+        errors = []
+        if result:  # API returns array of errors (empty if all success)
+            for item in result:
+                if "error" in item:
+                    errors.append(f"{item.get('name', 'unknown')}: {item['error']}")
+
+        if errors:
+            return json.dumps({
+                "success": False,
+                "message": f"Failed to force {len(errors)} tag(s)",
+                "forced": len(tag_values) - len(errors),
+                "errors": errors
+            }, indent=2)
+        else:
+            return json.dumps({
+                "success": True,
+                "message": f"Successfully forced {len(tag_values)} tag value(s)",
+                "tags": list(tag_values.keys())
+            }, indent=2)
+
+    def _release_tags(self, tag_names: List[str]) -> str:
+        """Release forced tags using Factory.io native release API.
+
+        Releases tags from forced state back to normal operation. All specified
+        tags will return to their actual values determined by PLC logic or inputs.
+
+        Args:
+            tag_names: List of tag names to release from forced state
+
+        Returns:
+            JSON result with success status and released tags
+        """
+        # Factory.io Web API uses /api/tag/values-release/by-name for releasing by name
+        response = requests.put(
+            f"{self.base_url}/api/tag/values-release/by-name",
+            json=tag_names,
+            timeout=self.timeout
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        # Check for errors in response
+        errors = []
+        if result:  # API returns array of errors (empty if all success)
+            for item in result:
+                if "error" in item:
+                    errors.append(f"{item.get('name', 'unknown')}: {item['error']}")
+
+        if errors:
+            return json.dumps({
+                "success": False,
+                "message": f"Failed to release {len(errors)} tag(s)",
+                "released": len(tag_names) - len(errors),
+                "errors": errors
+            }, indent=2)
+        else:
+            return json.dumps({
+                "success": True,
+                "message": f"Successfully released {len(tag_names)} tag(s)",
+                "tags": tag_names
             }, indent=2)
