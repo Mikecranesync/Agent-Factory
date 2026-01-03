@@ -709,3 +709,160 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception:
             pass  # Can't send message, ignore
+
+
+# =============================================================================
+# Photo Handler (OCR Pipeline)
+# =============================================================================
+
+
+async def handle_photo_with_ocr(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle photo messages with OCR pipeline (GPT-4o → Gemini fallback).
+
+    Detects equipment manufacturer/model from nameplate photos using
+    dual-provider OCR with automatic fallback.
+
+    Args:
+        update: Telegram update with photo
+        context: Bot context
+
+    Flow:
+        1. Download photo (highest resolution)
+        2. Run through OCRPipeline (GPT-4o → Gemini fallback)
+        3. Format response with manufacturer/model/confidence
+        4. Send result to user
+    """
+    import logging
+    from agent_factory.integrations.telegram.ocr.pipeline import OCRPipeline
+    from agent_factory.integrations.telegram.ocr.providers import OCRResult
+
+    logger = logging.getLogger(__name__)
+    chat_id = update.effective_chat.id
+    user_id = str(update.effective_user.id)
+
+    # Show typing indicator
+    bot_instance = context.bot_data.get("bot_instance")
+    if bot_instance and bot_instance.config.typing_indicator:
+        await context.bot.send_chat_action(chat_id, ChatAction.TYPING)
+
+    try:
+        # Step 1: Download photo (highest resolution)
+        photo = update.message.photo[-1]
+        photo_file = await photo.get_file()
+        photo_bytes = await photo_file.download_as_bytearray()
+
+        logger.info(f"[{user_id}] Photo received: {len(photo_bytes)} bytes")
+
+        # Step 2: Run OCR pipeline
+        pipeline = OCRPipeline()
+
+        if not pipeline.is_any_provider_available():
+            await update.message.reply_text(
+                "❌ OCR service temporarily unavailable.\n\n"
+                "Please try again later."
+            )
+            return
+
+        # Analyze photo
+        result: OCRResult = await pipeline.analyze_photo(
+            bytes(photo_bytes),
+            user_id=user_id
+        )
+
+        # Step 3: Format response based on confidence
+        if result.error:
+            # Quality check failed or other error
+            response = (
+                f"📷 Photo received but couldn't process it:\n\n"
+                f"{result.error}\n\n"
+                "Try taking a clearer photo with better lighting."
+            )
+
+        elif result.confidence >= 0.5:
+            # Good detection
+            response_parts = ["📷 **Equipment Detected**\n"]
+
+            if result.manufacturer:
+                response_parts.append(f"**Manufacturer:** {result.manufacturer.title()}")
+
+            if result.model_number:
+                response_parts.append(f"**Model:** {result.model_number}")
+
+            if result.serial_number:
+                response_parts.append(f"**Serial:** {result.serial_number}")
+
+            if result.fault_code:
+                response_parts.append(f"**Fault Code:** {result.fault_code}")
+
+            if result.equipment_type:
+                response_parts.append(f"**Type:** {result.equipment_type.upper()}")
+
+            # Add electrical specs if available
+            specs = []
+            if result.voltage:
+                specs.append(f"⚡ {result.voltage}")
+            if result.current:
+                specs.append(f"🔌 {result.current}")
+            if result.horsepower:
+                specs.append(f"💪 {result.horsepower}")
+            if result.phase:
+                specs.append(f"📊 {result.phase}-phase")
+
+            if specs:
+                response_parts.append("\n**Specifications:**")
+                response_parts.append(", ".join(specs))
+
+            # Add confidence and provider info
+            response_parts.append(
+                f"\n**Confidence:** {result.confidence:.0%} ({result.provider})"
+            )
+
+            # Add helpful next steps for high confidence
+            if result.confidence >= 0.7:
+                search_query = f"{result.manufacturer or ''} {result.model_number or ''}".strip()
+                if search_query:
+                    response_parts.append(
+                        f"\n💡 Want to know more? Try:\n"
+                        f"`{search_query} troubleshooting`"
+                    )
+
+            response = "\n".join(response_parts)
+
+        else:
+            # Low confidence
+            response = (
+                f"📷 Photo received but couldn't detect equipment clearly.\n\n"
+                f"**Confidence:** {result.confidence:.0%}\n"
+                f"**Provider:** {result.provider}\n\n"
+                "Tips for better detection:\n"
+                "• Take photo of equipment nameplate\n"
+                "• Ensure good lighting\n"
+                "• Get close enough to read text\n"
+                "• Avoid glare and shadows"
+            )
+
+            # Include partial results if available
+            if result.manufacturer or result.model_number:
+                response += "\n\n**Partial detection:**\n"
+                if result.manufacturer:
+                    response += f"• Manufacturer: {result.manufacturer}\n"
+                if result.model_number:
+                    response += f"• Model: {result.model_number}\n"
+
+        # Step 4: Send response
+        await update.message.reply_text(response, parse_mode="Markdown")
+
+        logger.info(
+            f"[{user_id}] OCR result: "
+            f"manufacturer={result.manufacturer}, "
+            f"model={result.model_number}, "
+            f"confidence={result.confidence:.2f}"
+        )
+
+    except Exception as e:
+        logger.error(f"[{user_id}] Photo handler error: {e}", exc_info=True)
+        await update.message.reply_text(
+            "❌ Error processing photo. Please try again.\n\n"
+            "If this persists, contact support."
+        )

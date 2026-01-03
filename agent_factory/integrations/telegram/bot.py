@@ -173,11 +173,11 @@ class TelegramBot:
             )
         )
 
-        # Photo handler for schematics/prints (NEW - WS3)
+        # Photo handler - OCR pipeline for equipment detection (GPT-4o → Gemini fallback)
         self.app.add_handler(
             MessageHandler(
                 filters.PHOTO,
-                photo_handler.handle_photo
+                handlers.handle_photo_with_ocr
             )
         )
 
@@ -514,6 +514,52 @@ Please respond to the current message, referencing the previous conversation whe
         if self.health_runner:
             await self.health_runner.cleanup()
 
+    def _acquire_lock(self):
+        """
+        Acquire exclusive lock to prevent multiple bot instances.
+
+        Uses a lock file to ensure only one bot runs at a time.
+        This prevents Telegram API conflicts from multiple getUpdates calls.
+        """
+        import atexit
+        from pathlib import Path
+
+        self.lock_file = Path("telegram_bot.lock")
+
+        # Check if lock file exists
+        if self.lock_file.exists():
+            try:
+                # Try to read PID from lock file
+                pid = int(self.lock_file.read_text().strip())
+
+                # Check if process is still running
+                try:
+                    os.kill(pid, 0)  # Signal 0 just checks if process exists
+                    print(f"\n[ERROR] Another bot instance is already running (PID: {pid})")
+                    print(f"[ERROR] Kill it first: taskkill /PID {pid} /F")
+                    print(f"[ERROR] Or delete stale lock file: del {self.lock_file}\n")
+                    raise RuntimeError(f"Bot already running with PID {pid}")
+                except OSError:
+                    # Process doesn't exist, remove stale lock file
+                    print(f"[INFO] Removing stale lock file from PID {pid}")
+                    self.lock_file.unlink()
+            except (ValueError, IOError):
+                # Invalid lock file, remove it
+                print(f"[INFO] Removing invalid lock file")
+                self.lock_file.unlink()
+
+        # Create lock file with current PID
+        self.lock_file.write_text(str(os.getpid()))
+        print(f"[INFO] Lock acquired (PID: {os.getpid()})")
+
+        # Register cleanup on exit
+        def cleanup_lock():
+            if self.lock_file.exists():
+                self.lock_file.unlink()
+                print(f"[INFO] Lock released")
+
+        atexit.register(cleanup_lock)
+
     def _setup_signal_handlers(self):
         """
         Setup graceful shutdown on SIGTERM/SIGINT.
@@ -523,6 +569,9 @@ Please respond to the current message, referencing the previous conversation whe
         def signal_handler(signum, frame):
             print(f"\n\n[WARNING] Received signal {signum}")
             self._shutdown = True
+            # Release lock file
+            if hasattr(self, 'lock_file') and self.lock_file.exists():
+                self.lock_file.unlink()
 
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
@@ -554,6 +603,9 @@ Please respond to the current message, referencing the previous conversation whe
         print(f"  - User whitelist: {len(self.config.allowed_users) if self.config.allowed_users else 'None (all users)'}")
         print(f"  - PID: {os.getpid()}")
         print("=" * 60)
+
+        # Acquire exclusive lock (prevents multiple instances)
+        self._acquire_lock()
 
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
