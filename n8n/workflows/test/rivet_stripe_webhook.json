@@ -1,0 +1,439 @@
+{
+  "name": "TEST - RIVET - Stripe Webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "stripe-webhook-rivet",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "stripe-webhook",
+      "name": "Stripe Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "stripe-webhook-rivet"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.type }}",
+                    "rightValue": "checkout.session.completed",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "checkout_completed"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.type }}",
+                    "rightValue": "customer.subscription.deleted",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "subscription_deleted"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.type }}",
+                    "rightValue": "invoice.payment_failed",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "payment_failed"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "event-type-switch",
+      "name": "Event Type Switch",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract telegram_id from metadata\nconst metadata = $input.item.json.body.data.object.metadata;\nconst customerId = $input.item.json.body.data.object.customer;\nconst subscriptionId = $input.item.json.body.data.object.subscription;\n\nreturn {\n  json: {\n    telegram_id: parseInt(metadata.telegram_id),\n    stripe_customer_id: customerId,\n    stripe_subscription_id: subscriptionId,\n    subscription_status: 'active',\n    is_pro: true\n  }\n};"
+      },
+      "id": "extract-checkout-data",
+      "name": "Extract Checkout Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 100]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT update_subscription(\n  {{ $json.telegram_id }},\n  '{{ $json.stripe_customer_id }}',\n  '{{ $json.stripe_subscription_id }}',\n  'active',\n  true\n)",
+        "options": {}
+      },
+      "id": "activate-pro",
+      "name": "Activate Pro Subscription",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [900, 100],
+      "credentials": {
+        "postgres": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Neon RIVET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Extract Checkout Data').item.json.telegram_id }}",
+        "text": "🎉 Welcome to RIVET Pro!\n\nYour subscription is now active!\n\n✨ You now have:\n✓ Unlimited equipment lookups\n✓ Chat with Print-it (upload PDFs and ask questions)\n✓ Priority support\n\n🚀 Try it out:\n• Send a photo to analyze equipment\n• Upload a PDF print to chat with it\n• Send /help to see all commands\n\nThank you for upgrading! 💙",
+        "additionalFields": {}
+      },
+      "id": "send-welcome-pro",
+      "name": "Send Welcome (Pro)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1120, 100],
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract customer ID from subscription object\nconst customerId = $input.item.json.body.data.object.customer;\n\nreturn {\n  json: {\n    stripe_customer_id: customerId,\n    subscription_status: 'cancelled',\n    is_pro: false\n  }\n};"
+      },
+      "id": "extract-cancel-data",
+      "name": "Extract Cancellation Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE rivet_users\nSET is_pro = false,\n    tier = 'free',\n    subscription_status = 'cancelled',\n    updated_at = NOW()\nWHERE stripe_customer_id = '{{ $json.stripe_customer_id }}'",
+        "options": {}
+      },
+      "id": "deactivate-pro",
+      "name": "Deactivate Pro",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [900, 300],
+      "credentials": {
+        "postgres": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Neon RIVET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT telegram_id FROM rivet_users WHERE stripe_customer_id = '{{ $('Extract Cancellation Data').item.json.stripe_customer_id }}'",
+        "options": {}
+      },
+      "id": "get-user-telegram-id",
+      "name": "Get User Telegram ID",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1120, 300],
+      "credentials": {
+        "postgres": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Neon RIVET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.telegram_id }}",
+        "text": "👋 Your RIVET Pro subscription has been cancelled.\n\nYou'll keep Pro access until the end of your billing period.\n\nAfter that, you'll return to the free tier:\n• 10 equipment lookups per month\n• No access to Chat with Print-it\n\nMiss Pro features? You can reactivate anytime with /upgrade\n\nWe'd love to hear your feedback! What can we improve?",
+        "additionalFields": {}
+      },
+      "id": "send-cancelled",
+      "name": "Send Cancellation Notice",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1340, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract customer ID\nconst customerId = $input.item.json.body.data.object.customer;\nconst attemptCount = $input.item.json.body.data.object.attempt_count;\n\nreturn {\n  json: {\n    stripe_customer_id: customerId,\n    attempt_count: attemptCount\n  }\n};"
+      },
+      "id": "extract-payment-failed",
+      "name": "Extract Payment Failed Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 500]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT telegram_id FROM rivet_users WHERE stripe_customer_id = '{{ $json.stripe_customer_id }}'",
+        "options": {}
+      },
+      "id": "get-user-for-failed",
+      "name": "Get User for Failed Payment",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [900, 500],
+      "credentials": {
+        "postgres": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Neon RIVET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.telegram_id }}",
+        "text": "⚠️ Payment Failed - RIVET Pro\n\nWe couldn't process your payment for RIVET Pro.\n\nPlease update your payment method:\n1. Visit your Stripe customer portal\n2. Update your payment information\n3. Your subscription will continue once payment is successful\n\nNeed help? Contact us: /help\n\n📧 You can also update payment at: https://billing.stripe.com",
+        "additionalFields": {}
+      },
+      "id": "send-payment-failed",
+      "name": "Send Payment Failed Warning",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1120, 500],
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list",
+          "cachedResultName": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "rivet_stripe_events",
+          "mode": "list",
+          "cachedResultName": "rivet_stripe_events"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "stripe_event_id": "={{ $('Stripe Webhook').item.json.body.id }}",
+            "event_type": "={{ $('Stripe Webhook').item.json.body.type }}",
+            "customer_id": "={{ $('Stripe Webhook').item.json.body.data.object.customer || '' }}",
+            "subscription_id": "={{ $('Stripe Webhook').item.json.body.data.object.subscription || '' }}",
+            "payload": "={{ JSON.stringify($('Stripe Webhook').item.json.body) }}",
+            "processed": true
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "log-stripe-event",
+      "name": "Log Stripe Event",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1340, 100],
+      "credentials": {
+        "postgres": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Neon RIVET"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Stripe Webhook": {
+      "main": [
+        [
+          {
+            "node": "Event Type Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Event Type Switch": {
+      "main": [
+        [
+          {
+            "node": "Extract Checkout Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Cancellation Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Payment Failed Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Checkout Data": {
+      "main": [
+        [
+          {
+            "node": "Activate Pro Subscription",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Activate Pro Subscription": {
+      "main": [
+        [
+          {
+            "node": "Send Welcome (Pro)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Welcome (Pro)": {
+      "main": [
+        [
+          {
+            "node": "Log Stripe Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Cancellation Data": {
+      "main": [
+        [
+          {
+            "node": "Deactivate Pro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deactivate Pro": {
+      "main": [
+        [
+          {
+            "node": "Get User Telegram ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get User Telegram ID": {
+      "main": [
+        [
+          {
+            "node": "Send Cancellation Notice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Payment Failed Data": {
+      "main": [
+        [
+          {
+            "node": "Get User for Failed Payment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get User for Failed Payment": {
+      "main": [
+        [
+          {
+            "node": "Send Payment Failed Warning",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-01-08T00:00:00.000Z",
+  "versionId": "1"
+}

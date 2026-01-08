@@ -1,0 +1,381 @@
+{
+  "name": "TEST - RIVET - Usage Tracker",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"]
+      },
+      "id": "telegram-trigger-photo",
+      "name": "Telegram Trigger (Photo)",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "rivet-usage-tracker",
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-photo",
+              "leftValue": "={{ $json.message.photo }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "exists"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-has-photo",
+      "name": "Has Photo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM check_and_increment_lookup({{ $json.message.from.id }})",
+        "options": {}
+      },
+      "id": "check-usage-limit",
+      "name": "Check Usage Limit",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 200],
+      "credentials": {
+        "postgres": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Neon RIVET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-allowed",
+              "leftValue": "={{ $json.allowed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "usage-allowed",
+      "name": "Usage Allowed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Telegram Trigger (Photo)').item.json.message.chat.id }}",
+        "text": "⚡ You've used all 10 free lookups this month!\n\nUpgrade to RIVET Pro for unlimited access:\n👉 /upgrade\n\n✨ Pro includes:\n✓ Unlimited equipment lookups\n✓ Chat with your electrical prints\n✓ Priority support\n\nOnly $29/month",
+        "additionalFields": {}
+      },
+      "id": "send-limit-reached",
+      "name": "Send Limit Reached",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1120, 350],
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Telegram Trigger (Photo)').item.json.message.chat.id }}",
+        "text": "✅ Processing your photo...\n\n{{ $('Check Usage Limit').item.json.remaining }} lookups remaining this month",
+        "additionalFields": {}
+      },
+      "id": "send-processing",
+      "name": "Send Processing Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1120, 100],
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract photo from Telegram message\nconst photoArray = $input.item.json.message.photo;\nconst largestPhoto = photoArray[photoArray.length - 1];\n\nreturn {\n  json: {\n    file_id: largestPhoto.file_id,\n    telegram_id: $input.item.json.message.from.id,\n    username: $input.item.json.message.from.username,\n    chat_id: $input.item.json.message.chat.id\n  }\n};"
+      },
+      "id": "extract-photo-data",
+      "name": "Extract Photo Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 100]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "get",
+        "fileId": "={{ $json.file_id }}"
+      },
+      "id": "get-photo-file",
+      "name": "Get Photo File",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1560, 100],
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "notice": "PLACEHOLDER: Add your existing OCR/analysis workflow here.\n\nThis is where you would:\n1. Process the photo with OCR/Vision API\n2. Extract equipment information\n3. Query your equipment database\n4. Format the response\n\nFor now, this is a placeholder that returns a test response."
+      },
+      "id": "ocr-placeholder",
+      "name": "OCR Analysis (PLACEHOLDER)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1780, 100]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Extract Photo Data').item.json.chat_id }}",
+        "text": "🔍 Equipment Analysis Complete!\n\n📸 Photo processed successfully\n\n[Your OCR results would appear here]\n\nℹ️ This is a test response. Connect your actual OCR workflow to the 'OCR Analysis (PLACEHOLDER)' node.\n\n💡 {{ $('Check Usage Limit').item.json.remaining }} lookups remaining",
+        "additionalFields": {}
+      },
+      "id": "send-ocr-result",
+      "name": "Send OCR Result",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2000, 100],
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list",
+          "cachedResultName": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "rivet_usage_log",
+          "mode": "list",
+          "cachedResultName": "rivet_usage_log"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "telegram_id": "={{ $('Extract Photo Data').item.json.telegram_id }}",
+            "action_type": "photo_lookup",
+            "action_subtype": "ocr",
+            "request_data": "={{ JSON.stringify($('Telegram Trigger (Photo)').item.json.message) }}",
+            "response_summary": "OCR analysis completed",
+            "success": true,
+            "workflow_id": "rivet_usage_tracker"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "log-usage",
+      "name": "Log Usage",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2220, 100],
+      "credentials": {
+        "postgres": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Neon RIVET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.message.chat.id }}",
+        "text": "📸 Please send a photo of the equipment to analyze.\n\nI can help identify:\n• Circuit breakers\n• Control panels\n• Wire labels\n• Equipment tags",
+        "additionalFields": {}
+      },
+      "id": "send-no-photo",
+      "name": "Send No Photo Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [680, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger (Photo)": {
+      "main": [
+        [
+          {
+            "node": "Has Photo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Photo?": {
+      "main": [
+        [
+          {
+            "node": "Check Usage Limit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send No Photo Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Usage Limit": {
+      "main": [
+        [
+          {
+            "node": "Usage Allowed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Usage Allowed?": {
+      "main": [
+        [
+          {
+            "node": "Send Processing Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Limit Reached",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Processing Message": {
+      "main": [
+        [
+          {
+            "node": "Extract Photo Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Photo Data": {
+      "main": [
+        [
+          {
+            "node": "Get Photo File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Photo File": {
+      "main": [
+        [
+          {
+            "node": "OCR Analysis (PLACEHOLDER)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OCR Analysis (PLACEHOLDER)": {
+      "main": [
+        [
+          {
+            "node": "Send OCR Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send OCR Result": {
+      "main": [
+        [
+          {
+            "node": "Log Usage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-01-08T00:00:00.000Z",
+  "versionId": "1"
+}

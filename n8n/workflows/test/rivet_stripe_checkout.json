@@ -1,0 +1,338 @@
+{
+  "name": "TEST - RIVET - Stripe Checkout",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"]
+      },
+      "id": "telegram-trigger-upgrade",
+      "name": "Telegram Trigger (/upgrade)",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "rivet-stripe-checkout",
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-upgrade-command",
+              "leftValue": "={{ $json.message.text }}",
+              "rightValue": "/upgrade",
+              "operator": {
+                "type": "string",
+                "operation": "startsWith"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-upgrade-command",
+      "name": "Is /upgrade Command?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM get_or_create_user(\n  {{ $json.message.from.id }},\n  '{{ $json.message.from.username }}',\n  '{{ $json.message.from.first_name }}'\n)",
+        "options": {}
+      },
+      "id": "get-or-create-user",
+      "name": "Get or Create User",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 200],
+      "credentials": {
+        "postgres": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Neon RIVET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-already-pro",
+              "leftValue": "={{ $json.is_pro }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-if-pro",
+      "name": "Already Pro?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Telegram Trigger (/upgrade)').item.json.message.chat.id }}",
+        "text": "✨ You're already a RIVET Pro member!\n\nYour benefits:\n✓ Unlimited equipment lookups\n✓ Chat with Print-it\n✓ Priority support\n\nNeed help? Send /help",
+        "additionalFields": {}
+      },
+      "id": "send-already-pro",
+      "name": "Send Already Pro",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1120, 100],
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "checkout",
+        "operation": "create",
+        "mode": "subscription",
+        "successUrl": "https://t.me/rivet_local_dev_bot?start=payment_success",
+        "cancelUrl": "https://t.me/rivet_local_dev_bot?start=payment_cancelled",
+        "lineItems": {
+          "lineItem": [
+            {
+              "priceId": "REPLACE_WITH_STRIPE_PRICE_ID",
+              "quantity": 1
+            }
+          ]
+        },
+        "additionalFields": {
+          "clientReferenceId": "={{ $('Telegram Trigger (/upgrade)').item.json.message.from.id }}",
+          "customerEmail": "",
+          "metadata": {
+            "metadataProperties": [
+              {
+                "name": "telegram_id",
+                "value": "={{ $('Telegram Trigger (/upgrade)').item.json.message.from.id }}"
+              },
+              {
+                "name": "telegram_username",
+                "value": "={{ $('Telegram Trigger (/upgrade)').item.json.message.from.username }}"
+              },
+              {
+                "name": "source",
+                "value": "telegram_bot"
+              }
+            ]
+          }
+        }
+      },
+      "id": "create-stripe-checkout",
+      "name": "Create Stripe Checkout",
+      "type": "n8n-nodes-base.stripe",
+      "typeVersion": 2,
+      "position": [1120, 300],
+      "credentials": {
+        "stripeApi": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Stripe RIVET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Telegram Trigger (/upgrade)').item.json.message.chat.id }}",
+        "text": "🚀 Ready to upgrade to RIVET Pro?\n\n✨ What you get:\n✓ Unlimited equipment lookups\n✓ Chat with your electrical prints using AI\n✓ Priority support\n✓ Early access to new features\n\n💰 Only $29/month\n\n👉 Click here to upgrade:\n{{ $json.url }}\n\n🔒 Secure payment powered by Stripe",
+        "additionalFields": {
+          "replyMarkup": {
+            "inlineKeyboard": {
+              "rows": [
+                {
+                  "row": {
+                    "buttons": [
+                      {
+                        "text": "💳 Upgrade to Pro - $29/mo",
+                        "url": "={{ $('Create Stripe Checkout').item.json.url }}"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "row": {
+                    "buttons": [
+                      {
+                        "text": "❓ Questions? Contact Support",
+                        "url": "https://t.me/rivet_local_dev_bot"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "id": "send-checkout-link",
+      "name": "Send Checkout Link",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1340, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list",
+          "cachedResultName": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "rivet_usage_log",
+          "mode": "list",
+          "cachedResultName": "rivet_usage_log"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "telegram_id": "={{ $('Telegram Trigger (/upgrade)').item.json.message.from.id }}",
+            "action_type": "command",
+            "action_subtype": "upgrade_initiated",
+            "request_data": "={{ JSON.stringify({ checkout_url: $('Create Stripe Checkout').item.json.url }) }}",
+            "response_summary": "Stripe checkout session created",
+            "success": true,
+            "workflow_id": "rivet_stripe_checkout"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "log-checkout",
+      "name": "Log Checkout",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1560, 300],
+      "credentials": {
+        "postgres": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Neon RIVET"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger (/upgrade)": {
+      "main": [
+        [
+          {
+            "node": "Is /upgrade Command?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is /upgrade Command?": {
+      "main": [
+        [
+          {
+            "node": "Get or Create User",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get or Create User": {
+      "main": [
+        [
+          {
+            "node": "Already Pro?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Already Pro?": {
+      "main": [
+        [
+          {
+            "node": "Send Already Pro",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Stripe Checkout",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Stripe Checkout": {
+      "main": [
+        [
+          {
+            "node": "Send Checkout Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Checkout Link": {
+      "main": [
+        [
+          {
+            "node": "Log Checkout",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-01-08T00:00:00.000Z",
+  "versionId": "1"
+}

@@ -1,0 +1,358 @@
+{
+  "name": "TEST - RIVET - Commands",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"]
+      },
+      "id": "telegram-trigger-commands",
+      "name": "Telegram Trigger (Commands)",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "rivet-commands",
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.message.text }}",
+                    "rightValue": "/start",
+                    "operator": {
+                      "type": "string",
+                      "operation": "startsWith"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "start"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.message.text }}",
+                    "rightValue": "/help",
+                    "operator": {
+                      "type": "string",
+                      "operation": "startsWith"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "help"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.message.text }}",
+                    "rightValue": "/status",
+                    "operator": {
+                      "type": "string",
+                      "operation": "startsWith"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "status"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.message.text }}",
+                    "rightValue": "/end_chat",
+                    "operator": {
+                      "type": "string",
+                      "operation": "startsWith"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "end_chat"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "command-router",
+      "name": "Command Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.message.chat.id }}",
+        "text": "👋 Welcome to RIVET!\n\nI'm your electrical maintenance assistant powered by AI.\n\n📸 What I can do:\n• Identify equipment from photos\n• Read circuit breaker labels\n• Analyze wire tags and labels\n• Chat with your electrical prints (Pro)\n\n🆓 Free tier: 10 lookups/month\n✨ Pro: Unlimited + Chat with Print-it ($29/mo)\n\n🚀 Try it now:\n1. Send me a photo of equipment\n2. I'll identify it and provide details\n\n💡 Commands:\n/help - See all features\n/status - Check your usage\n/upgrade - Go Pro\n\nLet's get started! Send me a photo.",
+        "additionalFields": {}
+      },
+      "id": "send-start",
+      "name": "Send Start Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [680, 100],
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.message.chat.id }}",
+        "text": "ℹ️ RIVET Help\n\n📸 Equipment Lookup:\nSend a photo of any electrical equipment and I'll identify it.\n\n🔍 What I can recognize:\n• Circuit breakers and panels\n• Control equipment\n• Wire labels and tags\n• Equipment nameplates\n• Electrical schematics\n\n💬 Commands:\n/start - Welcome message\n/status - Check your usage stats\n/upgrade - Upgrade to Pro\n/end_chat - End Print chat session\n\n✨ RIVET Pro Features ($29/mo):\n• Unlimited equipment lookups\n• Chat with Print-it (upload PDFs and ask questions)\n• Priority support\n• Early access to new features\n\n📧 Need help? Contact support at:\nhttps://t.me/rivet_local_dev_bot\n\n🆓 Free: 10 lookups/month\n💎 Pro: Unlimited everything",
+        "additionalFields": {}
+      },
+      "id": "send-help",
+      "name": "Send Help Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [680, 200],
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM get_user_status({{ $json.message.from.id }})",
+        "options": {}
+      },
+      "id": "get-user-status",
+      "name": "Get User Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 300],
+      "credentials": {
+        "postgres": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Neon RIVET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build status message based on user data\nconst status = $input.item.json;\n\nlet statusMessage;\n\nif (!status || !status.telegram_id) {\n  statusMessage = `📊 Account Status\\n\\nYou haven't used RIVET yet!\\n\\nSend a photo to get started.\\n\\n🆓 Free tier: 10 lookups/month`;\n} else if (status.is_pro) {\n  statusMessage = `📊 Account Status\\n\\n✨ Tier: RIVET Pro\\n💎 Status: Active\\n📅 Member since: ${new Date(status.member_since).toLocaleDateString()}\\n\\n📈 Usage Stats:\\n• Total lookups: ${status.total_lookups}\\n• Print sessions: ${status.print_sessions}\\n\\n✅ Benefits:\\n• Unlimited equipment lookups\\n• Chat with Print-it\\n• Priority support`;\n} else {\n  const remaining = status.lookups_remaining || 0;\n  const used = status.lookup_count || 0;\n  const resetDays = status.days_until_reset || 30;\n  \n  statusMessage = `📊 Account Status\\n\\n🆓 Tier: Free\\n📅 Member since: ${new Date(status.member_since).toLocaleDateString()}\\n\\n📈 This Month:\\n• Lookups used: ${used}/10\\n• Remaining: ${remaining}\\n• Resets in: ${resetDays} days\\n\\n📊 All-Time Stats:\\n• Total lookups: ${status.total_lookups}\\n\\n✨ Want more?\\nUpgrade to Pro for unlimited lookups + Chat with Print-it\\n👉 /upgrade`;\n}\n\nreturn {\n  json: {\n    chat_id: $('Telegram Trigger (Commands)').item.json.message.chat.id,\n    status_message: statusMessage\n  }\n};"
+      },
+      "id": "build-status-message",
+      "name": "Build Status Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.status_message }}",
+        "additionalFields": {}
+      },
+      "id": "send-status",
+      "name": "Send Status Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1120, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM end_print_session({{ $json.message.from.id }})",
+        "options": {}
+      },
+      "id": "end-print-session",
+      "name": "End Print Session",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 400],
+      "credentials": {
+        "postgres": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Neon RIVET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build end chat message\nconst result = $input.item.json;\n\nlet message;\nif (result.success) {\n  message = `✅ ${result.message}\\n\\nSession closed successfully.\\n\\nWant to analyze another print?\\nJust upload a new PDF!`;\n} else {\n  message = `ℹ️ ${result.message}\\n\\nNo active chat session to close.\\n\\nTo start chatting with a print:\\n1. Upload a PDF schematic\\n2. Ask questions about it`;\n}\n\nreturn {\n  json: {\n    chat_id: $('Telegram Trigger (Commands)').item.json.message.chat.id,\n    message: message\n  }\n};"
+      },
+      "id": "build-end-chat-message",
+      "name": "Build End Chat Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {}
+      },
+      "id": "send-end-chat",
+      "name": "Send End Chat",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1120, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger (Commands)": {
+      "main": [
+        [
+          {
+            "node": "Command Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Command Router": {
+      "main": [
+        [
+          {
+            "node": "Send Start Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Help Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get User Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "End Print Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get User Status": {
+      "main": [
+        [
+          {
+            "node": "Build Status Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Status Message": {
+      "main": [
+        [
+          {
+            "node": "Send Status Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "End Print Session": {
+      "main": [
+        [
+          {
+            "node": "Build End Chat Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build End Chat Message": {
+      "main": [
+        [
+          {
+            "node": "Send End Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-01-08T00:00:00.000Z",
+  "versionId": "1"
+}

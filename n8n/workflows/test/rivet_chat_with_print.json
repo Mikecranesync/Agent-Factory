@@ -1,0 +1,479 @@
+{
+  "name": "TEST - RIVET - Chat with Print",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"]
+      },
+      "id": "telegram-trigger-chat",
+      "name": "Telegram Trigger (Chat/PDF)",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "rivet-chat-with-print",
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.message.document }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "object",
+                      "operation": "exists"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "pdf_upload"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.message.text }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "exists"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ $json.message.text }}",
+                    "rightValue": "/",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notStartsWith"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "chat_message"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "message-type-switch",
+      "name": "Message Type?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT is_pro FROM rivet_users WHERE telegram_id = {{ $json.message.from.id }}",
+        "options": {}
+      },
+      "id": "check-pro-pdf",
+      "name": "Check if Pro (PDF)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 100],
+      "credentials": {
+        "postgres": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Neon RIVET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.is_pro }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "is-pro-pdf",
+      "name": "Is Pro?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 100]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Telegram Trigger (Chat/PDF)').item.json.message.chat.id }}",
+        "text": "🔒 Chat with Print-it is a Pro feature!\n\nUpgrade to RIVET Pro to:\n✓ Upload electrical prints (PDFs)\n✓ Ask questions about the schematic\n✓ Get instant answers from Claude AI\n✓ Plus unlimited equipment lookups\n\n💰 Only $29/month\n\n👉 Upgrade now: /upgrade",
+        "additionalFields": {}
+      },
+      "id": "send-not-pro-pdf",
+      "name": "Send Not Pro (PDF)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1120, 200],
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "get",
+        "fileId": "={{ $('Telegram Trigger (Chat/PDF)').item.json.message.document.file_id }}"
+      },
+      "id": "download-pdf",
+      "name": "Download PDF",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1120, 100],
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Convert PDF to base64 for Claude API\nconst binaryData = $input.item.binary.data;\nconst base64 = binaryData.data;\nconst fileName = $input.item.json.file_path.split('/').pop();\n\nreturn {\n  json: {\n    pdf_file_id: $('Telegram Trigger (Chat/PDF)').item.json.message.document.file_id,\n    pdf_name: fileName,\n    pdf_base64: base64,\n    telegram_id: $('Telegram Trigger (Chat/PDF)').item.json.message.from.id,\n    chat_id: $('Telegram Trigger (Chat/PDF)').item.json.message.chat.id\n  }\n};"
+      },
+      "id": "convert-to-base64",
+      "name": "Convert to Base64",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 100]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM start_print_session(\n  {{ $json.telegram_id }},\n  '{{ $json.pdf_file_id }}',\n  '{{ $json.pdf_name }}',\n  '{{ $json.pdf_base64 }}'\n)",
+        "options": {}
+      },
+      "id": "start-session",
+      "name": "Start Print Session",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1560, 100],
+      "credentials": {
+        "postgres": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Neon RIVET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Convert to Base64').item.json.chat_id }}",
+        "text": "📄 Print indexed successfully!\n\nFile: {{ $('Convert to Base64').item.json.pdf_name }}\n\n💬 Now you can ask me anything about this print!\n\nExamples:\n• \"What does breaker B-123 control?\"\n• \"Show me the wire path for circuit 5\"\n• \"What's on page 3?\"\n\nType your question below, or send /end_chat to close this session.",
+        "additionalFields": {}
+      },
+      "id": "send-session-started",
+      "name": "Send Session Started",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1780, 100],
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM get_active_print_session({{ $json.message.from.id }})",
+        "options": {}
+      },
+      "id": "get-active-session",
+      "name": "Get Active Session",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 400],
+      "credentials": {
+        "postgres": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Neon RIVET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.session_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "has-active-session",
+      "name": "Has Active Session?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "notice": "PLACEHOLDER: Claude API call with PDF would go here.\n\nIn production, this would:\n1. Take the PDF base64 + conversation history\n2. Send to Claude API with the user's question\n3. Get Claude's response about the print\n4. Return the answer\n\nFor now, this returns a test response."
+      },
+      "id": "claude-chat-placeholder",
+      "name": "Claude Chat (PLACEHOLDER)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build test response\nconst userQuestion = $('Telegram Trigger (Chat/PDF)').item.json.message.text;\nconst pdfName = $input.item.json.pdf_name;\n\n// In production, this would be Claude's actual response\nconst testResponse = `I've analyzed your question about \"${userQuestion}\" in ${pdfName}.\n\n[This is a placeholder response. In production, Claude would analyze the PDF and provide a detailed answer based on the schematic content.]\n\nTo connect the actual Claude API:\n1. Add an AI Language Model node\n2. Configure with Anthropic credentials\n3. Pass the PDF base64 + question\n4. Claude will analyze and respond`;\n\nreturn {\n  json: {\n    session_id: $input.item.json.session_id,\n    user_question: userQuestion,\n    claude_response: testResponse,\n    telegram_id: $('Telegram Trigger (Chat/PDF)').item.json.message.from.id,\n    chat_id: $('Telegram Trigger (Chat/PDF)').item.json.message.chat.id\n  }\n};"
+      },
+      "id": "build-response",
+      "name": "Build Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT add_print_message(\n  '{{ $json.session_id }}',\n  'user',\n  '{{ $json.user_question }}'\n);\n\nSELECT add_print_message(\n  '{{ $json.session_id }}',\n  'assistant',\n  '{{ $json.claude_response }}'\n);",
+        "options": {}
+      },
+      "id": "save-conversation",
+      "name": "Save Conversation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1560, 300],
+      "credentials": {
+        "postgres": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Neon RIVET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Build Response').item.json.chat_id }}",
+        "text": "💬 {{ $('Build Response').item.json.claude_response }}",
+        "additionalFields": {}
+      },
+      "id": "send-chat-response",
+      "name": "Send Chat Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1780, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "if4EOJbvMirfWqCC",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger (Chat/PDF)": {
+      "main": [
+        [
+          {
+            "node": "Message Type?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message Type?": {
+      "main": [
+        [
+          {
+            "node": "Check if Pro (PDF)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Active Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check if Pro (PDF)": {
+      "main": [
+        [
+          {
+            "node": "Is Pro?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Pro?": {
+      "main": [
+        [
+          {
+            "node": "Download PDF",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Not Pro (PDF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download PDF": {
+      "main": [
+        [
+          {
+            "node": "Convert to Base64",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to Base64": {
+      "main": [
+        [
+          {
+            "node": "Start Print Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Print Session": {
+      "main": [
+        [
+          {
+            "node": "Send Session Started",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Session": {
+      "main": [
+        [
+          {
+            "node": "Has Active Session?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Active Session?": {
+      "main": [
+        [
+          {
+            "node": "Claude Chat (PLACEHOLDER)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Chat (PLACEHOLDER)": {
+      "main": [
+        [
+          {
+            "node": "Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Response": {
+      "main": [
+        [
+          {
+            "node": "Save Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Conversation": {
+      "main": [
+        [
+          {
+            "node": "Send Chat Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-01-08T00:00:00.000Z",
+  "versionId": "1"
+}
