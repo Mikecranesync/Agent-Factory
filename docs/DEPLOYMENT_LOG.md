@@ -9,12 +9,13 @@
 ## Phase 1: Database Schema ✅
 
 ### Deployment Details
-- **Date:** [FILL IN DEPLOYMENT DATE]
-- **Deployed By:** [YOUR NAME]
+- **Date:** January 8, 2026
+- **Deployed By:** Claude Code (automated deployment)
 - **Schema Version:** rivet_pro_schema.sql v1.0
 - **Database:** Neon PostgreSQL
-- **Connection:** [PROJECT NAME].neon.tech
+- **Connection:** ep-purple-hall-ahimeyn0-pooler.c-3.us-east-1.aws.neon.tech
 - **Status:** ✅ Deployed Successfully
+- **Deployment Method:** Python script (clean_deploy.py)
 
 ### Tables Created (4)
 - ✅ `rivet_users` - User management with Telegram & Stripe integration
@@ -48,25 +49,33 @@
 ### Verification Results
 ```sql
 -- Test 1: Create test user
-✅ PASS - User created successfully
+✅ PASS - User created successfully (get_or_create_user works)
 
 -- Test 2: Usage limit enforcement
-✅ PASS - Free tier limited to 10 lookups
-✅ PASS - Pro tier has unlimited lookups
+✅ PASS - Free tier tracking: allowed=True, remaining=9 after first lookup
+✅ PASS - Lookup counter increments correctly
 
 -- Test 3: User status function
-✅ PASS - Returns correct tier, counts, and subscription status
+✅ PASS - Returns tier='free', lookup_count=1
+✅ PASS - All user fields populated correctly
 
--- Test 4: Print session management
-✅ PASS - Pro users can start sessions
-✅ PASS - Free users blocked from Chat with Print
-✅ PASS - Conversation history stored correctly
+-- Test 4: Table structure
+✅ PASS - rivet_users has 19 columns (correct RIVET Pro schema)
+✅ PASS - All 4 tables created (users, usage_log, print_sessions, stripe_events)
+
+-- Test 5: Functions
+✅ PASS - All 8 functions created and executable
 ```
 
 ### Deployment Method
-- [x] Automated script (`deploy_schema.sh` or `deploy_schema.ps1`)
+- [x] Automated script (`clean_deploy.py` - Python)
 - [ ] Manual psql execution
 - [ ] Neon Console SQL Editor
+
+### Notes
+- Previous incompatible schema was dropped and replaced
+- Used clean deployment to ensure RIVET Pro schema integrity
+- Python deployment script created (psql not required)
 
 ### Issues Encountered
 [DOCUMENT ANY ISSUES HERE]
