@@ -1,193 +1,289 @@
-# Deployment Checklist
+# RIVET Pro - Deployment Checklist
 
-**CRITICAL: Always follow this checklist to prevent duplicate instance conflicts.**
+**Purpose:** Step-by-step deployment guide from test to production
+**Created:** January 8, 2026
+**Current Phase:** 3 (Testing & Configuration)
 
-## Pre-Deployment Steps
+---
 
-### 1. Kill Old Instances (MANDATORY)
+## How to Use This Checklist
 
-**Before deploying ANY bot or service, ALWAYS check for and kill existing instances first.**
+1. **Check each box** as you complete each step
+2. **Do not skip steps** - order matters
+3. **Test thoroughly** in test mode before production
+4. **Document issues** as you find them
+5. **Get approval** before production deployment
 
-#### VPS Deployment
-```bash
-# Step 1: Stop systemd service
-ssh vps "systemctl stop orchestrator-bot"
+---
 
-# Step 2: Kill any remaining processes
-ssh vps "pkill -f orchestrator_bot || true"
+## Phase 0: Prerequisites ✅ COMPLETE
 
-# Step 3: Verify no instances running
-ssh vps "ps aux | grep orchestrator_bot | grep -v grep"
-# Should return: nothing
+- [x] RIVET Pro Sprint worktree created
+- [x] Repository cloned to local machine
+- [x] Git branch: `rivet-test-sprint`
+- [x] Claude CLI configured
 
-# Step 4: Wait for cleanup
-sleep 3
-```
+---
 
-#### Local Development
-```powershell
-# Windows: Kill all local bot instances
-Stop-Process -Name python -Force -ErrorAction SilentlyContinue
+## Phase 1: Database Schema ✅ COMPLETE
 
-# Verify no Python processes running
-Get-Process -Name python* -ErrorAction SilentlyContinue
-```
+- [x] Neon PostgreSQL database accessible
+- [x] Connection string obtained and saved to .env
+- [x] Schema file reviewed (sql/rivet_pro_schema.sql)
+- [x] Deployment script created (scripts/deploy_schema.py)
+- [x] Schema deployed successfully
+- [x] All 4 tables created (rivet_users, rivet_usage_log, rivet_print_sessions, rivet_stripe_events)
+- [x] All 8 functions created and tested
+- [x] Deployment logged in docs/DEPLOYMENT_LOG.md
+- [x] Changes committed (commit: cdcd4552)
 
-```bash
-# Linux/Mac: Kill local bot instances
-pkill -f orchestrator_bot || true
+---
 
-# Verify
-ps aux | grep orchestrator_bot | grep -v grep
-```
+## Phase 2: n8n Workflows ✅ COMPLETE
 
-### 2. Verify Telegram Bot Status
+- [x] 5 workflow JSON files created:
+  - [x] rivet_usage_tracker.json (13 nodes)
+  - [x] rivet_stripe_checkout.json (9 nodes)
+  - [x] rivet_stripe_webhook.json (16 nodes)
+  - [x] rivet_chat_with_print.json (17 nodes)
+  - [x] rivet_commands.json (11 nodes)
+- [x] All workflows use NATIVE n8n nodes only
+- [x] No hardcoded API keys in workflows
+- [x] Credentials referenced by ID or placeholder
+- [x] README updated with deployment guide
+- [x] Changes committed (commit: 45bd14fd)
 
-```bash
-# Check for webhook conflicts
-curl -s "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"
-# webhook "url" should be empty for polling bots
+---
 
-# Check for pending updates
-curl -s "https://api.telegram.org/bot<TOKEN>/getUpdates?limit=1"
-```
+## Phase 3: Configuration & Testing ⏳ IN PROGRESS
 
-## Deployment Steps
+### Part 3A: Stripe Dashboard Setup
 
-### 1. Push Code to VPS
+- [ ] Stripe account created/accessed
+- [ ] Test mode enabled (toggle in top right)
+- [ ] **Product created:**
+  - [ ] Name: "RIVET Pro"
+  - [ ] Description: "Unlimited equipment lookups + Chat with Print-it"
+- [ ] **Price created:**
+  - [ ] Amount: $29.00 USD
+  - [ ] Billing: Monthly
+  - [ ] Price ID copied: `price_________________`
+- [ ] **Webhook endpoint configured:**
+  - [ ] URL: `http://72.60.175.144:5678/webhook/stripe-webhook-rivet`
+  - [ ] Events selected:
+    - [ ] checkout.session.completed
+    - [ ] customer.subscription.deleted
+    - [ ] invoice.payment_failed
+  - [ ] Webhook secret copied (optional): `whsec_________________`
 
-```bash
-# Push latest code
-ssh vps "cd /root/Agent-Factory && git pull origin main"
-```
+**Reference:** See `docs/STRIPE_SETUP_GUIDE.md` Part 1
 
-### 2. Start Service
+---
 
-```bash
-# Start systemd service
-ssh vps "systemctl start orchestrator-bot"
+### Part 3B: n8n Credentials Setup
 
-# Verify status
-ssh vps "systemctl status orchestrator-bot --no-pager"
-```
+- [ ] **Neon RIVET credential created:**
+  - [ ] Type: Postgres
+  - [ ] Name: `Neon RIVET`
+  - [ ] Host: `ep-purple-hall-ahimeyn0-pooler.c-3.us-east-1.aws.neon.tech`
+  - [ ] Database: `neondb`
+  - [ ] User: `neondb_owner`
+  - [ ] Password: `npg_c3UNa4KOlCeL`
+  - [ ] SSL: Required ✅
+  - [ ] Connection tested successfully
 
-### 3. Verify Single Instance
+- [ ] **Stripe RIVET credential created:**
+  - [ ] Type: Stripe API
+  - [ ] Name: `Stripe RIVET`
+  - [ ] Secret Key: `sk_test_________________` (test mode)
+  - [ ] Saved successfully
 
-```bash
-# Check process count (should be 1)
-ssh vps "ps aux | grep orchestrator_bot | grep -v grep | wc -l"
+- [ ] **Telegram Bot credential exists:**
+  - [ ] Credential ID: `if4EOJbvMirfWqCC`
+  - [ ] Name: `Telegram Bot`
+  - [ ] Already configured ✅
 
-# Expected output: 1
-```
+**Reference:** See `docs/STRIPE_SETUP_GUIDE.md` Part 2.1-2.2
 
-## Post-Deployment Verification
+---
 
-### 1. Monitor Logs for Conflicts (60 seconds)
+### Part 3C: Workflow Import & Configuration
 
-```bash
-timeout 60 ssh vps "journalctl -u orchestrator-bot -f -n 20" || true
-```
+- [ ] **Import workflows to n8n:** http://72.60.175.144:5678
+  - [ ] Method chosen: ☐ Manual ☐ API
+  - [ ] rivet_commands.json imported
+  - [ ] rivet_stripe_webhook.json imported
+  - [ ] rivet_stripe_checkout.json imported
+  - [ ] rivet_chat_with_print.json imported
+  - [ ] rivet_usage_tracker.json imported
 
-**Look for:**
-- ✅ HTTP 200 OK (good - successful polling)
-- ❌ HTTP 409 Conflict (bad - duplicate instance exists)
+- [ ] **Configure credentials in each workflow**
+  - [ ] All Telegram nodes → `Telegram Bot`
+  - [ ] All Postgres nodes → `Neon RIVET`
+  - [ ] All Stripe nodes → `Stripe RIVET`
 
-### 2. Test Bot Functionality
+- [ ] **Update Stripe Price ID:**
+  - [ ] Opened `rivet_stripe_checkout.json` in n8n
+  - [ ] Found "Create Stripe Checkout" node
+  - [ ] Replaced `REPLACE_WITH_STRIPE_PRICE_ID` with actual Price ID
+  - [ ] Workflow saved
 
-```bash
-# Send test message to @RivetCeo_bot
-# Verify response received
-```
+**Reference:** See `docs/STRIPE_SETUP_GUIDE.md` Part 2.3 & Part 3
 
-### 3. Check Knowledge Base Connection
+---
 
-Look for in logs:
-```
-Database initialized with 1964 knowledge atoms
-Orchestrator initialized successfully with RAG layer
-```
+### Part 3D: Workflow Activation (IN ORDER!)
 
-## Rollback Plan
+**CRITICAL:** Activate in this exact order:
 
-If deployment fails:
+1. [ ] **Commands** (`rivet_commands.json`)
+   - [ ] Activated
+   - [ ] Test: `/start`, `/help`
 
-```bash
-# 1. Stop new deployment
-ssh vps "systemctl stop orchestrator-bot"
+2. [ ] **Stripe Webhook** (`rivet_stripe_webhook.json`)
+   - [ ] Activated
+   - [ ] Test: Stripe CLI event
 
-# 2. Revert code
-ssh vps "cd /root/Agent-Factory && git reset --hard HEAD~1"
+3. [ ] **Stripe Checkout** (`rivet_stripe_checkout.json`)
+   - [ ] Activated
+   - [ ] Test: `/upgrade`
 
-# 3. Restart service
-ssh vps "systemctl start orchestrator-bot"
+4. [ ] **Chat with Print** (`rivet_chat_with_print.json`)
+   - [ ] Activated
+   - [ ] Test: PDF upload
 
-# 4. Verify
-ssh vps "systemctl status orchestrator-bot"
-```
+5. [ ] **Usage Tracker** (`rivet_usage_tracker.json`)
+   - [ ] Activated
+   - [ ] Test: Photo upload
+   - [ ] **Keep production bot active during testing!**
 
-## Common Issues
+---
 
-### Issue: HTTP 409 Conflict (Telegram getUpdates)
+### Part 3E: Individual Workflow Testing
 
-**Cause:** Multiple bot instances polling Telegram simultaneously
+- [ ] Commands: All tests pass (see TESTING_GUIDE.md)
+- [ ] Stripe Webhook: All tests pass
+- [ ] Stripe Checkout: All tests pass
+- [ ] Usage Tracker: All tests pass
+- [ ] Chat with Print: All tests pass
 
-**Solution:**
-1. Stop all instances (VPS + local)
-2. Verify no processes running
-3. Start only ONE instance
-4. Monitor logs for 60 seconds
+---
 
-### Issue: Bot not responding
+### Part 3F: End-to-End Journeys
 
-**Cause:** Database connection failure or RAG layer not initialized
+- [ ] Journey 1: Free User Discovery (complete)
+- [ ] Journey 2: Upgrade Flow (complete)
+- [ ] Journey 3: Pro User Full Features (complete)
 
-**Solution:**
-```bash
-# Check logs for errors
-ssh vps "journalctl -u orchestrator-bot -n 100 --no-pager | grep -E 'ERROR|WARNING'"
+---
 
-# Verify environment variables
-ssh vps "cd /root/Agent-Factory && cat .env | grep -E 'DB_|BOT_TOKEN'"
+### Part 3G: Database Validation
 
-# Restart service
-ssh vps "systemctl restart orchestrator-bot"
-```
+- [ ] rivet_users table populated correctly
+- [ ] rivet_usage_log logging all actions
+- [ ] rivet_print_sessions storing PDFs
+- [ ] rivet_stripe_events logging webhooks
 
-### Issue: Service won't start
+---
 
-**Cause:** Port already in use or systemd configuration error
+## Phase 4: Production Preparation
 
-**Solution:**
-```bash
-# Check systemd service file
-ssh vps "cat /etc/systemd/system/orchestrator-bot.service"
+### Part 4A: Stripe Production Setup
 
-# Reload daemon
-ssh vps "systemctl daemon-reload"
+- [ ] Switch to Live Mode in Stripe
+- [ ] Create LIVE product & price
+- [ ] **LIVE Price ID:** `price_________________`
+- [ ] Configure LIVE webhook endpoint
 
-# Try starting again
-ssh vps "systemctl start orchestrator-bot"
+### Part 4B: n8n Production Credentials
 
-# Check detailed status
-ssh vps "systemctl status orchestrator-bot -l"
-```
+- [ ] Create `Stripe RIVET LIVE` credential
+- [ ] Update workflows to use LIVE credentials
+- [ ] Update LIVE Price ID in workflow
 
-## Success Criteria
+### Part 4C: Pre-Production Testing
 
-- [ ] Only ONE bot instance running (verified with `ps aux`)
-- [ ] No HTTP 409 Conflict errors in logs
-- [ ] Continuous HTTP 200 OK polling every ~10 seconds
-- [ ] Bot responds to Telegram messages
-- [ ] Database shows 1,964 knowledge atoms loaded
-- [ ] RAG layer initialized successfully
+- [ ] Test `/upgrade` with LIVE credentials (don't complete payment)
+- [ ] Verify checkout shows LIVE mode
+- [ ] Test webhook delivery in LIVE mode
 
-## Last Updated
+### Part 4D: Production Deployment
 
-2025-12-22 - Added mandatory pre-deployment instance cleanup
+- [ ] Deactivate test versions
+- [ ] Activate production versions (in order!)
+- [ ] Monitor first users closely
 
-## Notes
+### Part 4E: Rollback Plan
 
-- **NEVER leave local bot instances running** - they conflict with VPS deployment
-- Always verify single instance before considering deployment complete
-- Monitor logs for at least 60 seconds to catch intermittent conflicts
-- Document any changes to this checklist in git commit messages
+- [ ] Document rollback procedure
+- [ ] Keep production workflow ID: 7LMKcMmldZsu1l6g
+- [ ] Test rollback before go-live
+
+---
+
+## Phase 5: Post-Launch Monitoring
+
+### First 24 Hours
+
+- [ ] Monitor all executions
+- [ ] Check Stripe dashboard
+- [ ] Verify database integrity
+- [ ] Respond to user feedback
+
+### Metrics to Track
+
+- [ ] MRR (Monthly Recurring Revenue)
+- [ ] Conversion rate (free → Pro)
+- [ ] Churn rate
+- [ ] Workflow success rate
+- [ ] Error rate
+
+---
+
+## Sign-Off
+
+- [ ] All tests passed
+- [ ] Documentation complete
+- [ ] Ready for production
+- [ ] Name: _________________ Date: _______
+
+---
+
+## Current Status
+
+**Last Updated:** January 8, 2026
+
+**Phase Status:**
+- ✅ Phase 0: Prerequisites
+- ✅ Phase 1: Database Schema
+- ✅ Phase 2: n8n Workflows
+- ⏳ Phase 3: Configuration & Testing (IN PROGRESS)
+
+**Next Action:**
+Complete Part 3A: Stripe Dashboard Setup
+
+---
+
+## Quick Reference
+
+### Important URLs
+- n8n: http://72.60.175.144:5678
+- Stripe Dashboard: https://dashboard.stripe.com
+- Telegram Bot: @rivet_local_dev_bot
+
+### Important IDs
+- Production Workflow: 7LMKcMmldZsu1l6g
+- Telegram Credential: if4EOJbvMirfWqCC
+
+### Test Card
+- Number: 4242 4242 4242 4242
+- Expiry: Any future date
+- CVC: Any 3 digits
+- ZIP: Any 5 digits
+
+---
+
+**See detailed guides:**
+- `docs/STRIPE_SETUP_GUIDE.md` - Complete Stripe configuration
+- `docs/TESTING_GUIDE.md` - Comprehensive testing procedures
+
