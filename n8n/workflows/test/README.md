@@ -162,6 +162,146 @@ Telegram Command → Command Router Switch
 
 ---
 
+### 6. rivet_llm_judge.json
+**Purpose:** Validate manual URLs and score quality using LLM judge
+
+**Flow:**
+```
+Webhook POST → Initialize validation → Create DB record
+             → Validate URL format → Check URL accessible (HEAD)
+             → Download PDF (GET) → Extract text with pdf-parse
+             → Build judge prompt → Call Claude API
+             → Parse judge results → Store complete results → Return JSON
+```
+
+**Features:**
+- Full validation pipeline (URL → PDF → text extraction → quality scoring)
+- Dual scoring systems:
+  - **judge_prompt.md framework:** Clarity, completeness, reusability, grounding (1-5)
+  - **Product discovery:** Potential, target market, price tier, confidence
+  - **Manual-specific:** Equipment match, troubleshooting, diagrams, manual type
+- Graceful error handling with partial results
+- Performance metrics (duration, tokens used)
+- Stores results in `manual_validation_results` table
+- Target: <30 seconds per validation, $0.04/manual
+
+**Credentials Needed:**
+- Neon RIVET (PostgreSQL)
+- Anthropic Claude (create in n8n with API key)
+
+**Webhook Endpoint:**
+```
+POST https://mikecranesync.app.n8n.cloud/webhook/rivet-llm-judge
+```
+
+**Input JSON Schema:**
+```json
+{
+  "url": "https://example.com/manual.pdf",
+  "title": "ACS580 Hardware Manual",
+  "equipment": {
+    "manufacturer": "ABB",
+    "model_number": "ACS580-01-12A5-4",
+    "product_family": "ACS580"
+  }
+}
+```
+
+**Output JSON Schema:**
+```json
+{
+  "validation_id": "uuid",
+  "status": "success|partial|failed",
+  "url": "string",
+  "validation_summary": {
+    "url_accessible": true,
+    "pdf_valid": true,
+    "overall_score": 4,
+    "equipment_match_score": 5,
+    "product_potential": "yes"
+  },
+  "quality_scores": {
+    "clarity": 5,
+    "completeness": 4,
+    "reusability": 5,
+    "grounding": 4,
+    "overall": 4
+  },
+  "manual_analysis": {
+    "has_troubleshooting": true,
+    "has_diagrams": true,
+    "has_parts_list": true,
+    "manual_type": "service"
+  },
+  "product_discovery": {
+    "product_potential": "yes",
+    "product_idea": "Manual validation SaaS for industrial documentation",
+    "price_tier": "$499/mo",
+    "product_confidence": 4
+  },
+  "performance": {
+    "duration_ms": 25000,
+    "tokens_used": 12500
+  },
+  "errors": []
+}
+```
+
+**Test Cases:**
+
+**Test 1: Happy Path (Valid Manual)**
+```bash
+curl -X POST https://mikecranesync.app.n8n.cloud/webhook/rivet-llm-judge \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://library.e.abb.com/public/...acs580_hardware_manual.pdf",
+    "title": "ACS580 Hardware Manual",
+    "equipment": {
+      "manufacturer": "ABB",
+      "model_number": "ACS580-01-12A5-4",
+      "product_family": "ACS580"
+    }
+  }'
+```
+Expected: `status: "success"`, all scores populated
+
+**Test 2: Invalid URL**
+```bash
+curl -X POST https://mikecranesync.app.n8n.cloud/webhook/rivet-llm-judge \
+  -H "Content-Type: application/json" \
+  -d '{"url": "not-a-valid-url"}'
+```
+Expected: `status: "failed"`, `http_error_message`
+
+**Test 3: Dead Link (404)**
+```bash
+curl -X POST https://mikecranesync.app.n8n.cloud/webhook/rivet-llm-judge \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com/nonexistent.pdf"}'
+```
+Expected: `status: "partial"`, `http_status_code: 404`
+
+**Test 4: Not a PDF (HTML)**
+```bash
+curl -X POST https://mikecranesync.app.n8n.cloud/webhook/rivet-llm-judge \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://www.google.com"}'
+```
+Expected: `status: "partial"`, `pdf_valid: false`
+
+**Test 5: Minimal Input (URL only)**
+```bash
+curl -X POST https://mikecranesync.app.n8n.cloud/webhook/rivet-llm-judge \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com/manual.pdf"}'
+```
+Expected: Title extracted from filename, equipment fields null
+
+**Integration with MCP Server (Agent 2):**
+This workflow provides the validation endpoint for Agent 2's MCP test integration. The MCP server will expose a `rivet_validate_manual` tool that calls this webhook.
+
+---
+
 ## Deployment Guide
 
 ### Prerequisites
@@ -397,10 +537,11 @@ n8n/workflows/test/
 ├── rivet_stripe_checkout.json (9 nodes - /upgrade handler)
 ├── rivet_stripe_webhook.json (16 nodes - Stripe event processor)
 ├── rivet_chat_with_print.json (17 nodes - PDF chat feature)
-└── rivet_commands.json (11 nodes - bot commands)
+├── rivet_commands.json (11 nodes - bot commands)
+└── rivet_llm_judge.json (19 nodes - manual validation & LLM quality scoring)
 ```
 
-**Total:** 5 workflows, 66 nodes, all using NATIVE n8n nodes ✅
+**Total:** 6 workflows, 85 nodes, all using NATIVE n8n nodes ✅
 
 ---
 
