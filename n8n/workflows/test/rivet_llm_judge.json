@@ -1,0 +1,560 @@
+{
+  "name": "TEST - RIVET - LLM Judge",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rivet-llm-judge",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Manual Validation Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 400],
+      "webhookId": "rivet-llm-judge"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.item.json;\nconst startTime = Date.now();\n\n// Extract and validate input\nconst url = input.url || '';\nconst title = input.title || '';\nconst manufacturer = input.equipment?.manufacturer || '';\nconst model_number = input.equipment?.model_number || '';\nconst product_family = input.equipment?.product_family || '';\n\n// Validate URL format\nlet urlValid = false;\ntry {\n  const urlObj = new URL(url);\n  urlValid = urlObj.protocol === 'http:' || urlObj.protocol === 'https:';\n} catch (e) {\n  urlValid = false;\n}\n\nreturn {\n  json: {\n    url,\n    title,\n    manufacturer,\n    model_number,\n    product_family,\n    url_valid: urlValid,\n    start_time: startTime\n  }\n};"
+      },
+      "id": "initialize-validation",
+      "name": "Initialize Validation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO manual_validation_results (url, title, manufacturer, model_number, product_family, validation_status) VALUES ('{{ $json.url }}', '{{ $json.title }}', '{{ $json.manufacturer }}', '{{ $json.model_number }}', '{{ $json.product_family }}', 'pending') RETURNING id",
+        "options": {}
+      },
+      "id": "create-validation-record",
+      "name": "Create Validation Record",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 400],
+      "credentials": {
+        "postgres": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Neon RIVET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Initialize Validation').item.json.url_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "is-url-valid",
+      "name": "Is URL Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "method": "HEAD",
+        "url": "={{ $('Initialize Validation').item.json.url }}",
+        "options": {
+          "timeout": 10000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 3
+            }
+          }
+        }
+      },
+      "id": "check-url-accessible",
+      "name": "Check URL Accessible",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.item;\nconst statusCode = response.json?.statusCode || response.statusCode || 0;\nconst headers = response.headers || {};\nconst contentType = (headers['content-type'] || '').toLowerCase();\n\nconst accessible = statusCode >= 200 && statusCode < 300;\nconst isPDF = contentType.includes('application/pdf') || contentType.includes('pdf');\n\nreturn {\n  json: {\n    validation_id: $('Create Validation Record').item.json.id,\n    url: $('Initialize Validation').item.json.url,\n    url_accessible: accessible,\n    http_status_code: statusCode,\n    http_error_message: accessible ? null : `HTTP ${statusCode}`,\n    is_pdf_mime: isPDF\n  }\n};"
+      },
+      "id": "parse-http-response",
+      "name": "Parse HTTP Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.url_accessible }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "is-url-accessible",
+      "name": "Is URL Accessible?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Initialize Validation').item.json.url }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "pdf_data"
+            }
+          }
+        }
+      },
+      "id": "download-pdf",
+      "name": "Download PDF File",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract PDF text using pdf-parse\nconst pdfParse = require('pdf-parse');\n\nconst binaryData = $input.item.binary?.pdf_data;\nif (!binaryData) {\n  return {\n    json: {\n      validation_id: $('Create Validation Record').item.json.id,\n      url: $('Initialize Validation').item.json.url,\n      manufacturer: $('Initialize Validation').item.json.manufacturer,\n      model_number: $('Initialize Validation').item.json.model_number,\n      product_family: $('Initialize Validation').item.json.product_family,\n      title: $('Initialize Validation').item.json.title,\n      pdf_valid: false,\n      pdf_size_bytes: 0,\n      pdf_page_count: 0,\n      extracted_text_length: 0,\n      extracted_text: '',\n      extraction_method: 'error',\n      pdf_error_message: 'No PDF data received'\n    }\n  };\n}\n\nconst buffer = Buffer.from(binaryData.data, 'base64');\n\nlet extractedText = '';\nlet pageCount = 0;\nlet extractionMethod = 'error';\nlet pdfValid = false;\nlet errorMessage = null;\n\ntry {\n  const pdfData = await pdfParse(buffer);\n  extractedText = pdfData.text || '';\n  pageCount = pdfData.numpages || 0;\n  extractionMethod = 'pdf-parse';\n  pdfValid = true;\n} catch (error) {\n  errorMessage = error.message;\n  extractedText = '';\n}\n\n// Truncate text to 50,000 characters for Claude\nconst textForJudging = extractedText.substring(0, 50000);\n\nreturn {\n  json: {\n    validation_id: $('Create Validation Record').item.json.id,\n    url: $('Initialize Validation').item.json.url,\n    manufacturer: $('Initialize Validation').item.json.manufacturer,\n    model_number: $('Initialize Validation').item.json.model_number,\n    product_family: $('Initialize Validation').item.json.product_family,\n    title: $('Initialize Validation').item.json.title,\n    pdf_valid: pdfValid,\n    pdf_size_bytes: buffer.length,\n    pdf_page_count: pageCount,\n    extracted_text_length: extractedText.length,\n    extracted_text: textForJudging,\n    extraction_method: extractionMethod,\n    pdf_error_message: errorMessage\n  }\n};"
+      },
+      "id": "extract-pdf-text",
+      "name": "Extract PDF Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.pdf_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "is-pdf-valid",
+      "name": "Is PDF Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2220, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.item.json;\n\nconst judgePrompt = `You are evaluating a technical manual for quality and product potential.\n\n**Manual Metadata:**\n- URL: ${data.url}\n- Title: ${data.title || 'Unknown'}\n- Manufacturer: ${data.manufacturer || 'Unknown'}\n- Model Number: ${data.model_number || 'Unknown'}\n- Product Family: ${data.product_family || 'Unknown'}\n\n**Manual Text Excerpt (first 50,000 characters):**\n${data.extracted_text}\n\n---\n\n## Evaluation Tasks\n\n### Part 1: Quality Scores (1-5 scale)\n\n**Clarity:** Is the manual written clearly? Can a technician understand the procedures without ambiguity?\n**Completeness:** Does it cover all necessary topics (installation, operation, troubleshooting, specs)?\n**Reusability:** Could another engineer use this manual to service similar equipment?\n**Grounding:** Is the information accurate and consistent with manufacturer specifications?\n**Overall Quality:** Synthesize the above into a single judgment.\n\nFor each, provide:\n- Score (1-5)\n- Brief notes explaining the score\n\n### Part 2: Product Discovery\n\n**Product Potential:** Could this manual type/pattern power a paid product feature?\n- \"yes\" = Clear revenue opportunity\n- \"maybe\" = Promising but needs validation\n- \"no\" = No direct product angle\n\nIf \"yes\" or \"maybe\":\n- **Product Idea:** What product/feature could this enable?\n- **Target Market:** Who would pay for this?\n- **Price Tier:** What would they realistically pay? ($29/mo, $99/mo, $499/mo, $999/mo, etc.)\n- **Product Confidence (1-5):** How confident are you this is marketable?\n- **Product Notes:** Why would this sell? Next steps?\n\n### Part 3: Manual-Specific Validation\n\n**Equipment Match (1-5):** Does the manual content match the stated manufacturer/model?\n- 5 = Perfect match (exact model, correct specs)\n- 3 = Partial match (same family, close model)\n- 1 = Mismatch (wrong manufacturer or irrelevant content)\n\n**Troubleshooting Section:** Does the manual include a troubleshooting/diagnostics section?\n- **has_troubleshooting:** true/false\n- **troubleshooting_quality (1-5):** If yes, how comprehensive is it?\n\n**Content Features:**\n- **has_diagrams:** true/false (wiring diagrams, schematics, block diagrams)\n- **has_parts_list:** true/false (parts breakdown, BOM, spare parts)\n\n**Manual Type:** What type of manual is this?\n- \"installation\", \"operation\", \"maintenance\", \"service\", \"parts\", \"mixed\"\n\n---\n\n## Output Format (JSON only, no markdown)\n\nReturn ONLY valid JSON in this exact structure:\n\n{\n  \"quality\": {\n    \"clarity_score\": 1,\n    \"clarity_notes\": \"string\",\n    \"completeness_score\": 1,\n    \"completeness_notes\": \"string\",\n    \"reusability_score\": 1,\n    \"reusability_notes\": \"string\",\n    \"grounding_score\": 1,\n    \"grounding_notes\": \"string\",\n    \"overall_score\": 1,\n    \"suggested_improvements\": [\"string\", \"string\"]\n  },\n  \"product_discovery\": {\n    \"product_potential\": \"yes|maybe|no\",\n    \"product_idea\": \"string or null\",\n    \"target_market\": \"string or null\",\n    \"price_tier\": \"string or null\",\n    \"product_confidence\": 1,\n    \"product_notes\": \"string or null\"\n  },\n  \"manual_validation\": {\n    \"equipment_match_score\": 1,\n    \"equipment_match_notes\": \"string\",\n    \"has_troubleshooting\": true,\n    \"troubleshooting_quality\": 1,\n    \"has_diagrams\": true,\n    \"has_parts_list\": true,\n    \"manual_type\": \"installation|operation|maintenance|service|parts|mixed\"\n  }\n}`;\n\nreturn {\n  json: {\n    validation_id: data.validation_id,\n    claude_prompt: judgePrompt,\n    url: data.url,\n    pdf_size_bytes: data.pdf_size_bytes,\n    pdf_page_count: data.pdf_page_count,\n    extracted_text_length: data.extracted_text_length,\n    manufacturer: data.manufacturer,\n    model_number: data.model_number,\n    product_family: data.product_family,\n    title: data.title\n  }\n};"
+      },
+      "id": "build-judge-prompt",
+      "name": "Build Judge Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 100]
+    },
+    {
+      "parameters": {
+        "model": "claude-sonnet-3-5-20240620",
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 4096,
+          "systemMessage": "You are a technical documentation quality evaluator and product discovery analyst. Return ONLY valid JSON, no markdown formatting."
+        }
+      },
+      "id": "claude-judge",
+      "name": "Claude Judge",
+      "type": "n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [2660, 100],
+      "credentials": {
+        "anthropicApi": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Anthropic Claude"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const claudeResponse = $input.item.json.output || $input.item.json.text || '';\n\nlet judgeData = {};\nlet parseSuccess = false;\nlet parseError = null;\n\ntry {\n  // Remove markdown code fences if present\n  const cleanedResponse = claudeResponse.replace(/```json\\n?/g, '').replace(/```\\n?/g, '');\n  judgeData = JSON.parse(cleanedResponse);\n  parseSuccess = true;\n} catch (error) {\n  parseError = error.message;\n  // Provide default structure on parse failure\n  judgeData = {\n    quality: {\n      clarity_score: null,\n      clarity_notes: null,\n      completeness_score: null,\n      completeness_notes: null,\n      reusability_score: null,\n      reusability_notes: null,\n      grounding_score: null,\n      grounding_notes: null,\n      overall_score: null,\n      suggested_improvements: []\n    },\n    product_discovery: {\n      product_potential: 'no',\n      product_idea: null,\n      target_market: null,\n      price_tier: null,\n      product_confidence: null,\n      product_notes: `Parse error: ${parseError}`\n    },\n    manual_validation: {\n      equipment_match_score: null,\n      equipment_match_notes: null,\n      has_troubleshooting: null,\n      troubleshooting_quality: null,\n      has_diagrams: null,\n      has_parts_list: null,\n      manual_type: null\n    }\n  };\n}\n\nreturn {\n  json: {\n    validation_id: $('Build Judge Prompt').item.json.validation_id,\n    parse_success: parseSuccess,\n    parse_error: parseError,\n    ...judgeData\n  }\n};"
+      },
+      "id": "parse-judge-results",
+      "name": "Parse Judge Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2880, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const startTime = $('Initialize Validation').item.json.start_time;\nconst endTime = Date.now();\nconst durationMs = endTime - startTime;\n\n// Estimate tokens (rough: 1 token ≈ 4 characters)\nconst textLength = $('Extract PDF Text').item.json.extracted_text_length || 0;\nconst estimatedTokens = Math.floor(textLength / 4);\n\nreturn {\n  json: {\n    validation_id: $('Parse Judge Results').item.json.validation_id,\n    validation_duration_ms: durationMs,\n    claude_tokens_used: estimatedTokens,\n    validation_status: $('Parse Judge Results').item.json.parse_success ? 'success' : 'partial'\n  }\n};"
+      },
+      "id": "calculate-metrics",
+      "name": "Calculate Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3100, 100]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE manual_validation_results SET\n  url_accessible = TRUE,\n  http_status_code = 200,\n  pdf_valid = TRUE,\n  pdf_size_bytes = {{ $('Extract PDF Text').item.json.pdf_size_bytes }},\n  pdf_page_count = {{ $('Extract PDF Text').item.json.pdf_page_count }},\n  extracted_text_length = {{ $('Extract PDF Text').item.json.extracted_text_length }},\n  extraction_method = '{{ $('Extract PDF Text').item.json.extraction_method }}',\n  clarity_score = {{ $('Parse Judge Results').item.json.quality.clarity_score || 'NULL' }},\n  clarity_notes = '{{ $('Parse Judge Results').item.json.quality.clarity_notes || '' }}',\n  completeness_score = {{ $('Parse Judge Results').item.json.quality.completeness_score || 'NULL' }},\n  completeness_notes = '{{ $('Parse Judge Results').item.json.quality.completeness_notes || '' }}',\n  reusability_score = {{ $('Parse Judge Results').item.json.quality.reusability_score || 'NULL' }},\n  reusability_notes = '{{ $('Parse Judge Results').item.json.quality.reusability_notes || '' }}',\n  grounding_score = {{ $('Parse Judge Results').item.json.quality.grounding_score || 'NULL' }},\n  grounding_notes = '{{ $('Parse Judge Results').item.json.quality.grounding_notes || '' }}',\n  overall_score = {{ $('Parse Judge Results').item.json.quality.overall_score || 'NULL' }},\n  suggested_improvements = '{{ JSON.stringify($('Parse Judge Results').item.json.quality.suggested_improvements || []) }}'::jsonb,\n  product_potential = '{{ $('Parse Judge Results').item.json.product_discovery.product_potential || 'no' }}',\n  product_idea = '{{ $('Parse Judge Results').item.json.product_discovery.product_idea || '' }}',\n  target_market = '{{ $('Parse Judge Results').item.json.product_discovery.target_market || '' }}',\n  price_tier = '{{ $('Parse Judge Results').item.json.product_discovery.price_tier || '' }}',\n  product_confidence = {{ $('Parse Judge Results').item.json.product_discovery.product_confidence || 'NULL' }},\n  product_notes = '{{ $('Parse Judge Results').item.json.product_discovery.product_notes || '' }}',\n  equipment_match_score = {{ $('Parse Judge Results').item.json.manual_validation.equipment_match_score || 'NULL' }},\n  equipment_match_notes = '{{ $('Parse Judge Results').item.json.manual_validation.equipment_match_notes || '' }}',\n  has_troubleshooting = {{ $('Parse Judge Results').item.json.manual_validation.has_troubleshooting || 'NULL' }},\n  troubleshooting_section_quality = {{ $('Parse Judge Results').item.json.manual_validation.troubleshooting_quality || 'NULL' }},\n  has_diagrams = {{ $('Parse Judge Results').item.json.manual_validation.has_diagrams || 'NULL' }},\n  has_parts_list = {{ $('Parse Judge Results').item.json.manual_validation.has_parts_list || 'NULL' }},\n  manual_type = '{{ $('Parse Judge Results').item.json.manual_validation.manual_type || '' }}',\n  validation_duration_ms = {{ $('Calculate Metrics').item.json.validation_duration_ms }},\n  claude_tokens_used = {{ $('Calculate Metrics').item.json.claude_tokens_used }},\n  validation_status = '{{ $('Calculate Metrics').item.json.validation_status }}',\n  updated_at = NOW()\nWHERE id = '{{ $('Parse Judge Results').item.json.validation_id }}'\nRETURNING *",
+        "options": {}
+      },
+      "id": "store-complete-results",
+      "name": "Store Complete Results",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3320, 100],
+      "credentials": {
+        "postgres": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Neon RIVET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE manual_validation_results SET\n  validation_status = 'failed',\n  error_summary = 'Invalid URL format',\n  http_error_message = 'URL validation failed',\n  updated_at = NOW()\nWHERE id = '{{ $('Create Validation Record').item.json.id }}'\nRETURNING *",
+        "options": {}
+      },
+      "id": "store-url-invalid-error",
+      "name": "Store URL Invalid Error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1120, 500],
+      "credentials": {
+        "postgres": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Neon RIVET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE manual_validation_results SET\n  url_accessible = {{ $('Parse HTTP Response').item.json.url_accessible || false }},\n  http_status_code = {{ $('Parse HTTP Response').item.json.http_status_code || 'NULL' }},\n  http_error_message = '{{ $('Parse HTTP Response').item.json.http_error_message || '' }}',\n  pdf_valid = {{ $('Extract PDF Text').item.json.pdf_valid || false }},\n  pdf_error_message = '{{ $('Extract PDF Text').item.json.pdf_error_message || '' }}',\n  validation_status = 'partial',\n  error_summary = 'Validation incomplete',\n  updated_at = NOW()\nWHERE id = '{{ $('Create Validation Record').item.json.id }}'\nRETURNING *",
+        "options": {}
+      },
+      "id": "store-partial-results",
+      "name": "Store Partial Results",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2220, 400],
+      "credentials": {
+        "postgres": {
+          "id": "CREATE_IN_N8N_UI",
+          "name": "Neon RIVET"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $input.item.json;\n\nreturn {\n  json: {\n    validation_id: result.id,\n    status: result.validation_status,\n    url: result.url,\n    validation_summary: {\n      url_accessible: result.url_accessible,\n      pdf_valid: result.pdf_valid,\n      overall_score: result.overall_score,\n      equipment_match_score: result.equipment_match_score,\n      product_potential: result.product_potential\n    },\n    quality_scores: {\n      clarity: result.clarity_score,\n      completeness: result.completeness_score,\n      reusability: result.reusability_score,\n      grounding: result.grounding_score,\n      overall: result.overall_score\n    },\n    manual_analysis: {\n      has_troubleshooting: result.has_troubleshooting,\n      has_diagrams: result.has_diagrams,\n      has_parts_list: result.has_parts_list,\n      manual_type: result.manual_type\n    },\n    product_discovery: {\n      product_potential: result.product_potential,\n      product_idea: result.product_idea,\n      price_tier: result.price_tier,\n      product_confidence: result.product_confidence\n    },\n    performance: {\n      duration_ms: result.validation_duration_ms,\n      tokens_used: result.claude_tokens_used\n    },\n    errors: result.error_summary ? [result.error_summary] : []\n  }\n};"
+      },
+      "id": "build-response-json",
+      "name": "Build Response JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3540, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "return-validation-json",
+      "name": "Return Validation JSON",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [3760, 300]
+    }
+  ],
+  "connections": {
+    "Manual Validation Webhook": {
+      "main": [
+        [
+          {
+            "node": "Initialize Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize Validation": {
+      "main": [
+        [
+          {
+            "node": "Create Validation Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Validation Record": {
+      "main": [
+        [
+          {
+            "node": "Is URL Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is URL Valid?": {
+      "main": [
+        [
+          {
+            "node": "Check URL Accessible",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Store URL Invalid Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check URL Accessible": {
+      "main": [
+        [
+          {
+            "node": "Parse HTTP Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse HTTP Response": {
+      "main": [
+        [
+          {
+            "node": "Is URL Accessible?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is URL Accessible?": {
+      "main": [
+        [
+          {
+            "node": "Download PDF File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Store Partial Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download PDF File": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF Text": {
+      "main": [
+        [
+          {
+            "node": "Is PDF Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is PDF Valid?": {
+      "main": [
+        [
+          {
+            "node": "Build Judge Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Store Partial Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Judge Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude Judge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Judge": {
+      "main": [
+        [
+          {
+            "node": "Parse Judge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Judge Results": {
+      "main": [
+        [
+          {
+            "node": "Calculate Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Metrics": {
+      "main": [
+        [
+          {
+            "node": "Store Complete Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Complete Results": {
+      "main": [
+        [
+          {
+            "node": "Build Response JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store URL Invalid Error": {
+      "main": [
+        [
+          {
+            "node": "Build Response JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Partial Results": {
+      "main": [
+        [
+          {
+            "node": "Build Response JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Response JSON": {
+      "main": [
+        [
+          {
+            "node": "Return Validation JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-01-09T00:00:00.000Z",
+  "versionId": "1"
+}
