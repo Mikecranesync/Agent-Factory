@@ -134,6 +134,78 @@ CREATE TABLE IF NOT EXISTS rivet_stripe_events (
 CREATE INDEX IF NOT EXISTS idx_rivet_stripe_events_type ON rivet_stripe_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_rivet_stripe_events_customer ON rivet_stripe_events(customer_id);
 
+-- ───────────────────────────────────────────────────────────────────────────
+-- MANUAL VALIDATION RESULTS - LLM Judge for manual quality scoring
+-- ───────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS manual_validation_results (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- Input metadata
+    url TEXT NOT NULL,
+    title TEXT,
+    manufacturer TEXT,
+    model_number TEXT,
+    product_family TEXT,
+
+    -- URL/PDF validation
+    url_accessible BOOLEAN DEFAULT FALSE,
+    http_status_code INTEGER,
+    http_error_message TEXT,
+    pdf_valid BOOLEAN DEFAULT FALSE,
+    pdf_size_bytes INTEGER,
+    pdf_page_count INTEGER,
+    pdf_error_message TEXT,
+
+    -- Text extraction
+    extracted_text_length INTEGER,
+    extraction_method TEXT,
+
+    -- Quality scores (judge_prompt.md framework)
+    clarity_score INTEGER CHECK (clarity_score BETWEEN 1 AND 5),
+    clarity_notes TEXT,
+    completeness_score INTEGER CHECK (completeness_score BETWEEN 1 AND 5),
+    completeness_notes TEXT,
+    reusability_score INTEGER CHECK (reusability_score BETWEEN 1 AND 5),
+    reusability_notes TEXT,
+    grounding_score INTEGER CHECK (grounding_score BETWEEN 1 AND 5),
+    grounding_notes TEXT,
+    overall_score INTEGER CHECK (overall_score BETWEEN 1 AND 5),
+    suggested_improvements JSONB,
+
+    -- Product discovery
+    product_potential TEXT,
+    product_idea TEXT,
+    target_market TEXT,
+    price_tier TEXT,
+    product_confidence INTEGER CHECK (product_confidence BETWEEN 1 AND 5),
+    product_notes TEXT,
+
+    -- Manual-specific validation
+    equipment_match_score INTEGER CHECK (equipment_match_score BETWEEN 1 AND 5),
+    equipment_match_notes TEXT,
+    has_troubleshooting BOOLEAN,
+    troubleshooting_section_quality INTEGER CHECK (troubleshooting_section_quality BETWEEN 1 AND 5),
+    has_diagrams BOOLEAN,
+    has_parts_list BOOLEAN,
+    manual_type TEXT,
+
+    -- Performance metrics
+    validation_duration_ms INTEGER,
+    claude_tokens_used INTEGER,
+
+    -- Status tracking
+    validation_status TEXT DEFAULT 'pending',
+    error_summary TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_manual_validation_url ON manual_validation_results(url);
+CREATE INDEX IF NOT EXISTS idx_manual_validation_manufacturer ON manual_validation_results(manufacturer);
+CREATE INDEX IF NOT EXISTS idx_manual_validation_overall_score ON manual_validation_results(overall_score DESC);
+CREATE INDEX IF NOT EXISTS idx_manual_validation_product_potential ON manual_validation_results(product_potential) WHERE product_potential IN ('yes', 'maybe');
+CREATE INDEX IF NOT EXISTS idx_manual_validation_status ON manual_validation_results(validation_status);
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- FUNCTIONS
 -- ═══════════════════════════════════════════════════════════════════════════
