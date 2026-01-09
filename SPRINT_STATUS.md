@@ -8,8 +8,8 @@
 
 | Agent | Branch | Focus | Status | Completion File |
 |-------|--------|-------|--------|-----------------|
-| 1 | feature/live-testing-workflows | n8n Workflows | 🟡 In Progress | AGENT1_COMPLETE.md |
-| 2 | feature/mcp-test-integration | MCP Config | ⚪ Waiting | AGENT2_COMPLETE.md |
+| 1 | feature/live-testing-workflows | n8n Workflows | ✅ COMPLETE | AGENT1_COMPLETE.md |
+| 2 | feature/mcp-test-integration | MCP Config | 🟢 Ready to Start | AGENT2_COMPLETE.md |
 | 3 | feature/debug-harness | Debug Tools | ⚪ Waiting | AGENT3_COMPLETE.md |
 
 ## Dependencies
@@ -23,11 +23,28 @@ Agent 3 (Debug Harness) ← needs MCP working
 
 ## Shared Resources
 
-- **n8n Cloud URL:** [PENDING - Agent 1 to provide]
-- **n8n API Key:** [PENDING - Agent 1 to provide]
-- **Neon Connection:** See .env in repo
+- **n8n Cloud URL:** https://mikecranesync.app.n8n.cloud
+- **n8n API Key:** Get from n8n Cloud → Settings → API (needed for deployment)
+- **Webhook Base URL:** https://mikecranesync.app.n8n.cloud/webhook/
+- **Neon Connection:** See .env.production in repo
 - **Telegram Bot:** @rivet_local_dev_bot
 - **Telegram Credential ID:** if4EOJbvMirfWqCC
+
+## Agent 1 Deliverables (✅ Complete)
+
+**Test Workflows Created:**
+- Echo Webhook (rivet-test-echo) - Validates n8n connectivity
+- Database Health (rivet-test-db-health) - Tests Postgres connection
+- Telegram Bot (rivet-test-telegram) - Validates bot credentials
+
+**Documentation:**
+- docs/TESTING_WORKFLOWS.md - Complete API documentation
+- docs/DEPLOYMENT_GUIDE.md - Deployment instructions (manual + automated)
+- scripts/import_test_workflows.py - Automated import script
+
+**Status:** Workflows ready for deployment
+**Branch:** feature/live-testing-workflows
+**Commits:** 2 commits (workflows + deployment guide)
 
 ## Infrastructure Constants
 
