@@ -30,21 +30,23 @@ Agent 3 (Debug Harness) ← needs MCP working
 - **Telegram Bot:** @rivet_local_dev_bot
 - **Telegram Credential ID:** if4EOJbvMirfWqCC
 
-## Agent 1 Deliverables (✅ Complete)
+## Agent 1 Deliverables (✅ Complete & Deployed)
 
-**Test Workflows Created:**
-- Echo Webhook (rivet-test-echo) - Validates n8n connectivity
-- Database Health (rivet-test-db-health) - Tests Postgres connection
-- Telegram Bot (rivet-test-telegram) - Validates bot credentials
+**Test Workflows Deployed to n8n Cloud:**
+- Echo Webhook (gEeDVcmmQz7qmdgD) - rivet-test-echo
+- Database Health (OZzWjpzZRug0vrZY) - rivet-test-db-health
+- Telegram Bot (KvUDysYp2pw0wZ1x) - rivet-test-telegram
 
 **Documentation:**
 - docs/TESTING_WORKFLOWS.md - Complete API documentation
-- docs/DEPLOYMENT_GUIDE.md - Deployment instructions (manual + automated)
+- docs/DEPLOYMENT_GUIDE.md - Deployment instructions
+- docs/DEPLOYMENT_RESULTS.md - Deployment log with workflow IDs
 - scripts/import_test_workflows.py - Automated import script
 
-**Status:** Workflows ready for deployment
+**Status:** ✅ Workflows deployed to n8n Cloud (awaiting manual activation)
 **Branch:** feature/live-testing-workflows
-**Commits:** 2 commits (workflows + deployment guide)
+**Commits:** 4 commits
+**Deployed:** 2026-01-09
 
 ## Infrastructure Constants
 
